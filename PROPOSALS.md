@@ -100,3 +100,13 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **DS records for the delegated zones** (looper, #6). What: the challenge zone's (and the dev zone's) DS record in its
   parent, from the zone's DNSSEC keys. Why: both zones sign, but with NS records only the delegation is insecure, so
   resolvers do not validate their answers.
+- **The 2026-11-03 network and node-pool rules in the stacks, and plan checks that refuse violations** (looper, #7,
+  2026-11-03). What: the org policy `compute.vmExternalIpAccess` denied to all; the IAP SSH rule removed from `ci` (the
+  manager-to-workers rule: Jody's call, #7 Q1); the runner pools' templates on spot; in `dev`, the `arm64` pool
+  replaced by `normal` (3 x c4a-standard-2, on-demand) and `spot` (spot, from 0, labelled and tainted `spot`), both
+  `COS_CONTAINERD`; and `ci/policy.sh plan` refusing any instance or template with an access config, any 0.0.0.0/0
+  ingress, any rule allowing port 22 and any cluster or pool without private nodes, with fixtures and stack tests. A
+  tofu drift plan sees only what is in state, so hand-made additions need folder firewall policies or a live audit in
+  the drift job (#7 Q7). Why: `decisions/network-exposure-2026-11-03.md` and `cluster-node-pools-2026-11-03.md` were
+  applied by hand in jody1-328023; the pipeline must be the only agent of change, and `ci` and `dev` are built fresh.
+  Links: #7 (design and Jody's seven questions on the issue).
