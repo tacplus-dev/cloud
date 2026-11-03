@@ -55,7 +55,7 @@ run "ci" {
       helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
       plugin_version    = "v1.3.1"
       plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
+      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     pools = {
       with-account = { machine_type = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5, service_account = true }
@@ -99,6 +99,10 @@ run "ci" {
     error_message = "The manager does not run every pool."
   }
   assert {
+    condition     = length(regexall("image = \"alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "A pool's default image is not the pinned alpine 3.24."
+  }
+  assert {
     condition     = alltrue([for b in google_storage_bucket.build : b.uniform_bucket_level_access && b.public_access_prevention == "enforced" && b.location == "US-CENTRAL1"])
     error_message = "A build bucket is not uniform, private and in us-central1."
   }
@@ -134,7 +138,7 @@ run "unpinned_runner_refused" {
       helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
       plugin_version    = "v1.3.1"
       plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.22"
+      default_image     = "alpine:3.24"
     }
     pools          = {}
     build_buckets  = {}

@@ -43,7 +43,7 @@ module "ci" {
     helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
     plugin_version    = "v1.3.1"
     plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-    default_image     = "alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f"
+    default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
   }
   pools          = { for k, p in module.settings.runner_pools : k => { machine_type = p.machine_type, disk_gb = p.disk_gb, disk_type = p.disk_type, max_instances = p.max_instances, service_account = p.service_account } }
   build_buckets  = { build-cache = 30 }
