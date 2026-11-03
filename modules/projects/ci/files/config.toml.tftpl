@@ -1,0 +1,35 @@
+# The runner manager's /etc/gitlab-runner/config.toml, rendered by tacplus-dev/cloud (modules/projects/ci) into the
+# manager's metadata (runner-config). Each @TOKEN:<pool>@ is replaced at boot with the pool's runner token, read
+# from Secret Manager (files/manager-startup.sh): no token is in this file or the metadata.
+concurrent = 20
+check_interval = 3
+shutdown_timeout = 0
+%{ for name, pool in pools ~}
+
+[[runners]]
+  name = "tacplus-ci ${name} (runner-manager, MIG ${pool.group})"
+  url = "https://gitlab.com"
+  token = "@TOKEN:${name}@"
+  executor = "docker-autoscaler"
+  limit = ${pool.max}
+  [runners.docker]
+    image = "${default_image}"
+    privileged = false
+    volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/builds:/builds", "/cache"]
+  [runners.autoscaler]
+    plugin = "/usr/local/bin/fleeting-plugin-googlecloud"
+    capacity_per_instance = 1
+    max_use_count = 1
+    max_instances = ${pool.max}
+    instance_ready_command = "test -f /var/run/runner-ready"
+    [runners.autoscaler.plugin_config]
+      name = "${pool.group}"
+      project = "${project}"
+      zone = "${zone}"
+    [runners.autoscaler.connector_config]
+      username = "runner"
+      use_external_addr = false
+    [[runners.autoscaler.policy]]
+      idle_count = 0
+      idle_time = "0s"
+%{ endfor ~}

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# A stub tofu for tests/tofu_test.sh: logs each call (STUB_LOG, one line: the directory's name and the arguments);
+# plan writes its -out file ("plan of <stack>") and exits STUB_PLAN_RC (0); show -json prints STUB_PLAN_JSON.
+set -euo pipefail
+echo "$(basename "$PWD") $*" >> "$STUB_LOG"
+case $1 in
+  init|apply) exit 0 ;;
+  plan)
+    for a in "$@"; do [[ $a == -out=* ]] && echo "plan of $(basename "$PWD")" > "${a#-out=}"; done
+    exit "${STUB_PLAN_RC:-0}" ;;
+  show)
+    if [ "$2" = -json ]; then cat "$STUB_PLAN_JSON"; else echo "OpenTofu will perform the following actions: (stub)"; fi ;;
+  *) echo "stub tofu: $*" >&2; exit 1 ;;
+esac

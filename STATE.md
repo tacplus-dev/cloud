@@ -1,5 +1,25 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-02 by the looper (#1).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#1).
 
-- **Version / line:** unreleased (main); no tacplus floor (shell and yq, no tacplus build). CI image
+- **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
+  `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
+  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, all pinned by checksum (`ci/tools.sh`).
+- **Works (#1):** `bootstrap/bootstrap.sh` (the domain's TXT record and the organization, the folder and project
+  `bootstrap`, the state bucket, `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected
+  main, the empty secrets; idempotent, refuses what differs, `--dry-run`); the stacks `org` (org policies, folders `ci`
+  and `dev`, readers), `ci` (runner manager VM, five arm64 pools as MIGs at size 0 with no-role or no accounts, runner
+  token secrets, build bucket, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
+  `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
+  variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
+  push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
+  applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
+  every plan. Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
+  providers, the pipeline's rules, the plan/apply script, the policy, and the bootstrap against a stub gcloud.
+- **Released / deployed:** nothing applied. No pipeline has run.
+- **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
+  refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
+  runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
+  (README, Before the first pipeline); the dev zone's delegation is a record in jody1-328023 (README). The runners are
+  registered paused and the cluster is empty until the later move off jody1-328023. Follow-ups in PROPOSALS.md.
+- **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue).

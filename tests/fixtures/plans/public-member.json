@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_storage_bucket_iam_member.x","type":"google_storage_bucket_iam_member","change":{"actions":["create"],"after":{"member":"allUsers","role":"roles/storage.objectViewer"}}}]}

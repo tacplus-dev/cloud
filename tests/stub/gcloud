@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/bootstrap_test.sh, over a directory of state (STUB_STATE): each resource bootstrap.sh
+# looks at or creates is a file there, IAM policies one "role member" line per binding. Every call is logged
+# (STUB_LOG, one line each). It answers only the commands bootstrap.sh runs, in the forms it runs them; any other
+# fails the test loudly.
+set -euo pipefail
+st=$STUB_STATE
+echo "gcloud $*" >> "$STUB_LOG"
+words=() flags=()
+for a in "$@"; do if [[ $a == --* ]]; then flags+=("$a"); else words+=("$a"); fi; done
+flag() { local f; for f in "${flags[@]}"; do [[ $f == "--$1="* ]] && { echo "${f#*=}"; return; }; done; }
+cmd="${words[*]}"
+absent() { echo "ERROR: (gcloud) NOT_FOUND: $1" >&2; exit 1; }
+policy() { # policy KEY: the IAM policy KEY as gcloud prints it
+  jq -Rn '[inputs | select(length > 0) | split(" ")] | group_by(.[0]) | {bindings: map({role: .[0][0], members: map(.[1])}), etag: "x"}' \
+    < <(cat "$st/iam-$1" 2>/dev/null || true)
+}
+bind() { echo "$(flag role) $(flag member)" >> "$st/iam-$1"; }
+
+case $cmd in
+  "config get account") cat "$st/account" ;;
+  "billing accounts describe "*) [ -f "$st/billing-open" ] && echo True || absent "${words[3]}" ;;
+  "organizations list") cat "$st/org" 2>/dev/null || true ;;
+  "organizations get-iam-policy "*) [ -f "$st/org" ] || absent org; policy org ;;
+  "organizations add-iam-policy-binding "*) bind org ;;
+  "dns record-sets describe "*) [ -f "$st/txt" ] || absent txt; jq -Rn '{name: "tacplus.dev.", type: "TXT", ttl: 300, rrdatas: [inputs]}' < "$st/txt" ;;
+  "dns record-sets create "*|"dns record-sets update "*) flag rrdatas | tr , '\n' > "$st/txt" ;;
+  "resource-manager folders list") cat "$st/folder" 2>/dev/null || true ;;
+  "resource-manager folders create") echo folders/456 > "$st/folder" ;;
+  "projects describe "*)
+    [ -f "$st/project" ] || absent project
+    if [ "$(flag format)" = 'value(projectNumber)' ]; then jq -r .projectNumber "$st/project"; else cat "$st/project"; fi ;;
+  "projects create "*) jq -n --arg f "$(flag folder)" '{projectId: "tacplus-bootstrap", projectNumber: "789", lifecycleState: "ACTIVE", parent: {type: "folder", id: $f}}' > "$st/project" ;;
+  "projects get-iam-policy "*) policy project ;;
+  "projects add-iam-policy-binding "*) bind project ;;
+  "billing projects describe "*) cat "$st/billing-link" 2>/dev/null || true ;;
+  "billing projects link "*) echo "billingAccounts/$(flag billing-account)" > "$st/billing-link" ;;
+  "billing accounts get-iam-policy "*) policy billing ;;
+  "billing accounts add-iam-policy-binding "*) bind billing ;;
+  "services list") cat "$st/services" 2>/dev/null || true ;;
+  "services enable "*) printf '%s\n' "${words[@]:2}" >> "$st/services" ;;
+  "storage buckets describe "*) [ -f "$st/bucket" ] || absent bucket; cat "$st/bucket" ;;
+  "storage buckets create "*) jq -n '{location: "US-CENTRAL1", versioning_enabled: false, uniform_bucket_level_access: true, public_access_prevention: "enforced"}' > "$st/bucket" ;;
+  "storage buckets update "*) jq '.versioning_enabled = true' "$st/bucket" > "$st/bucket.new" && mv "$st/bucket.new" "$st/bucket" ;;
+  "storage buckets get-iam-policy "*) policy bucket ;;
+  "storage buckets add-iam-policy-binding "*) bind bucket ;;
+  "iam service-accounts describe "*) [ -f "$st/sa" ] || absent sa; cat "$st/sa" ;;
+  "iam service-accounts create "*) echo "${words[3]}@tacplus-bootstrap.iam.gserviceaccount.com" > "$st/sa" ;;
+  "iam service-accounts get-iam-policy "*) policy sa ;;
+  "iam service-accounts add-iam-policy-binding "*) bind sa ;;
+  "iam workload-identity-pools describe "*) [ -f "$st/pool" ] || absent pool; cat "$st/pool" ;;
+  "iam workload-identity-pools create "*) echo '{"state": "ACTIVE"}' > "$st/pool" ;;
+  "iam workload-identity-pools providers describe "*) [ -f "$st/provider" ] || absent provider; cat "$st/provider" ;;
+  "iam workload-identity-pools providers create-oidc "*)
+    jq -n --arg c "$(flag attribute-condition)" --arg i "$(flag issuer-uri)" --arg m "$(flag attribute-mapping)" \
+      '{state: "ACTIVE", attributeCondition: $c, oidc: {issuerUri: $i}, attributeMapping: ($m | split(",") | map(split("=") | {(.[0]): .[1]}) | add)}' > "$st/provider" ;;
+  "secrets describe "*) [ -f "$st/secret-${words[2]}" ] || absent secret; echo "projects/789/secrets/${words[2]}" ;;
+  "secrets create "*) touch "$st/secret-${words[2]}" ;;
+  *) echo "stub gcloud: not a command bootstrap.sh runs: $*" >&2; exit 99 ;;
+esac

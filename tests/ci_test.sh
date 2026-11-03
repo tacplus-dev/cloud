@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# Tests ci/gitlab-project.gitlab-ci.yml and ci/pin.sh: the file parses; every job runs on the project's runner (tag
+# cloud), in the pinned image (by digest). The pipelines GitLab makes of it, by its workflow and its jobs' rules
+# (`extends` resolved): fmt, validate, tflint, shellcheck, policy and test in every pipeline, so every push and
+# merge request; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
+# manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
+# Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
+# run in order (org, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
+# does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
+# any other change, and the jobs refuse an empty CLOUD_COMMIT. Needs bash and yq.
+#
+#   tests/ci_test.sh
+set -uo pipefail
+here=$(cd "$(dirname "$0")/.." && pwd)
+src=$here/ci/gitlab-project.gitlab-ci.yml
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+failed=0
+fail() { echo "FAIL $*"; failed=1; }
+ok() { echo "ok   $*"; }
+
+yq -e '.' "$src" >/dev/null 2>&1 && ok "the CI file parses" || { echo "FAIL the CI file does not parse"; exit 1; }
+# The file with every `extends` resolved as GitLab does (a deep merge, the job's own keys winning), two levels.
+ci=$work/resolved.yml
+yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.extends] * .))' "$src" |
+  yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.extends] * .))' > "$ci"
+q() { yq -r "$1" "$ci"; }
+
+mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
+want="tools,fmt,validate,tflint,shellcheck,policy,test,plan:org,apply:org,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
+[ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
+stages=" $(q '.stages | join(" ")') "
+for j in "${jobs[@]}"; do
+  [[ $stages == *" $(q ".[\"$j\"].stage") "* ]] || fail "$j: its stage $(q ".[\"$j\"].stage") is not in stages"
+  [ "$(q ".[\"$j\"].tags // \"\"")" = "" ] || fail "$j: sets its own tags"
+  [ "$(q ".[\"$j\"].image // \"\"")" = "" ] || fail "$j: sets its own image"
+done
+[ "$(q '.default.tags | join(",")')" = cloud ] && ok "every job runs on the runner tagged cloud" || fail "default tags: $(q '.default.tags')"
+[[ $(q '.default.image') =~ ^[^@]+:[0-9.]+@sha256:[0-9a-f]{64}$ ]] && ok "the image is pinned by digest" || fail "the image: $(q '.default.image')"
+
+# cond EXPR: whether the rules:if expression EXPR holds under the variables set: clauses joined by &&, each $VAR
+# (set and not empty), $VAR == "string", $VAR == $VAR or $VAR =~ /regex/, the forms the file uses. Any other
+# form fails the test, so that one the file starts using is added here first. (tacplus-dev/cluster's ci_test.sh.)
+cond() {
+  local rest=$1 c re_var='^\$([A-Z_]+)$' re_str='^\$([A-Z_]+) == "([^"]*)"$' re_eq='^\$([A-Z_]+) == \$([A-Z_]+)$' re_m='^\$([A-Z_]+) =~ /(.*)/$'
+  while [ -n "$rest" ]; do
+    c=${rest%% && *}
+    [ "$c" = "$rest" ] && rest= || rest=${rest#* && }
+    if [[ $c =~ $re_var ]]; then [ -n "${!BASH_REMATCH[1]:-}" ] || return 1
+    elif [[ $c =~ $re_str ]]; then [ "${!BASH_REMATCH[1]:-}" = "${BASH_REMATCH[2]}" ] || return 1
+    elif [[ $c =~ $re_eq ]]; then [ "${!BASH_REMATCH[1]:-}" = "${!BASH_REMATCH[2]:-}" ] || return 1
+    elif [[ $c =~ $re_m ]]; then [[ ${!BASH_REMATCH[1]:-} =~ ${BASH_REMATCH[2]} ]] || return 1
+    else echo "cond: an expression this test cannot evaluate: [$c]" >&2; return 2; fi
+  done
+}
+# when PATH: the when of the first of PATH's rules that holds ("never" if none does), on_success if it has no rules.
+when() {
+  local n i r
+  n=$(q "$1.rules | length")
+  [ "$n" = 0 ] && { echo on_success; return; }
+  for ((i = 0; i < n; i++)); do
+    r=0
+    [ "$(q "$1.rules[$i].if // \"\"")" = "" ] || { cond "$(q "$1.rules[$i].if")"; r=$?; }
+    [ "$r" = 2 ] && return 2
+    [ "$r" = 0 ] && { q "$1.rules[$i].when // \"on_success\""; return; }
+  done
+  echo never
+}
+# pipeline SOURCE BRANCH [VAR=VALUE...]: the jobs of the pipeline GitLab makes for SOURCE on BRANCH with those
+# variables, "JOB:WHEN" each, comma-separated; "none" when the workflow makes no pipeline.
+pipeline() {
+  (
+    unset CI_OPEN_MERGE_REQUESTS
+    export CI_PIPELINE_SOURCE=$1 CI_COMMIT_BRANCH=$2; shift 2
+    [ "$CI_PIPELINE_SOURCE" = merge_request_event ] && CI_COMMIT_BRANCH=
+    # shellcheck disable=SC2163 # each is VAR=VALUE
+    for v in "$@"; do export "$v"; done
+    [ "$(when .workflow)" = never ] && { echo none; exit; }
+    out=
+    for j in "${jobs[@]}"; do
+      w=$(when ".[\"$j\"]") || exit 1
+      [ "$w" = never ] || out+="$j:$w,"
+    done
+    echo "$out"
+  )
+}
+
+lint="tools:on_success,fmt:on_success,validate:on_success,tflint:on_success,shellcheck:on_success,policy:on_success,test:on_success,"
+stacks="plan:org:on_success,apply:org:on_success,plan:ci:on_success,apply:ci:on_success,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
+check() { # check WHAT WANT SOURCE BRANCH [VAR=VALUE...]
+  local what=$1 want=$2 got; shift 2
+  got=$(pipeline "$@")
+  [ "$got" = "$want" ] && ok "$what" || { fail "$what"; echo "     want $want"; echo "     got  $got"; }
+}
+check "a push to main: the checks, then plan and apply of every stack, none manual" "$lint$stacks" push main
+check "a run from the web on main: the same" "$lint$stacks" web main
+check "an API run on main: the same" "$lint$stacks" api main
+check "a merge request: the checks only" "$lint" merge_request_event ""
+check "a push to a branch: the checks only" "$lint" push some-branch
+check "a push to a branch with a merge request open: no pipeline (the merge request's runs)" none push some-branch CI_OPEN_MERGE_REQUESTS=1
+check "the nightly schedule on main: the checks and drift, no plan or apply" "${lint}drift:on_success," schedule main
+check "a schedule on a branch: the checks only" "$lint" schedule some-branch
+check "a trigger: no pipeline" none trigger main
+
+for s in org ci dev gitlab; do
+  p="plan:$s" a="apply:$s"
+  [ "$(q ".[\"$a\"].needs | join(\",\")")" = "tools,$p" ] || fail "$a needs $(q ".[\"$a\"].needs | join(\",\")"), not tools and $p"
+  [ "$(q ".[\"$a\"].variables.STACK")" = "$s" ] && [ "$(q ".[\"$p\"].variables.STACK")" = "$s" ] || fail "$p or $a is not for the stack $s"
+  [[ $(q ".[\"$a\"].script | join(\" \")") == *'ci/tofu.sh apply "$STACK"' ]] || fail "$a does not apply the saved plan: $(q ".[\"$a\"].script")"
+  [[ $(q ".[\"$p\"].script | join(\" \")") == *'ci/tofu.sh plan "$STACK"' ]] || fail "$p does not save its plan: $(q ".[\"$p\"].script")"
+  [ "$(q ".[\"$p\"].artifacts.paths | join(\",\")")" = "src/plans/" ] && [ "$(q ".[\"$p\"].artifacts.access")" = developer ] ||
+    fail "$p: its plan is not an artifact for project members only"
+  [ "$(q ".[\"$a\"].environment.name")" = '$STACK' ] && [ "$(q ".[\"$a\"].resource_group")" = 'cloud-$STACK' ] ||
+    fail "$a: not in its stack's environment, one at a time"
+done
+ok "each apply needs its own plan and applies that saved plan, in its environment, one at a time"
+[ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:org" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:org" ] &&
+  [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:org"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test ]] &&
+  ok "the order: the checks, org, then ci and dev, then gitlab" || fail "the order: plan:org $(q '.["plan:org"].needs') plan:ci $(q '.["plan:ci"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+
+for j in "${jobs[@]}"; do
+  case $j in plan:*|apply:*|drift) want=yes ;; *) want=no ;; esac
+  has=$([ "$(q ".[\"$j\"].id_tokens.GCP_ID_TOKEN.aud // \"\"")" = 'https://iam.googleapis.com/$GCP_WIF_PROVIDER' ] && echo yes || echo no)
+  [ "$has" = "$want" ] || fail "$j: id_token $has"
+done
+ok "only the plan, apply and drift jobs have an id_token"
+[[ $(q '.drift.script | join(" ")') == *'ci/drift.sh org ci dev gitlab' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
+  ok "drift plans every stack and never applies" || fail "drift: $(q '.drift.script')"
+[ "$(q '[.[] | select(tag == "!!map") | .rules[]? | select(.when == "manual")] | length')" = 0 ] &&
+  ok "no job is manual: production is not built, nothing waits for Jody" || fail "a job is manual"
+
+commit=0123456789abcdef0123456789abcdef01234567
+"$here/ci/pin.sh" "$commit" > "$work/pinned.yml" || fail "pin.sh $commit failed"
+diff <(sed "s/^  CLOUD_COMMIT: \"$commit\"\$/  CLOUD_COMMIT: \"\"/" "$work/pinned.yml") "$src" >/dev/null &&
+  ok "pin.sh sets CLOUD_COMMIT and nothing else" || fail "pin.sh changed more than CLOUD_COMMIT"
+"$here/ci/pin.sh" --check "$work/pinned.yml" >/dev/null 2>&1 && ok "pin.sh --check accepts its output" || fail "pin.sh --check refused its own output"
+sed 's/^  tags: \[cloud\]$/  tags: [other]/' "$work/pinned.yml" > "$work/changed.yml"
+"$here/ci/pin.sh" --check "$work/changed.yml" >/dev/null 2>&1 && fail "pin.sh --check accepted a changed file" || ok "pin.sh --check refuses any other change"
+"$here/ci/pin.sh" --check "$src" >/dev/null 2>&1 && fail "pin.sh --check accepted an empty CLOUD_COMMIT" || ok "pin.sh --check refuses an empty CLOUD_COMMIT"
+"$here/ci/pin.sh" main >/dev/null 2>&1 && fail "pin.sh accepted a branch name" || ok "pin.sh refuses what is not a full commit hash"
+(CLOUD_COMMIT="" bash -c "$(q '.default.before_script[0]')" >/dev/null 2>&1) && fail "the jobs ran with an empty CLOUD_COMMIT" ||
+  ok "the jobs refuse an empty CLOUD_COMMIT"
+exit "$failed"
