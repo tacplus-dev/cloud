@@ -32,3 +32,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   the values are in the saved plan (an artifact, members only) and the state (the bootstrap bucket).
 - **Data Access audit logs on the organization** (looper, #1). What: an org-level audit config for IAM and Secret
   Manager reads. Why: break-glass and the pipeline's secret reads are then traced beyond Admin Activity.
+- **Deterministic security checks in this pipeline** (nightly scan, 2026-11-03). What: a `security` job, run on every
+  push and nightly, applying tacplus-dev/looper#49's floor to what this repository pins: `govulncheck -mode=binary` of
+  the tools (`ci/tools.sh`), both providers (from the lock files), GitLab Runner and its fleeting plugin; Trivy on the CI
+  image and the runners' default image; a checked-in `security-exceptions.yaml` with expiries; its JSON report as an
+  artifact; and a "Security checks" section in the README. Why: cloud runs its own GitLab pipeline, not
+  tacplus-dev/build's, so looper#49's checks never reach it; today only the nightly agent scan sees these, and it
+  found 23 known vulnerabilities in the gitlab provider alone (#3).
