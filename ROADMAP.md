@@ -8,6 +8,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 ## Next
 - The cloud pipeline, first cut: the bootstrap script, the organization and org policies, the folders and the `bootstrap`, `ci` and `dev` projects, GitLab settings, `plan` on every change, Jody's protected `apply` per environment, nightly drift (#1). Agent, at Jody's request, 2026-11-02 (`tacplus-dev/roadmap:decisions/cloud-pipeline-2026-11-02.md`).
 - Runner pools in `ci` boot a baked image and wait for readiness (looper#43), one VM per job (#4). Agent, hub's call under Jody's deterministic-deployments rule, 2026-11-03.
+- ci: the shared build cache, pools whose job containers share VMs, one always-on VM (#5). Agent, at Jody's request, 2026-11-03 (`tacplus-dev/roadmap:decisions/looper-job-per-issue-2026-11-03.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
