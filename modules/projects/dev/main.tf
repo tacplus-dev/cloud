@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The dev project: the dev GKE cluster (arm64, Axion), the DNS zone for dev hostnames, and the cluster pipeline's
-# identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main.
+# The dev project: the dev GKE cluster (arm64, Axion), the DNS zone for dev hostnames, the cluster pipeline's
+# identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main, and each deployment's
+# certificate secrets and challenge zone (certificates.tf).
 
 resource "google_project" "dev" {
   project_id          = var.project_id
@@ -23,6 +24,7 @@ resource "google_project_service" "service" {
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
+    "secretmanager.googleapis.com",
     "sts.googleapis.com",
   ])
   project            = google_project.dev.project_id

@@ -87,3 +87,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   `cache:` keyword survives its VM's volumes being discarded. Why: with `disable_cache`, a job's `cache:` is lost
   when the job ends, as it was with one job per VM; it would need an identity of its own on the manager, which the
   rule that only the build identity holds a role on the cache does not allow: a decision.
+- **The move of seatrials' certificates to tacplus-dev** (looper, #6, 2026-11-03). What: when seatrials moves off
+  jody1-328023, its pipeline switches to `seatrials-deploy@tacplus-dev`; the interim secrets' current versions are
+  copied into `tacplus-dev`'s (the hub grants the new identity `secretAccessor` on the interim secrets for the copy, a
+  pipeline job copies, the grant goes); `_acme-challenge.tacplus.dev.`'s NS records move to the new zone's name
+  servers; the interim secrets and zone are deleted. Why: a zone and a secret cannot move between projects, and a new
+  order would spend Let's Encrypt's duplicate-certificate budget (tacplus-dev/fleet-seatrials#4); written as a runbook
+  with the move, or the dev stack's apply printing the steps.
+- **The challenge zone's delegation in a stack** (looper, #6). What: the NS records of `_acme-challenge.<domain>.` (and
+  `dev.tacplus.dev.`'s) made by the pipeline, once tacplus.dev's zone is in the organization. Why: today they are hand
+  steps in jody1-328023, which the nightly drift does not see.
+- **DS records for the delegated zones** (looper, #6). What: the challenge zone's (and the dev zone's) DS record in its
+  parent, from the zone's DNSSEC keys. Why: both zones sign, but with NS records only the delegation is insecure, so
+  resolvers do not validate their answers.

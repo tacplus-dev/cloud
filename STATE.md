@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#5).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#6).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -31,6 +31,13 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
   after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
   mock providers only.
+- **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
+  their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
+  project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
+  `acme-account-<environment>` (only that identity adds and reads versions) and the zone `acme-challenge-<domain>` for
+  `_acme-challenge.<domain>` (only it holds `dns.admin`), all authoritative bindings. Tested against mock providers
+  only. Interim: the same for tacplus.dev, by hand in jody1-328023 for `seatrials-deploy@jody1-328023`, with the
+  commands in the README (Certificates), which the hub runs.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -43,6 +50,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   registered paused and the cluster is empty until the later move off jody1-328023; with no host Docker socket, the
   jobs that use one (looper-docker, the host-socket gates) must move to build jobs first (looper#71). The build jobs
   do not use the cache yet: tacplus-dev/build's jobs need its `id_tokens` and BuildKit and compiler cache
-  configuration (tacplus-dev/tacplus#315). Follow-ups in PROPOSALS.md.
+  configuration (tacplus-dev/tacplus#315). The challenge zone's delegation and seatrials' move to its identity in `tacplus-dev` (copying the
+  certificate's versions, no new order) wait for that move (README, Certificates). Follow-ups in PROPOSALS.md.
 - **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue). #4's
   acceptance (`runner-image measure 20`, no first-job image-pull failure) waits for the runners' move off jody1-328023.

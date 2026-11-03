@@ -48,6 +48,22 @@ output "projects" {
   }
 }
 
+output "deployments" {
+  description = <<-EOT
+    The deployments whose pipelines own their TLS certificates (decisions/certificates-by-pipeline-2026-11-03.md,
+    #6), each with an identity of its own in the dev project, federated from its GitLab project's protected main:
+    gitlab_project, account_id and wif_provider. It alone adds and reads the versions of the secrets
+    tls-<deployment> (the certificate and its key) and acme-account-<environment> (its ACME account key; environment
+    is the deployment's GitLab environment), and it alone administers the zone for _acme-challenge.<domain> (the
+    certificate is <domain> and *.<domain>, so DNS-01 writes there only), delegated from <domain>'s zone.
+  EOT
+  value = {
+    # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
+    # Certificates); it becomes this identity when seatrials moves off jody1-328023.
+    seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+  }
+}
+
 output "ubuntu_arm64_image" {
   description = "The runner manager's boot image: one Ubuntu 24.04 arm64 image by name (never a family), and the Ubuntu archive snapshot its packages come from."
   value = {

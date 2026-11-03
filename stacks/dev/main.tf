@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity. Its folder is the org
-# stack's; its billing account is the bootstrap project's.
+# The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
+# certificate secrets and challenge zones. Its folder is the org stack's; its billing account is the bootstrap
+# project's.
 
 module "settings" {
   source = "../../modules/settings"
@@ -54,6 +55,7 @@ module "dev" {
     pool           = "gitlab-com"
     provider       = "tacplus-dev-cluster"
   }
+  deployments = module.settings.deployments
 }
 
 output "project_id" {
@@ -70,4 +72,8 @@ output "dns_name_servers" {
 
 output "cluster_pipeline" {
   value = module.dev.cluster_pipeline
+}
+
+output "deployments" {
+  value = module.dev.deployments
 }

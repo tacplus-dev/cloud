@@ -21,7 +21,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
     tacplus-reader app's KMS key (import-only, empty until the reader moves);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A nodes, private nodes), the DNS zone
-    `dev.tacplus.dev`, and `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main;
+    `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, and each
+    deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates);
   - `prod` is designed but **not built**: see PRODUCTION.md.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
   Secret Manager by version, never in this repository), and the runner registrations of the `ci` pools (registered
@@ -192,6 +193,8 @@ The first pipeline on main then creates the org policies and folders, the `ci` a
 settings, each from its saved plan. After `apply:dev`, the dev zone's delegation (its name servers are `apply:dev`'s output
 `dns_name_servers`) goes into tacplus.dev's zone, which is still in jody1-328023:
 `gcloud dns record-sets create dev.tacplus.dev. --type=NS --ttl=300 --zone=tacplus-dev --project=jody1-328023 --rrdatas=<the four name servers>`.
+The challenge zone's delegation is the hub's too, once seatrials' pipeline moves to its identity here (below,
+Certificates).
 
 ## Break-glass
 
@@ -283,6 +286,79 @@ cache only speeds a build up).
 **Not yet:** nothing is applied before Jody's bootstrap and the first pipeline, and the runners stay paused until they
 move off jody1-328023. Once twenty jobs have run here on fresh VMs, looper's `runner-image measure 20` should show no
 first-job image-pull failure (#4's acceptance).
+
+## Certificates
+
+`decisions/certificates-by-pipeline-2026-11-03.md`, #6: a deployment's pipeline owns its TLS certificate. Each run checks
+it; when it is missing or due, the pipeline obtains one by ACME DNS-01 (`lego`, apex and wildcard) and adds it as a new
+secret version, which the uni-config references. Nothing in a cluster holds it, and nobody but that pipeline writes it.
+
+`modules/settings` (`deployments`) lists the deployments; the dev stack gives each, in `tacplus-dev`:
+
+- **Its identity:** the service account `<account_id>@tacplus-dev.iam.gserviceaccount.com`, keyless, through Workload
+  Identity Federation (pool `gitlab-com`, provider `<wif_provider>`), condition: its GitLab project's protected `main`.
+  It holds no role on the project.
+- **Its secrets:** `tls-<deployment>` (the certificate chain and its key) and `acme-account-<environment>` (its ACME
+  account's key; the environment is the deployment's GitLab environment), us-central1. Only its identity holds a role on
+  them, `secretVersionAdder` and `secretAccessor` (authoritative bindings): it adds versions and reads them. Their values
+  are never in this repository, a plan or the state.
+- **Its challenge zone:** `acme-challenge-<domain with dashes>` for `_acme-challenge.<domain>.` (DNSSEC on), where
+  DNS-01 for `<domain>` and `*.<domain>` writes its TXT records. Only its identity holds `dns.admin` on it (an
+  authoritative zone binding), so it cannot touch `<domain>`'s own zone. The zone is delegated from `<domain>`'s zone by
+  NS records.
+
+| Deployment | GitLab project | Secrets | Challenge zone | Identity |
+|---|---|---|---|---|
+| `seatrials` | tacplus-dev/fleet-seatrials (environment `seatrials`) | `tls-seatrials`, `acme-account-seatrials` | `acme-challenge-tacplus-dev`, `_acme-challenge.tacplus.dev.` | `seatrials-deploy` |
+
+The dev stack's output `deployments` names each one's `GCP_WIF_PROVIDER`, service account, secrets, and the name servers
+of its zone.
+
+### Interim: by hand in jody1-328023, until the cloud pipeline runs
+
+Until Jody's bootstrap and the first pipeline, seatrials' pipeline runs as `seatrials-deploy@jody1-328023` (tacplus-dev/
+fleet-seatrials, docs/deploy-pipeline.md), and tacplus.dev's zone is `tacplus-dev` in jody1-328023. The hub makes the same
+three things there, for tacplus.dev, granted to that account only, with these commands (Jody's account or the hub's, as
+for the other grants in jody1-328023). The secrets are made empty: the pipeline adds their first versions.
+
+```sh
+project=jody1-328023 sa=serviceAccount:seatrials-deploy@jody1-328023.iam.gserviceaccount.com
+# The secrets: us-central1; only the pipeline adds versions and reads them.
+for s in tls-seatrials acme-account-seatrials; do
+  gcloud secrets create $s --project=$project --replication-policy=user-managed --locations=us-central1 \
+    --labels=deployment=seatrials
+  for role in roles/secretmanager.secretVersionAdder roles/secretmanager.secretAccessor; do
+    gcloud secrets add-iam-policy-binding $s --project=$project --role=$role --member=$sa
+  done
+done
+# The challenge zone; only the pipeline administers it.
+gcloud dns managed-zones create acme-challenge-tacplus-dev --project=$project --dns-name=_acme-challenge.tacplus.dev. \
+  --visibility=public --dnssec-state=on \
+  --description="ACME DNS-01 challenges for tacplus.dev: tacplus-dev/fleet-seatrials's pipeline only"
+gcloud dns managed-zones add-iam-policy-binding acme-challenge-tacplus-dev --project=$project --role=roles/dns.admin \
+  --member=$sa
+# Its delegation from tacplus.dev's zone. The name must hold nothing else first: a stale _acme-challenge TXT record is
+# removed (gcloud dns record-sets delete _acme-challenge.tacplus.dev. --type=TXT --zone=tacplus-dev --project=$project).
+gcloud dns record-sets list --zone=tacplus-dev --project=$project --name=_acme-challenge.tacplus.dev.
+ns=$(gcloud dns managed-zones describe acme-challenge-tacplus-dev --project=$project --format=json | jq -r '.nameServers | join(",")')
+gcloud dns record-sets create _acme-challenge.tacplus.dev. --type=NS --ttl=300 --zone=tacplus-dev --project=$project \
+  --rrdatas="$ns"
+# Check: the delegation answers, and only the pipeline holds a role on each.
+dig +short NS _acme-challenge.tacplus.dev.
+for s in tls-seatrials acme-account-seatrials; do gcloud secrets get-iam-policy $s --project=$project; done
+gcloud dns managed-zones get-iam-policy acme-challenge-tacplus-dev --project=$project
+```
+
+In jody1-328023, "nobody else" is the resources' own policies: its project owners keep what their project roles give,
+as for everything else there until it is drained. The pipeline's `cert` step points `lego`'s Google Cloud DNS provider at
+`GCE_PROJECT=jody1-328023` (and, while it runs there, the secrets in jody1-328023).
+
+**Then the cloud pipeline recreates them** in `tacplus-dev` (a zone and a secret cannot move between projects): `apply:dev`
+makes the identity, the empty secrets and the zone above. When seatrials moves off jody1-328023, its pipeline switches to
+`seatrials-deploy@tacplus-dev` (`GCP_WIF_PROVIDER` from the dev stack's output), the current versions are copied into the
+new secrets (no new order: Let's Encrypt's duplicate-certificate limit), the NS records of `_acme-challenge.tacplus.dev.`
+are replaced by the new zone's name servers, and the interim secrets and zone are deleted (PROPOSALS.md, the move of
+seatrials' certificates).
 
 ## People
 

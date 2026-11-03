@@ -23,3 +23,16 @@ output "cluster_pipeline" {
     sa           = google_service_account.cluster_pipeline.email
   }
 }
+
+output "deployments" {
+  description = "Each deployment's GCP_WIF_PROVIDER and service account, its certificate secrets, and its challenge zone with the name servers its delegation needs."
+  value = {
+    for k, d in var.deployments : k => {
+      wif_provider   = google_iam_workload_identity_pool_provider.deploy[k].name
+      sa             = google_service_account.deploy[k].email
+      secrets        = { tls = "projects/${google_project.dev.project_id}/secrets/tls-${k}", acme_account = "projects/${google_project.dev.project_id}/secrets/acme-account-${d.environment}" }
+      challenge_zone = google_dns_managed_zone.acme_challenge[k].name
+      name_servers   = google_dns_managed_zone.acme_challenge[k].name_servers
+    }
+  }
+}

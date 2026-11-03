@@ -70,3 +70,19 @@ variable "cluster_pipeline" {
     provider       = string
   })
 }
+
+variable "deployments" {
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, and its identity's service account ID and provider name."
+  type = map(object({
+    gitlab_project = string
+    environment    = string
+    domain         = string
+    account_id     = string
+    wif_provider   = string
+  }))
+  default = {}
+  validation {
+    condition     = length(distinct([for d in values(var.deployments) : d.environment])) == length(var.deployments) && length(distinct([for d in values(var.deployments) : d.domain])) == length(var.deployments)
+    error_message = "Each deployment has an environment and a domain of its own: its ACME account and its challenge zone are its pipeline's alone."
+  }
+}
