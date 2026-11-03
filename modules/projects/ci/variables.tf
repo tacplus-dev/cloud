@@ -90,3 +90,27 @@ variable "reader_app_key" {
     key      = string
   })
 }
+
+variable "runner_image" {
+  description = "The pools' baked image (modules/settings runner_image): its name in this project (runner-arm64-docker-<date>-<time>, never a family), or null until the first bake, and the SHA-256 of files/runner-startup.sh, looper's runner/startup.sh at the commit it was baked from."
+  type = object({
+    image          = string
+    startup_sha256 = string
+  })
+  validation {
+    condition     = (var.runner_image.image == null || can(regex("^runner-arm64-docker-[0-9]{8}-[0-9]{6}$", var.runner_image.image))) && can(regex("^[0-9a-f]{64}$", var.runner_image.startup_sha256))
+    error_message = "The baked image is pinned by its name, runner-arm64-docker-<date>-<time> (never a family), and the startup-script by its SHA-256."
+  }
+}
+
+variable "runner_image_bake" {
+  description = "The bake's identity (modules/settings runner_image.bake): the image family it publishes in, its account, its Workload Identity pool and provider, and the GitLab project and environment whose protected main may use it."
+  type = object({
+    family         = string
+    account_id     = string
+    pool           = string
+    provider       = string
+    gitlab_project = string
+    environment    = string
+  })
+}

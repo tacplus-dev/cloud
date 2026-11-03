@@ -1,6 +1,7 @@
 # The runner manager's /etc/gitlab-runner/config.toml, rendered by tacplus-dev/cloud (modules/projects/ci) into the
 # manager's metadata (runner-config). Each @TOKEN:<pool>@ is replaced at boot with the pool's runner token, read
-# from Secret Manager (files/manager-startup.sh): no token is in this file or the metadata.
+# from Secret Manager (files/manager-startup.sh): no token is in this file or the metadata. No job is placed on a VM
+# before its startup-script marks it ready and Docker is active (looper#43); one not ready in ten minutes is removed.
 concurrent = 20
 check_interval = 3
 shutdown_timeout = 0
@@ -21,13 +22,13 @@ shutdown_timeout = 0
     capacity_per_instance = 1
     max_use_count = 1
     max_instances = ${pool.max}
-    instance_ready_command = "test -f /var/run/runner-ready"
+    instance_ready_command = "timeout 600 sh -c 'until test -f /var/run/runner-ready && systemctl is-active --quiet docker; do sleep 2; done'"
     [runners.autoscaler.plugin_config]
       name = "${pool.group}"
       project = "${project}"
       zone = "${zone}"
     [runners.autoscaler.connector_config]
-      username = "runner"
+      username = "${username}"
       use_external_addr = false
     [[runners.autoscaler.policy]]
       idle_count = 0

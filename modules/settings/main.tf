@@ -56,6 +56,31 @@ output "ubuntu_arm64_image" {
   }
 }
 
+output "runner_image" {
+  description = <<-EOT
+    The runner pools' image (#4, looper#43): baked by looper's `runner-image build` (tacplus-dev/build's job
+    runner-image) in the ci project, Docker and the fleeting user already in place, and pinned here by name, never
+    by its family: a new bake reaches the workers only through a commit of this pin (ci/runner-image.sh), its plan
+    and its apply. image is that name (runner-arm64-docker-<date>-<time>), or null until the first bake: the pools
+    then boot ubuntu_arm64_image and install Docker from its snapshot at boot (worker-startup.sh). looper_commit is
+    the looper commit the image was baked from, whose runner/startup.sh is the pools' startup-script
+    (modules/projects/ci/files/runner-startup.sh, startup_sha256 its SHA-256). bake: the bake's identity.
+  EOT
+  value = {
+    image          = null
+    looper_commit  = "03efbe66cdc1ce42dc56276031437712769a8088"
+    startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1"
+    bake = {
+      family         = "runner-arm64-docker"
+      account_id     = "runner-image"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-build"
+      gitlab_project = "tacplus-dev/build"
+      environment    = "runner-image"
+    }
+  }
+}
+
 output "runner_pools" {
   description = <<-EOT
     The runner pools of the ci project: each a managed instance group (size 0 at rest; the manager's autoscaler

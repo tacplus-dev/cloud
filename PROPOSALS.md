@@ -57,3 +57,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
   form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass
   one day and fail the next, which the plan and apply gates should not.
+- **The bake opens its bump** (looper, #4, 2026-11-03). What: tacplus-dev/looper's `runner-image` job, after it
+  publishes, opens an issue here (or a merge request running `ci/runner-image.sh <name> <its commit>`) naming the
+  image and the looper commit it baked from. Why: the hub's decision on #4 has each bake's job ask for its bump;
+  tacplus-dev/looper#67 asks only that it print the name, so today the bump waits for someone to read the job's log.
+  It is looper's code: a feature for its roadmap there.
+- **Never delete the pinned image** (looper, #4). What: `runner-image build` keeps the newest `RUNNER_IMAGE_KEEP` (3)
+  of the family and deletes older ones, whether or not a template still boots one; the bake should keep the images
+  labelled as pinned (a label this repository's apply sets, or a list it reads), or the ci stack should protect the
+  pinned one (an image's `deprecated` state, or a check in `plan:ci` that it exists). Why: after four bakes with no bump,
+  the pools' template names a deleted image and no VM can be created; a revert is then no rollback.

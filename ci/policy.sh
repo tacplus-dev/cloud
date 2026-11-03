@@ -8,7 +8,7 @@
 #   - allUsers or allAuthenticatedUsers, in any binding, member list or policy document: nothing is public;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
-#     uuid(), bcrypt(), and an image at :latest.
+#     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
 #
 #   ci/policy.sh source DIR...      # every *.tf and *.tftpl under each DIR
 #   ci/policy.sh plan PLAN.json...  # `tofu show -json` of saved plans: what they create or update
@@ -25,6 +25,7 @@ source_check() {
     ['\ballAuthenticatedUsers\b']="names allAuthenticatedUsers: nothing is public"
     ['\b(timestamp|plantimestamp|uuid|bcrypt)\(']="calls a function whose value no commit fixes (timestamp(), plantimestamp(), uuid(), bcrypt())"
     [':latest\b']="names an image at :latest: pin it by digest"
+    ['/images/family/']="boots an image family, whose newest image no commit fixes: pin the image by name"
   )
   for dir in "$@"; do
     [ -d "$dir" ] || die "no such directory: $dir"

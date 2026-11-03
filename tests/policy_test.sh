@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Tests ci/policy.sh: in the source, it refuses a module that creates a service-account key, names allUsers or
-# allAuthenticatedUsers, or resolves at plan time what a commit does not fix (timestamp(), an image's :latest), and
-# passes this repository's modules and stacks; in a saved plan's JSON, it refuses a key created and any public
-# member, in member, members, a policy_data document or nested anywhere, and passes a plan without them (a key
-# deleted is not one created). Needs bash and jq.
+# allAuthenticatedUsers, or resolves at plan time what a commit does not fix (timestamp(), an image's :latest, an
+# image family), and passes this repository's modules and stacks; in a saved plan's JSON, it refuses a key created
+# and any public member, in member, members, a policy_data document or nested anywhere, and passes a plan without
+# them (a key deleted is not one created). Needs bash and jq.
 #
 #   tests/policy_test.sh
 set -uo pipefail
@@ -33,6 +33,7 @@ refuses "a module granting allUsers" "allUsers" source "$fx/policy/public"
 refuses "a module naming allAuthenticatedUsers" "allAuthenticatedUsers" source "$fx/policy/authenticated"
 refuses "a module with timestamp()" "timestamp(" source "$fx/policy/timestamp"
 refuses "a module with an image at :latest" ":latest" source "$fx/policy/latest"
+refuses "a module booting an image family" "an image family" source "$fx/policy/family"
 refuses "the repository and a bad module together" "google_service_account_key" source "$here/modules" "$fx/policy/key"
 passes "a clean module" source "$fx/policy/clean"
 passes "this repository's modules and stacks" source "$here/modules" "$here/stacks"
