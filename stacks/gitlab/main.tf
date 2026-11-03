@@ -29,7 +29,7 @@ module "gitlab" {
     (local.cloud) = {
       create                 = false
       protected_branches     = ["main"]
-      protected_environments = ["org", "ci", "dev", "gitlab"]
+      protected_environments = ["folder", "ci", "dev", "gitlab"]
       variables = {
         GCP_WIF_PROVIDER = {
           value = "projects/${data.google_project.bootstrap.number}/locations/global/workloadIdentityPools/${module.settings.bootstrap.wif_pool}/providers/${module.settings.bootstrap.wif_provider}"

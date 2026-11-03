@@ -15,7 +15,7 @@
 #   drift                       the nightly schedule: a plan of every stack, and an issue on
 #                               github.com/tacplus-dev/cloud if anything differs; never applies
 #
-# The stacks run in order: org (policies, folders), then ci and dev (the projects), then gitlab (whose runners'
+# The stacks run in order: folder (the folders under the parent folder), then ci and dev (the projects), then gitlab (whose runners'
 # tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
 # decisions/deterministic-deployments-2026-11-02.md, addendum "approval only for production"): ci and dev apply on
 # main once their plan succeeds. prod is not built; its apply-prod will be a protected manual job only Jody plays.
@@ -24,7 +24,7 @@
 # provider's condition: protected main) as cloud-admin-pipeline. No key file and no token is stored in GitLab: the
 # id_token is exchanged for each job, and the GitLab token is read from Secret Manager by version (ci/lib.sh).
 # Every job runs on the project's own runner (tag `cloud`: a VM used once, with no Google account of its own).
-stages: [lint, org, projects, gitlab]
+stages: [lint, folder, projects, gitlab]
 
 variables:
   # The commit of github.com/tacplus-dev/cloud this pipeline plans and applies; empty in the repository, set in
@@ -130,22 +130,22 @@ test:
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci/tofu.sh apply "$STACK"
 
-plan:org:
+plan:folder:
   extends: .plan
-  stage: org
+  stage: folder
   needs: [tools, fmt, validate, tflint, shellcheck, policy, test]
-  variables: { STACK: org }
+  variables: { STACK: folder }
 
-apply:org:
+apply:folder:
   extends: .apply
-  stage: org
-  needs: [tools, plan:org]
-  variables: { STACK: org }
+  stage: folder
+  needs: [tools, plan:folder]
+  variables: { STACK: folder }
 
 plan:ci:
   extends: .plan
   stage: projects
-  needs: [tools, apply:org]
+  needs: [tools, apply:folder]
   variables: { STACK: ci }
 
 apply:ci:
@@ -157,7 +157,7 @@ apply:ci:
 plan:dev:
   extends: .plan
   stage: projects
-  needs: [tools, apply:org]
+  needs: [tools, apply:folder]
   variables: { STACK: dev }
 
 apply:dev:
@@ -185,9 +185,9 @@ apply:gitlab:
 # The nightly drift check: a plan of every stack, and an issue here when anything differs. It never applies.
 drift:
   extends: .gcp
-  stage: org
+  stage: folder
   needs: [tools, fmt, validate, tflint, shellcheck, policy, test]
   rules:
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule"
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/drift.sh org ci dev gitlab
+    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/drift.sh folder ci dev gitlab

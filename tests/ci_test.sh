@@ -8,9 +8,10 @@
 # merge request; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
 # manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
 # Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
-# run in order (org, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
+# run in order (folder, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
 # does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
-# any other change, and the jobs refuse an empty CLOUD_COMMIT. Needs bash and yq.
+# any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
+# GCP_PARENT_FOLDER, and refuses a job without a valid one. Needs bash and yq.
 #
 #   tests/ci_test.sh
 set -uo pipefail
@@ -30,7 +31,7 @@ yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.ext
 q() { yq -r "$1" "$ci"; }
 
 mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
-want="tools,fmt,validate,tflint,shellcheck,policy,test,plan:org,apply:org,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
+want="tools,fmt,validate,tflint,shellcheck,policy,test,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
 [ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
 stages=" $(q '.stages | join(" ")') "
 for j in "${jobs[@]}"; do
@@ -89,7 +90,7 @@ pipeline() {
 }
 
 lint="tools:on_success,fmt:on_success,validate:on_success,tflint:on_success,shellcheck:on_success,policy:on_success,test:on_success,"
-stacks="plan:org:on_success,apply:org:on_success,plan:ci:on_success,apply:ci:on_success,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
+stacks="plan:folder:on_success,apply:folder:on_success,plan:ci:on_success,apply:ci:on_success,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
 check() { # check WHAT WANT SOURCE BRANCH [VAR=VALUE...]
   local what=$1 want=$2 got; shift 2
   got=$(pipeline "$@")
@@ -105,7 +106,7 @@ check "the nightly schedule on main: the checks and drift, no plan or apply" "${
 check "a schedule on a branch: the checks only" "$lint" schedule some-branch
 check "a trigger: no pipeline" none trigger main
 
-for s in org ci dev gitlab; do
+for s in folder ci dev gitlab; do
   p="plan:$s" a="apply:$s"
   [ "$(q ".[\"$a\"].needs | join(\",\")")" = "tools,$p" ] || fail "$a needs $(q ".[\"$a\"].needs | join(\",\")"), not tools and $p"
   [ "$(q ".[\"$a\"].variables.STACK")" = "$s" ] && [ "$(q ".[\"$p\"].variables.STACK")" = "$s" ] || fail "$p or $a is not for the stack $s"
@@ -117,9 +118,9 @@ for s in org ci dev gitlab; do
     fail "$a: not in its stack's environment, one at a time"
 done
 ok "each apply needs its own plan and applies that saved plan, in its environment, one at a time"
-[ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:org" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:org" ] &&
-  [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:org"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test ]] &&
-  ok "the order: the checks, org, then ci and dev, then gitlab" || fail "the order: plan:org $(q '.["plan:org"].needs') plan:ci $(q '.["plan:ci"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+[ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:folder" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:folder" ] &&
+  [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test ]] &&
+  ok "the order: the checks, folder, then ci and dev, then gitlab" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
 
 for j in "${jobs[@]}"; do
   case $j in plan:*|apply:*|drift) want=yes ;; *) want=no ;; esac
@@ -127,7 +128,7 @@ for j in "${jobs[@]}"; do
   [ "$has" = "$want" ] || fail "$j: id_token $has"
 done
 ok "only the plan, apply and drift jobs have an id_token"
-[[ $(q '.drift.script | join(" ")') == *'ci/drift.sh org ci dev gitlab' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
+[[ $(q '.drift.script | join(" ")') == *'ci/drift.sh folder ci dev gitlab' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
   ok "drift plans every stack and never applies" || fail "drift: $(q '.drift.script')"
 [ "$(q '[.[] | select(tag == "!!map") | .rules[]? | select(.when == "manual")] | length')" = 0 ] &&
   ok "no job is manual: production is not built, nothing waits for Jody" || fail "a job is manual"
@@ -143,4 +144,25 @@ sed 's/^  tags: \[cloud\]$/  tags: [other]/' "$work/pinned.yml" > "$work/changed
 "$here/ci/pin.sh" main >/dev/null 2>&1 && fail "pin.sh accepted a branch name" || ok "pin.sh refuses what is not a full commit hash"
 (CLOUD_COMMIT="" bash -c "$(q '.default.before_script[0]')" >/dev/null 2>&1) && fail "the jobs ran with an empty CLOUD_COMMIT" ||
   ok "the jobs refuse an empty CLOUD_COMMIT"
+
+# ci/lib.sh's ci_gcp gives the stacks the parent folder from the protected variable GCP_PARENT_FOLDER (never written
+# in this repository), and refuses a job without one, or with one that is not a folder's numeric ID, before any
+# gcloud runs (a function stands in for gcloud: it is never reached when refused).
+gcp() { # gcp [GCP_PARENT_FOLDER]: ci_gcp's TF_VAR_parent_folder, or its refusal
+  (
+    unset GCP_PARENT_FOLDER TF_VAR_parent_folder
+    [ $# = 0 ] || export GCP_PARENT_FOLDER=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=y GCP_DEPLOY_SA=z ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud ran" >&2; }
+    ci_gcp >/dev/null 2>"$work/gcp-err" && echo "${TF_VAR_parent_folder:-}"
+  )
+}
+[ "$(gcp 111111111111)" = 111111111111 ] && ok "ci_gcp gives the stacks GCP_PARENT_FOLDER as parent_folder" || fail "ci_gcp's parent_folder: [$(gcp 111111111111)] $(cat "$work/gcp-err")"
+[ -z "$(gcp)" ] && grep -q GCP_PARENT_FOLDER "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  ok "ci_gcp refuses a job without GCP_PARENT_FOLDER" || fail "ci_gcp without GCP_PARENT_FOLDER: $(cat "$work/gcp-err")"
+[ -z "$(gcp folders/111111111111)" ] && grep -q GCP_PARENT_FOLDER "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  ok "ci_gcp refuses a GCP_PARENT_FOLDER that is not a numeric ID" || fail "ci_gcp with folders/...: $(cat "$work/gcp-err")"
 exit "$failed"

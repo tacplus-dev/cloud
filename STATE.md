@@ -1,16 +1,15 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#6).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#8).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
   files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, all pinned by checksum (`ci/tools.sh`). The `gitlab`
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes.
-- **Works (#1):** `bootstrap/bootstrap.sh` (the domain's TXT record and the organization, the folder and project
-  `bootstrap`, the state bucket, `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected
-  main, the empty secrets; idempotent, refuses what differs, `--dry-run`); the stacks `org` (org policies, folders `ci`
-  and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
+- **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
+  `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
+  idempotent, refuses what differs, `--dry-run`); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
   cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
@@ -18,6 +17,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
   every plan. Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
   providers, the pipeline's rules, the plan/apply script, the policy, and the bootstrap against a stub gcloud.
+- **In a folder handed to it (#8):** no organization of its own: everything is under a parent folder the host
+  organization hands over (README, What the host organization provides, and its hosting note), whose
+  numeric ID is an input, `bootstrap/bootstrap.sh --folder` and the protected GitLab variable `GCP_PARENT_FOLDER`
+  (`ci/lib.sh` gives it to the stacks as `parent_folder`). The bootstrap reads and asks for nothing above that folder,
+  and grants `cloud-admin-pipeline` nothing on it: its folderAdmin, projectCreator and owner there are the host's
+  grants, which the bootstrap reports. The org policies are the host's job (Jody's decision, option B): the README
+  lists the set relied on; this repository sets none, and its drift does not see them. `tests/hosting_test.sh` fails
+  on any organization resource or the host's name outside the README's hosting note.
 - **Runner image and readiness (#4):** the pools boot Container-Optimized OS for arm64, pinned by image name in
   `modules/settings` (`cos_arm64_image`, never a family: the module and `ci/policy.sh` refuse one), vanilla
   (`decisions/builds-in-containers-2026-11-03.md`): no startup-script, nothing installed at boot, OS updates off, the
@@ -52,5 +59,6 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   do not use the cache yet: tacplus-dev/build's jobs need its `id_tokens` and BuildKit and compiler cache
   configuration (tacplus-dev/tacplus#315). The challenge zone's delegation and seatrials' move to its identity in `tacplus-dev` (copying the
   certificate's versions, no new order) wait for that move (README, Certificates). Follow-ups in PROPOSALS.md.
-- **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue). #4's
+- **Blocked on:** the host's grants on the parent folder, Jody's bootstrap run (README, What the host organization
+  provides; What Jody runs, in order), the host's grants to `cloud-admin-pipeline`, then the hub's steps (no issue). #4's
   acceptance (`runner-image measure 20`, no first-job image-pull failure) waits for the runners' move off jody1-328023.

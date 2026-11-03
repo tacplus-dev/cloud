@@ -16,13 +16,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   Secret Manager at boot only; a re-registered runner (the gitlab stack replaces the token's version) needs the
   manager's config re-rendered: a systemd timer comparing versions, or the gitlab stack resetting the VM. Why: otherwise
   a re-registration leaves the pool on a dead token until someone reboots it by hand.
-- **Readers' accounts** (looper, #1). What: tacplus.dev accounts for Jody's daily use, the hub and the loopers, and
-  their `readers` entries. Why: domain-restricted sharing admits only the organization's directory, so the gmail
-  accounts and jody1-328023's service accounts used today cannot be readers; until then nobody but the pipeline and
-  break-glass sees the organization.
-- **Remove the organization's default grants** (looper, #1). What: Google gives the whole domain `projectCreator` and
-  `billingAccountCreator` on a new organization; remove them, so only the pipeline creates projects. Why: standing
-  write access for people is what the design forbids. A removal is a deletion of access: Jody's decision.
+- **Readers' accounts** (looper, #1; since #8, of the host's directory). What: accounts for Jody's daily use, the hub
+  and the loopers in a directory the host organization's domain-restricted sharing admits, and their `readers` entries
+  (`stacks/folder`). Why: the gmail accounts and jody1-328023's service accounts used today cannot be readers; until
+  then nobody but the pipeline and break-glass sees the parent folder.
+- **Remove the organization's default grants** (looper, #1): the host organization's job since #8 (README, What the
+  host organization provides); nothing to do here.
 - **The in-cluster grant of cluster-admin-pipeline in dev** (looper, #1). What: its ClusterRoleBinding of
   `cluster-admin` on the dev cluster, made by a pipeline (a kubernetes-provider stack here, or tacplus-dev/cluster's
   bootstrap) rather than by the hub by hand. Why: today GCP grants it only `container.clusterViewer`; the binding is the
@@ -30,8 +29,10 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Secret values out of plans and state** (looper, #1). What: the gitlab stack's variables and the runner tokens
   through write-only attributes or ephemeral resources, once both providers offer them for these resources. Why: today
   the values are in the saved plan (an artifact, members only) and the state (the bootstrap bucket).
-- **Data Access audit logs on the organization** (looper, #1). What: an org-level audit config for IAM and Secret
-  Manager reads. Why: break-glass and the pipeline's secret reads are then traced beyond Admin Activity.
+- **Data Access audit logs on the parent folder** (looper, #1; the folder's since #8). What: a folder-level audit
+  config (`google_folder_iam_audit_config` on the parent folder) for IAM and Secret Manager reads, in the folder stack,
+  unless the host sets it above. Why: break-glass and the pipeline's secret reads are then traced beyond Admin
+  Activity.
 - **Deterministic security checks in this pipeline** (nightly scan, 2026-11-03). What: a `security` job, run on every
   push and nightly, applying tacplus-dev/looper#49's floor to what this repository pins: `govulncheck -mode=binary` of
   the tools (`ci/tools.sh`), both providers (from the lock files), GitLab Runner and its fleeting plugin; Trivy on the CI
@@ -95,13 +96,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   order would spend Let's Encrypt's duplicate-certificate budget (tacplus-dev/fleet-seatrials#4); written as a runbook
   with the move, or the dev stack's apply printing the steps.
 - **The challenge zone's delegation in a stack** (looper, #6). What: the NS records of `_acme-challenge.<domain>.` (and
-  `dev.tacplus.dev.`'s) made by the pipeline, once tacplus.dev's zone is in the organization. Why: today they are hand
+  `dev.tacplus.dev.`'s) made by the pipeline, once tacplus.dev's zone is under the parent folder. Why: today they are hand
   steps in jody1-328023, which the nightly drift does not see.
 - **DS records for the delegated zones** (looper, #6). What: the challenge zone's (and the dev zone's) DS record in its
   parent, from the zone's DNSSEC keys. Why: both zones sign, but with NS records only the delegation is insecure, so
   resolvers do not validate their answers.
 - **The 2026-11-03 network and node-pool rules in the stacks, and plan checks that refuse violations** (looper, #7,
-  2026-11-03). What: the org policy `compute.vmExternalIpAccess` denied to all; the IAP SSH rule removed from `ci` (the
+  2026-11-03). What: the org policy `compute.vmExternalIpAccess` denied to all (since #8, the host organization's to
+  set: README, What the host organization provides, lists it once it does); the IAP SSH rule removed from `ci` (the
   manager-to-workers rule: Jody's call, #7 Q1); the runner pools' templates on spot; in `dev`, the `arm64` pool
   replaced by `normal` (3 x c4a-standard-2, on-demand) and `spot` (spot, from 0, labelled and tainted `spot`), both
   `COS_CONTAINERD`; and `ci/policy.sh plan` refusing any instance or template with an access config, any 0.0.0.0/0
@@ -110,3 +112,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   the drift job (#7 Q7). Why: `decisions/network-exposure-2026-11-03.md` and `cluster-node-pools-2026-11-03.md` were
   applied by hand in jody1-328023; the pipeline must be the only agent of change, and `ci` and `dev` are built fresh.
   Links: #7 (design and Jody's seven questions on the issue).
+- **`GCP_PARENT_FOLDER` adopted by the gitlab stack** (looper, #8, 2026-11-03). What: the gitlab stack manages the
+  protected variable `GCP_PARENT_FOLDER` (from its own `parent_folder`, with an import block, as `GCP_WIF_PROVIDER`).
+  Why: today the hub sets it by hand (README, Before the first pipeline) and the nightly drift does not see it.
+- **The host's org policies checked, not only relied on** (looper, #8, 2026-11-03). What: the drift job reads the
+  effective policies on the parent folder (`gcloud resource-manager org-policies describe --effective --folder`; if
+  `roles/owner` on the folder does not read them, `orgpolicy.policyViewer` on it, a host's grant) and reports any
+  that is not the README's set, without setting one. Why: since #8 the guardrails are the host organization's
+  (decided: option B), so a change there would reach these projects unseen; the host's own drift check covers its side
+  only.

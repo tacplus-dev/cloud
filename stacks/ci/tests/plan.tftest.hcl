@@ -1,15 +1,12 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci stack's plan against a stub organization and an empty project (mock providers: no credentials, no cloud):
+# The ci stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no cloud):
 # the stack plans, and its module, with the stack's inputs, gives the runners, the buckets and the reader's key as
 # designed, and the settings give the pools Jody decided (#5). (A test sees a module's resources only when it runs
 # that module itself.)
 
 mock_provider "google" {
-  mock_data "google_organization" {
-    defaults = { org_id = "123456789012", name = "organizations/123456789012", directory_customer_id = "C0stub000" }
-  }
   mock_data "google_active_folder" {
     defaults = { name = "folders/222" }
   }
@@ -25,8 +22,17 @@ mock_provider "google" {
   }
 }
 
+# The parent folder, as the pipeline gives it (GCP_PARENT_FOLDER).
+variables {
+  parent_folder = "111111111111"
+}
+
 run "stack" {
   command = plan
+  assert {
+    condition     = data.google_active_folder.ci.parent == "folders/111111111111"
+    error_message = "The folder ci is not looked up under the parent folder."
+  }
   assert {
     condition     = output.project_id == "tacplus-ci"
     error_message = "The ci project is not tacplus-ci."

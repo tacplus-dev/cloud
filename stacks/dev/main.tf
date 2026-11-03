@@ -2,24 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
-# certificate secrets and challenge zones. Its folder is the org stack's; its billing account is the bootstrap
+# certificate secrets and challenge zones. Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
+variable "parent_folder" {
+  description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
+  type        = string
+}
+
 module "settings" {
-  source = "../../modules/settings"
+  source        = "../../modules/settings"
+  parent_folder = var.parent_folder
 }
 
 provider "google" {
   region = module.settings.region
 }
 
-data "google_organization" "org" {
-  domain = module.settings.domain
-}
-
 data "google_active_folder" "dev" {
   display_name = module.settings.projects.dev.folder
-  parent       = data.google_organization.org.name
+  parent       = module.settings.parent_folder
 }
 
 data "google_project" "bootstrap" {
@@ -48,7 +50,7 @@ module "dev" {
     services      = "10.28.0.0/20"
     control_plane = "172.16.0.0/28"
   }
-  dns = { zone = "dev-tacplus-dev", domain = "dev.${module.settings.domain}." }
+  dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
   cluster_pipeline = {
     account_id     = "cluster-admin-pipeline"
     gitlab_project = "tacplus-dev/cluster"

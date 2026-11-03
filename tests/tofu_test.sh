@@ -25,23 +25,23 @@ find "$work/repo/stacks" -name .terraform -prune -exec rm -rf {} +
 tofu_sh=$work/repo/ci/tofu.sh
 run() { : > "$STUB_LOG"; "$tofu_sh" "$@" > "$work/out" 2>&1; }
 
-clean='{"resource_changes":[{"address":"module.org.google_folder.folder[\"ci\"]","type":"google_folder","change":{"actions":["create"],"after":{"display_name":"ci"}}},{"address":"data.x","type":"x","change":{"actions":["read"],"after":{}}}]}'
+clean='{"resource_changes":[{"address":"module.folder.google_folder.folder[\"ci\"]","type":"google_folder","change":{"actions":["create"],"after":{"display_name":"ci"}}},{"address":"data.x","type":"x","change":{"actions":["read"],"after":{}}}]}'
 key='{"resource_changes":[{"address":"google_service_account_key.k","type":"google_service_account_key","change":{"actions":["create"],"after":{}}}]}'
 echo "$clean" > "$work/clean.json"; echo "$key" > "$work/key.json"
 
 export STUB_PLAN_JSON=$work/clean.json
-if run plan org; then ok "plan org"; else fail "plan org: $(cat "$work/out")"; fi
-for f in org.tfplan org.json org.txt org.tfplan.sha256; do [ -s "$PLANS/$f" ] || fail "plan saved no plans/$f"; done
-grep -q '^org init .*-lockfile=readonly' "$STUB_LOG" && ok "init reads the lock file only" || fail "init: $(grep init "$STUB_LOG")"
-grep -q "^org plan .*-out=$PLANS/org.tfplan" "$STUB_LOG" && ok "the plan is saved" || fail "plan: $(grep plan "$STUB_LOG")"
+if run plan folder; then ok "plan folder"; else fail "plan folder: $(cat "$work/out")"; fi
+for f in folder.tfplan folder.json folder.txt folder.tfplan.sha256; do [ -s "$PLANS/$f" ] || fail "plan saved no plans/$f"; done
+grep -q '^folder init .*-lockfile=readonly' "$STUB_LOG" && ok "init reads the lock file only" || fail "init: $(grep init "$STUB_LOG")"
+grep -q "^folder plan .*-out=$PLANS/folder.tfplan" "$STUB_LOG" && ok "the plan is saved" || fail "plan: $(grep plan "$STUB_LOG")"
 grep -q '1 change(s)' "$work/out" && ok "the plan's changes are counted (reads are not changes)" || fail "the count: $(tail -1 "$work/out")"
 
-if run apply org; then ok "apply org"; else fail "apply org: $(cat "$work/out")"; fi
-[ "$(grep ' apply ' "$STUB_LOG")" = "org apply -input=false -lock-timeout=10m -no-color $PLANS/org.tfplan" ] &&
+if run apply folder; then ok "apply folder"; else fail "apply folder: $(cat "$work/out")"; fi
+[ "$(grep ' apply ' "$STUB_LOG")" = "folder apply -input=false -lock-timeout=10m -no-color $PLANS/folder.tfplan" ] &&
   ok "apply applies the saved plan, and only it" || fail "apply ran: $(grep apply "$STUB_LOG")"
 
-echo "changed" >> "$PLANS/org.tfplan"
-if run apply org; then fail "apply of a changed plan ran"; else
+echo "changed" >> "$PLANS/folder.tfplan"
+if run apply folder; then fail "apply of a changed plan ran"; else
   grep -q 'not the plan the plan job saved' "$work/out" && ok "a plan changed since the plan job is refused" || fail "refused why: $(cat "$work/out")"; fi
 grep -q ' apply ' "$STUB_LOG" && fail "tofu apply ran on a changed plan"
 if run apply ci; then fail "apply without a plan ran"; else
@@ -55,14 +55,14 @@ if run plan dev; then fail "a plan creating a key passed"; else
 
 export STUB_PLAN_JSON=$work/clean.json PLAN_SUMMARY=$work/summary
 : > "$PLAN_SUMMARY"
-STUB_PLAN_RC=0 run drift org && [ ! -s "$PLAN_SUMMARY" ] && ok "drift: none" || fail "drift with no change: $(cat "$work/out" "$PLAN_SUMMARY")"
-STUB_PLAN_RC=2 run drift org && [ "$(cat "$PLAN_SUMMARY")" = 'org: create module.org.google_folder.folder["ci"]' ] &&
+STUB_PLAN_RC=0 run drift folder && [ ! -s "$PLAN_SUMMARY" ] && ok "drift: none" || fail "drift with no change: $(cat "$work/out" "$PLAN_SUMMARY")"
+STUB_PLAN_RC=2 run drift folder && [ "$(cat "$PLAN_SUMMARY")" = 'folder: create module.folder.google_folder.folder["ci"]' ] &&
   ok "drift lists what differs" || fail "drift summary: $(cat "$PLAN_SUMMARY")"
 grep -q ' plan .*-lock=false .*-detailed-exitcode' "$STUB_LOG" && ! grep -q ' apply ' "$STUB_LOG" && ! grep -q "out=$PLANS" "$STUB_LOG" &&
   ok "drift neither locks, saves nor applies" || fail "drift ran: $(cat "$STUB_LOG")"
 : > "$PLAN_SUMMARY"
 STUB_PLAN_RC=1 run drift ci && grep -q '^ci: the plan failed' "$PLAN_SUMMARY" && ok "a failed drift plan is reported" || fail "drift failure: $(cat "$PLAN_SUMMARY")"
 
-run plan ../org && fail "a stack outside stacks/ ran" || ok "an unknown stack is refused"
-run destroy org && fail "destroy ran" || ok "no other command (destroy) exists"
+run plan ../folder && fail "a stack outside stacks/ ran" || ok "an unknown stack is refused"
+run destroy folder && fail "destroy ran" || ok "no other command (destroy) exists"
 exit "$failed"

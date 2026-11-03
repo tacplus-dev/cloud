@@ -12,11 +12,17 @@ ci_here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # ci_gcp: gcloud and OpenTofu's google provider as the pipeline's service account (GCP_DEPLOY_SA,
 # cloud-admin-pipeline), through GitLab OIDC and Workload Identity Federation: the job's ID token (id_tokens
 # GCP_ID_TOKEN) is exchanged for a short-lived Google token. The provider admits only this project's protected
-# main (bootstrap/bootstrap.sh made it so).
+# main (bootstrap/bootstrap.sh made it so). It also gives the stacks the parent folder they build under, their
+# variable parent_folder, from the protected GitLab project variable GCP_PARENT_FOLDER: the folder's numeric ID,
+# which this repository never writes (README, What the host organization provides).
 ci_gcp() {
   : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
   : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (README, Before the first pipeline)}"
   : "${GCP_DEPLOY_SA:?GCP_DEPLOY_SA is not set}"
+  [[ ${GCP_PARENT_FOLDER:-} =~ ^[0-9]+$ ]] ||
+    { echo "gcp: the GitLab project variable GCP_PARENT_FOLDER is not the parent folder's numeric ID: [${GCP_PARENT_FOLDER:-}] (README, Before the first pipeline)" >&2
+      return 1; }
+  export TF_VAR_parent_folder=$GCP_PARENT_FOLDER
   export CLOUDSDK_CONFIG=$ci_tmp/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
   ( umask 077
     printf '%s' "$GCP_ID_TOKEN" > "$ci_tmp/oidc-token"

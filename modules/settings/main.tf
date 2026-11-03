@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The constants every stack shares, in one place: the organization's domain, the region, the projects' IDs, the
+# The constants every stack shares, in one place: the parent folder this runs in, the region, the projects' IDs, the
 # pipeline's identity and the runner pools. No resource, no provider: each stack reads them with
 # `module "settings" { source = "../../modules/settings" }`. bootstrap/bootstrap.sh holds the same names for what
 # it creates (tests/settings_test.sh checks they agree).
@@ -10,13 +10,26 @@ terraform {
   required_version = ">= 1.13.2"
 }
 
-output "domain" {
-  description = "The Cloud Identity Free domain whose organization this repository manages."
-  value       = "tacplus.dev"
+# The one input: the folder the host organization hands to this repository (README, What the host organization
+# provides). Never written here: the stacks that build under it take it as their variable parent_folder, which the
+# pipeline sets from the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh).
+variable "parent_folder" {
+  description = "The parent folder's numeric ID, as bootstrap/bootstrap.sh --folder takes it; null in a stack that builds nothing under it."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.parent_folder == null || can(regex("^[0-9]+$", var.parent_folder))
+    error_message = "The parent folder is its numeric ID (folders/<ID> without the prefix)."
+  }
+}
+
+output "parent_folder" {
+  description = "The parent folder's resource name, folders/<ID>: everything the pipeline builds is under it."
+  value       = var.parent_folder == null ? null : "folders/${var.parent_folder}"
 }
 
 output "region" {
-  description = "The only region resources may be in (the org policy gcp.resourceLocations)."
+  description = "The region every resource is in (the host organization's gcp.resourceLocations must admit it: README)."
   value       = "us-central1"
 }
 

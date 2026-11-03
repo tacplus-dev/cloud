@@ -1,24 +1,26 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: runners, the build cache, the reader app's key. Its folder is the org stack's; its billing
+# The ci project: runners, the build cache, the reader app's key. Its folder is the folder stack's; its billing
 # account is the bootstrap project's.
 
+variable "parent_folder" {
+  description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
+  type        = string
+}
+
 module "settings" {
-  source = "../../modules/settings"
+  source        = "../../modules/settings"
+  parent_folder = var.parent_folder
 }
 
 provider "google" {
   region = module.settings.region
 }
 
-data "google_organization" "org" {
-  domain = module.settings.domain
-}
-
 data "google_active_folder" "ci" {
   display_name = module.settings.projects.ci.folder
-  parent       = data.google_organization.org.name
+  parent       = module.settings.parent_folder
 }
 
 data "google_project" "bootstrap" {

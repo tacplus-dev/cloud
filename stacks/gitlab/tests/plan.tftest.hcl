@@ -49,7 +49,7 @@ run "gitlab" {
       "tacplus-dev/cloud" = {
         create                 = false
         protected_branches     = ["main"]
-        protected_environments = ["org", "ci", "dev", "gitlab"]
+        protected_environments = ["folder", "ci", "dev", "gitlab"]
         variables = {
           PLAIN  = { value = "projects/333/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-cloud" }
           SECRET = { secret = "projects/tacplus-bootstrap/secrets/tacplus-reader-app-id/versions/1" }
@@ -67,7 +67,7 @@ run "gitlab" {
     error_message = "main is not protected: Maintainers push and merge, nobody force-pushes."
   }
   assert {
-    condition     = toset(keys(gitlab_project_protected_environment.environment)) == toset(["tacplus-dev/cloud:org", "tacplus-dev/cloud:ci", "tacplus-dev/cloud:dev", "tacplus-dev/cloud:gitlab"])
+    condition     = toset(keys(gitlab_project_protected_environment.environment)) == toset(["tacplus-dev/cloud:folder", "tacplus-dev/cloud:ci", "tacplus-dev/cloud:dev", "tacplus-dev/cloud:gitlab"])
     error_message = "The protected environments are not one per stack."
   }
   assert {

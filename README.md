@@ -11,10 +11,10 @@ production is `tacplus-dev/roadmap:PRODUCTION.md`.
 Work arrives as issues; see github.com/tacplus-dev/looper.
 
 ## What it manages
-- **A GCP organization** on tacplus.dev (Cloud Identity Free, admins' Google accounts only; we are not an IdP), with its org
-  policies: no service-account keys (created or uploaded), Workload Identity Federation from gitlab.com only, us-central1
-  only, uniform bucket access, no public buckets, domain-restricted sharing, no default network.
-- **Folders and projects:**
+- **A folder handed to it, not an organization of its own:** it runs in a parent folder that some organization (the host)
+  hands over, and names no organization, so that anyone can run it in a folder of their own (below, What the host
+  organization provides). The org policies it relies on are the host organization's job.
+- **Folders and projects,** all under the parent folder:
   - `bootstrap` / `tacplus-bootstrap`: this pipeline's state bucket, its identity and the secrets it reads (made by the
     bootstrap script, below);
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
@@ -33,9 +33,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | Path | What |
 |---|---|
 | `bootstrap/bootstrap.sh` | Jody's one-time script (below). |
-| `modules/settings` | The names every stack shares: domain, region, project IDs, the pipeline's identity, the runner pools. |
-| `modules/org`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
-| `stacks/<org\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
+| `modules/settings` | The names every stack shares: the parent folder (an input, never written here), region, project IDs, the pipeline's identity, the runner pools. |
+| `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
+| `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
 | `ci/*.sh` | `tools` (pinned tools, by checksum), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry (below). |
@@ -53,14 +53,16 @@ repository it plans and applies. Every job fetches this repository at that commi
   `modules/settings` names.
 - **Runner:** a project runner locked to the GitLab project, tag `cloud`, a fresh VM per job with no Google account. Every
   job is tagged for it.
-- **Order:** the checks, then `org` (policies, folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
+- **The parent folder:** the protected project variable `GCP_PARENT_FOLDER`, its numeric ID; `ci/lib.sh` gives it to the
+  stacks as their variable `parent_folder`, and refuses a job without one. No file here holds it.
+- **Order:** the checks, then `folder` (the folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
   tokens go to the `ci` project's secrets). Each stage's plan is made after the stage before it is applied.
 
 | Job | When | What |
 |---|---|---|
 | `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck and yq, pinned by version and SHA-256, and the gitlab provider built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
-| `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan against a stub organization and empty projects (mock providers). |
+| `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock; if anything differs, an issue here (one open at a time; a new drift is a comment). Never applies. |
@@ -107,7 +109,7 @@ No job here runs the scan yet (PROPOSALS.md, deterministic security checks): the
 1. A pull request here; the tests run as its gates (the looper's land, or `ci/lint.sh all && ci/checks.sh`).
 2. Merged, a merge request in the GitLab project setting `.gitlab-ci.yml` to `ci/pin.sh <commit>`'s output, for that commit
    of main: the checks run on it.
-3. Merged there, the pipeline on main: checks → `plan:org` → `apply:org` → `plan:ci`, `plan:dev` → `apply:ci`, `apply:dev` →
+3. Merged there, the pipeline on main: checks → `plan:folder` → `apply:folder` → `plan:ci`, `plan:dev` → `apply:ci`, `apply:dev` →
    `plan:gitlab` → `apply:gitlab`. Each plan is in its job's log and its artifact; each apply applies that plan. Nothing
    waits for Jody (not production).
 
@@ -115,51 +117,71 @@ To review a plan: the `plan:<stack>` job's log, or its artifact `src/plans/<stac
 
 ## Bootstrap
 
-`bootstrap/bootstrap.sh` is the one manual step. Jody runs it once, with his own account. It:
+`bootstrap/bootstrap.sh` is the one manual step. Jody runs it once, with his own account, in the parent folder the host
+organization handed over (`--folder`, its numeric ID). It:
 
-1. puts the Cloud Identity Free sign-up's TXT record for tacplus.dev in the Cloud DNS zone `tacplus-dev` (jody1-328023),
-   beside any other TXT value, and waits for the organization, which Google creates once the domain is verified;
-2. creates the folder `bootstrap`, the project `tacplus-bootstrap` in it (billing linked, the APIs the pipeline calls) and
-   the state bucket `gs://tacplus-bootstrap-tofu-state` (us-central1, versioned, uniform access, public access prevented);
-3. creates `cloud-admin-pipeline`, gives it its rights (on the organization: folderAdmin, projectCreator,
-   orgpolicy.policyAdmin, iam.securityAdmin, organizationViewer, browser; billing.user on the billing account;
-   storage.objectAdmin on the state bucket; secretAccessor on the bootstrap project), and its WIF pool `gitlab-com` and
-   provider `tacplus-dev-cloud` for gitlab.com, conditioned on `tacplus-dev/cloud`'s protected `main`;
-4. creates the empty secrets `gitlab-token`, `tacplus-reader-app-id` and `tacplus-reader-installation-id`.
+1. creates the folder `bootstrap` under the parent folder, the project `tacplus-bootstrap` in it (billing linked, the APIs
+   the pipeline calls) and the state bucket `gs://tacplus-bootstrap-tofu-state` (us-central1, versioned, uniform access,
+   public access prevented);
+2. creates `cloud-admin-pipeline`, gives it its rights (billing.user on the billing account; storage.objectAdmin on the
+   state bucket; secretAccessor on the bootstrap project), and its WIF pool `gitlab-com` and provider `tacplus-dev-cloud`
+   for gitlab.com, conditioned on `tacplus-dev/cloud`'s protected `main`;
+3. creates the empty secrets `gitlab-token`, `tacplus-reader-app-id` and `tacplus-reader-installation-id`.
 
+It reads and asks for nothing above the parent folder, for itself or for the account that runs it: its commands are
+scoped to the parent folder, what it creates there, and the billing account. `cloud-admin-pipeline`'s rights on the
+parent folder are the host's grants (below), not the script's: it reads them, and says which are still to be granted.
 It looks at everything first and **refuses, before changing anything,** when something exists but is not what it would
 create; it never changes or deletes what exists. It prints every command and what it created. Run again, it is a no-op
 ("nothing to do"); after a partial run, it creates the rest. `--dry-run` changes nothing and prints the commands a run
-would run. To also give the running account the rights to make the folder and the project, it grants it
-`folderCreator` and `projectCreator` on the organization.
+would run.
+
+### What the host organization provides
+
+The host organization's admin (its own pipeline, outside this repository) provides:
+
+- **The parent folder**, handed to this repository. Its numeric ID is an input: `--folder` here, and the protected
+  GitLab variable `GCP_PARENT_FOLDER` (below, Before the first pipeline). It is written in no file of this repository.
+- **For the account that runs the bootstrap**, for that one run: `roles/resourcemanager.folderAdmin` and
+  `roles/resourcemanager.projectCreator` on the parent folder; and Billing Account Administrator on the billing account,
+  to link the project and grant `billing.user` to `cloud-admin-pipeline`.
+- **For `cloud-admin-pipeline`**, once the bootstrap has made it: `roles/resourcemanager.folderAdmin`,
+  `roles/resourcemanager.projectCreator` and `roles/owner` on the parent folder. Nothing beyond these, and nothing at
+  the organization's level: this repository holds no right over the host's organization.
+- **The org policies, the host organization's job.** It enforces them for everything under it, the parent folder
+  included, and checks them for drift; this repository relies on them and sets none (`roles/orgpolicy.policyAdmin` can be
+  granted only at an organization's level). The set it relies on:
+  - `iam.disableServiceAccountKeyCreation` and `iam.disableServiceAccountKeyUpload`, enforced: no service-account key;
+  - `iam.workloadIdentityPoolProviders`: `https://gitlab.com` only;
+  - `gcp.resourceLocations`: `in:us-central1-locations` (the region `modules/settings` names);
+  - `storage.uniformBucketLevelAccess` and `storage.publicAccessPrevention`, enforced: no object ACL, no public bucket;
+  - `compute.skipDefaultNetworkCreation`, enforced: no default network;
+  - `iam.allowedPolicyMemberDomains`: the host's own directories (the readers below are of one of them).
+- **Who signs in as a person:** the accounts, the readers' and the break-glass account (below, Break-glass), are the
+  host's directory's.
+
+<!-- hosting note -->
+Today the host is seabeam.net's organization: the parent folder is its folder `tacplus-dev`, and its admin is the closed
+pipeline seabeam/cloud (GitLab), `tacplus-dev/roadmap:decisions/cloud-org-seabeam-2026-11-03.md`. Nothing here depends on
+it: another host is another folder ID.
+<!-- /hosting note -->
 
 ### What Jody runs, in order
 
-Needs `gcloud` and `jq`, signed in (`gcloud auth login`) as an account that can write the Cloud DNS zone `tacplus-dev` in
-jody1-328023 and is a billing administrator of the billing account (`gcloud billing accounts list` shows its ID).
+Needs `gcloud` and `jq`, signed in (`gcloud auth login`) as an account holding the host's grants above, and the parent
+folder's ID and the billing account's (`gcloud billing accounts list` shows it).
 
-1. **Sign up** for Cloud Identity Free with the domain tacplus.dev (https://workspace.google.com/gcpidentity/signup). When
-   it asks to verify the domain, copy its TXT value, `google-site-verification=...`; do not click Verify yet.
-2. **The TXT record:**
+1. **The bootstrap:**
 
    ```sh
-   bootstrap/bootstrap.sh --billing-account <ID> --verification-token google-site-verification=<...> --dry-run
-   bootstrap/bootstrap.sh --billing-account <ID> --verification-token google-site-verification=<...>
+   bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run     # read what it would create
+   bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID>               # create it
    ```
 
-   It adds the record and stops (exit 3, "waiting for the organization").
-3. **Verify** in the sign-up, and sign in once to console.cloud.google.com as its super admin: the organization appears.
-   If the account that runs the script is not that super admin, give it Organization Administrator on the organization
-   (IAM, at the organization).
-4. **The rest:**
-
-   ```sh
-   bootstrap/bootstrap.sh --billing-account <ID> --dry-run     # read what it would create
-   bootstrap/bootstrap.sh --billing-account <ID>               # create it
-   ```
-
-   It ends with the value of `GCP_WIF_PROVIDER`.
-5. **The secrets' values**, version 1 each, typed or pasted without echoing (`--data-file=-` reads standard input, then
+   It ends with the values of `GCP_PARENT_FOLDER` and `GCP_WIF_PROVIDER`, and the host's grants to
+   `cloud-admin-pipeline` still to be made.
+2. **The host's grants** to `cloud-admin-pipeline` on the parent folder (above), made by the host organization's admin.
+3. **The secrets' values**, version 1 each, typed or pasted without echoing (`--data-file=-` reads standard input, then
    Ctrl-D):
 
    ```sh
@@ -171,7 +193,8 @@ jody1-328023 and is a billing administrator of the billing account (`gcloud bill
    `gitlab-token`: a group access token of tacplus-dev, role Owner, scope `api` (it registers group runners and sets
    protected environments). The reader's two IDs: the same as tacplus-dev/cluster's `TACPLUS_READER_APP_ID` and
    `TACPLUS_READER_INSTALLATION_ID`.
-6. `bootstrap/bootstrap.sh --billing-account <ID>` once more: "nothing to do".
+4. `bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID>` once more: "nothing to do", and the host's
+   grants in place.
 
 Then the hub's steps below, then the first pipeline. The first real apply is that pipeline's, after Jody's bootstrap.
 
@@ -181,7 +204,7 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    shared runners off; pipeline variables allowed to the Owner role only.
 2. **The runner:** a project runner registered to `tacplus-dev/cloud` only, tag `cloud`, VMs used once, with no Google
    account (as tacplus-dev/cluster's, on `gitlab-runner-mgr`, until runners move).
-3. **Its variable** `GCP_WIF_PROVIDER` (protected), the value the bootstrap printed. The gitlab stack adopts it and `main`'s
+3. **Its variables** `GCP_PARENT_FOLDER` and `GCP_WIF_PROVIDER` (protected), the values the bootstrap printed. The gitlab stack adopts it and `main`'s
    protection (its import blocks), and sets the reader's two variables from Secret Manager.
 4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write, and this
    project's federated principal
@@ -189,7 +212,7 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    allowed to sign with the KMS key `tacplus-reader` in jody1-328023 (`roles/cloudkms.signer`).
 5. **`.gitlab-ci.yml`** from `ci/pin.sh <commit of main>`, and a nightly schedule on main.
 
-The first pipeline on main then creates the org policies and folders, the `ci` and `dev` projects, and the GitLab
+The first pipeline on main then creates the folders, the `ci` and `dev` projects, and the GitLab
 settings, each from its saved plan. After `apply:dev`, the dev zone's delegation (its name servers are `apply:dev`'s output
 `dns_name_servers`) goes into tacplus.dev's zone, which is still in jody1-328023:
 `gcloud dns record-sets create dev.tacplus.dev. --type=NS --ttl=300 --zone=tacplus-dev --project=jody1-328023 --rrdatas=<the four name servers>`.
@@ -200,8 +223,8 @@ Certificates).
 
 When the pipeline itself is broken (its identity refused, its state locked, a bad apply it cannot undo), and only then:
 
-1. Jody signs in with his own account (the organization's super admin, or the account the bootstrap ran as); nobody else
-   holds write access. Every action is in the organization's Admin Activity audit logs.
+1. Jody signs in with his own account (the account the bootstrap ran as, given its grants again by the host, or the host's
+   break-glass account); nobody else holds write access. Every action is in the Admin Activity audit logs.
 2. An issue here says what is broken, why break-glass, and what was done, command by command.
 3. The fix is made as narrow as it can be: a stuck state lock is released with
    `tofu force-unlock <id>` in the stack (from a checkout at main, `ci/tools.sh`, `tofu init -lockfile=readonly`); an
@@ -362,9 +385,9 @@ seatrials' certificates).
 
 ## People
 
-Readers get `viewer` and `iam.securityReviewer` on the organization and nothing that writes: their tacplus.dev accounts,
-listed in `stacks/org/main.tf` (`readers`) by a commit. Domain-restricted sharing admits only the organization's own
-directory.
+Readers get `viewer` and `iam.securityReviewer` on the parent folder and nothing that writes: their accounts, listed in
+`stacks/folder/main.tf` (`readers`) by a commit. The host's domain-restricted sharing admits only its own directories'
+accounts.
 
 ## Locally
 
@@ -373,7 +396,7 @@ ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), 
                                  # (needs go, git, curl, unzip, xz)
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers
-bootstrap/bootstrap.sh --billing-account <ID> --dry-run    # with your gcloud: changes nothing
+bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run    # with your gcloud: changes nothing
 ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh: the lock files
 ```
 

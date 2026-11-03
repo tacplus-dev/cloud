@@ -4,7 +4,8 @@
 #
 # Tests that the names agree wherever they are written: modules/settings (what the stacks read), the stacks'
 # backends (state in the bootstrap bucket, one prefix per stack), bootstrap/bootstrap.sh (what it creates), the
-# GitLab CI file (the account the jobs become) and ci/lib.sh (the GitLab token's secret, by version). Needs bash.
+# GitLab CI file (the account the jobs become) and ci/lib.sh (the GitLab token's secret, by version); and that the
+# parent folder is the stacks' input, written nowhere. Needs bash.
 #
 #   tests/settings_test.sh
 set -uo pipefail
@@ -32,7 +33,6 @@ same "the state bucket" "$(setting state_bucket)" "$(script BUCKET)"
 same "the pipeline's account" "$(setting pipeline_sa)" "$(script SA_ID)@$(script PROJECT).iam.gserviceaccount.com"
 same "the pool" "$(setting wif_pool)" "$(script POOL)"
 same "the provider" "$(setting wif_provider)" "$(script PROVIDER)"
-same "the domain" "$(sed -n '/output "domain"/,/^}/s/^ *value *= *"\(.*\)"$/\1/p' "$settings")" "$(script DOMAIN)"
 same "the region" "$(sed -n '/output "region"/,/^}/s/^ *value *= *"\(.*\)"$/\1/p' "$settings")" "$(script REGION)"
 same "the GitLab project" "$(sed -n '/output "gitlab_project"/,/^}/s/^ *value *= *"\(.*\)"$/\1/p' "$settings")" "$(script GITLAB_PROJECT)"
 same "the jobs' account" "$(setting pipeline_sa)" "$(sed -n 's/^  GCP_DEPLOY_SA: //p' "$here/ci/gitlab-project.gitlab-ci.yml")"
@@ -53,7 +53,19 @@ for s in "$here"/stacks/*/; do
   [ -z "$(grep -E '^ +version += ' "$s/versions.tf" | grep -vE '"[0-9]+\.[0-9]+\.[0-9]+"$')" ] || fail "stacks/$name does not pin a provider exactly"
 done
 ok "each stack: its state in the bootstrap bucket under its name, OpenTofu and its providers pinned, a lock file"
-grep -q "required_version = \"= $(sed -n 's/^tofu_version=//p' "$here/ci/tools.sh")\"" "$here/stacks/org/versions.tf" &&
+# The parent folder is an input, never written here (#8): settings take it, with no default but null, and each stack
+# that builds under it takes it as its variable, with no default, passed to the settings.
+[ "$(sed -n '/^variable "parent_folder"/,/^}/s/^ *default *= *//p' "$settings")" = null ] &&
+  ok "settings take the parent folder, with no default but null" || fail "settings' parent_folder has a default"
+for s in "$here"/stacks/*/; do
+  name=$(basename "$s")
+  grep -q 'module.settings.parent_folder' "$s"/*.tf || continue
+  v=$(sed -n '/^variable "parent_folder"/,/^}/p' "$s/main.tf")
+  [ -n "$v" ] && ! grep -q 'default' <<< "$v" && grep -q '^  parent_folder = var.parent_folder$' "$s/main.tf" ||
+    fail "stacks/$name does not take the parent folder as its variable, with no default, for the settings"
+done
+ok "the stacks under the parent folder take it as their variable parent_folder"
+grep -q "required_version = \"= $(sed -n 's/^tofu_version=//p' "$here/ci/tools.sh")\"" "$here/stacks/folder/versions.tf" &&
   ok "the stacks pin the OpenTofu that ci/tools.sh installs" || fail "the stacks' OpenTofu is not ci/tools.sh's"
 [ "$(sed -n 's/^tflint_google_version=\([0-9.]*\).*/\1/p' "$here/ci/tools.sh")" = "$(sed -n 's/^ *version *= *"\(.*\)"$/\1/p' "$here/.tflint.hcl")" ] &&
   ok ".tflint.hcl names the google ruleset ci/tools.sh installs" || fail ".tflint.hcl and ci/tools.sh disagree on the google ruleset"

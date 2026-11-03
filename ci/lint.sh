@@ -18,7 +18,7 @@ export PATH=$here/bin:$PATH TF_IN_AUTOMATION=1 TF_INPUT=0 TFLINT_PLUGIN_DIR=$her
 source "$here/ci/tofurc.sh"
 cd "$here" || exit 1
 stacks=(stacks/*/)
-modules=(modules/settings modules/org modules/projects/ci modules/projects/dev modules/gitlab)
+modules=(modules/settings modules/folder modules/projects/ci modules/projects/dev modules/gitlab)
 failed=0
 step() { echo "== $1"; }
 bad() { echo "lint: $*" >&2; failed=1; }

@@ -20,13 +20,14 @@ bind() { echo "$(flag role) $(flag member)" >> "$st/iam-$1"; }
 case $cmd in
   "config get account") cat "$st/account" ;;
   "billing accounts describe "*) [ -f "$st/billing-open" ] && echo True || absent "${words[3]}" ;;
-  "organizations list") cat "$st/org" 2>/dev/null || true ;;
-  "organizations get-iam-policy "*) [ -f "$st/org" ] || absent org; policy org ;;
-  "organizations add-iam-policy-binding "*) bind org ;;
-  "dns record-sets describe "*) [ -f "$st/txt" ] || absent txt; jq -Rn '{name: "tacplus.dev.", type: "TXT", ttl: 300, rrdatas: [inputs]}' < "$st/txt" ;;
-  "dns record-sets create "*|"dns record-sets update "*) flag rrdatas | tr , '\n' > "$st/txt" ;;
-  "resource-manager folders list") cat "$st/folder" 2>/dev/null || true ;;
-  "resource-manager folders create") echo folders/456 > "$st/folder" ;;
+  # The parent folder (STUB_STATE/parent: its ID), which the host organization made; and the folder bootstrap in it.
+  "resource-manager folders describe "*)
+    [ -f "$st/parent" ] && [ "${words[3]}" = "$(cat "$st/parent")" ] || absent "folder ${words[3]}"
+    if [ "$(flag format)" = 'value(lifecycleState)' ]; then echo ACTIVE
+    else jq -n --arg id "${words[3]}" '{name: "folders/\($id)", displayName: "parent", lifecycleState: "ACTIVE"}'; fi ;;
+  "resource-manager folders get-iam-policy "*) [ -f "$st/parent" ] && [ "${words[3]}" = "$(cat "$st/parent")" ] || absent folder; policy parent ;;
+  "resource-manager folders list") [ "$(flag folder)" = "$(cat "$st/parent")" ] || absent folder; cat "$st/folder" 2>/dev/null || true ;;
+  "resource-manager folders create") echo folders/456 > "$st/folder"; echo "folders/$(flag folder)" > "$st/folder-parent" ;;
   "projects describe "*)
     [ -f "$st/project" ] || absent project
     if [ "$(flag format)" = 'value(projectNumber)' ]; then jq -r .projectNumber "$st/project"; else cat "$st/project"; fi ;;

@@ -2,8 +2,8 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The repository's tests: every tests/*_test.sh, then `tofu test` of each stack (its plan against a stub
-# organization and empty projects: mock providers, no credentials). The test job's, and the local gate. Need bin/
+# The repository's tests: every tests/*_test.sh, then `tofu test` of each stack (its plan under a stub parent
+# folder, with empty projects: mock providers, no credentials). The test job's, and the local gate. Need bin/
 # (ci/tools.sh), bash, git, jq, sha256sum.
 #
 #   ci/checks.sh
