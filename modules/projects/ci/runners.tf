@@ -2,24 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The runners: one manager VM (gitlab-runner, the docker-autoscaler executor and the googlecloud fleeting plugin)
-# and, per pool, an instance template and a managed instance group of arm64 VMs, size 0 at rest, each VM used for
-# one job and deleted. Each pool's runner token is in Secret Manager (runner-token-<pool>), written by the gitlab
-# stack when it registers the runner; the manager reads it at boot. No token is in this repository or in a VM's
-# metadata.
+# and, per pool, an instance template and a managed instance group of arm64 Container-Optimized OS VMs, size 0 at
+# rest, each VM used for one job and deleted. Each pool's runner token is in Secret Manager (runner-token-<pool>),
+# written by the gitlab stack when it registers the runner; the manager reads it at boot. No token is in this
+# repository or in a VM's metadata.
 
 locals {
   pool_sa = { for k, p in var.pools : k => p if p.service_account }
-  # The pools boot the baked image once modules/settings pins one (#4): Docker and the user fleeting are in it, and
-  # looper's runner/startup.sh only checks them and marks the VM ready. Until then, the pinned Ubuntu, which installs
-  # Docker from the archive snapshot at boot (files/worker-startup.sh) for the user runner.
-  baked = var.runner_image.image != null
-  pool_metadata = local.baked ? {
-    startup-script          = file("${path.module}/files/runner-startup.sh")
-    enable-guest-attributes = "TRUE"
-    } : {
-    startup-script = file("${path.module}/files/worker-startup.sh")
-    apt-snapshot   = var.apt_snapshot
-  }
 }
 
 # The workers' own accounts, with no role at all (the looper-runner pattern, tacplus-dev/looper README): a job that
@@ -86,7 +75,7 @@ resource "google_compute_instance_template" "pool" {
   labels       = { managed-by = "tacplus-dev-cloud", runner-pool = each.key }
 
   disk {
-    source_image = local.baked ? "projects/${google_project.ci.project_id}/global/images/${var.runner_image.image}" : var.image
+    source_image = var.pool_image
     disk_size_gb = each.value.disk_gb
     disk_type    = each.value.disk_type
     boot         = true
@@ -111,14 +100,15 @@ resource "google_compute_instance_template" "pool" {
     on_host_maintenance = "TERMINATE"
   }
 
-  metadata = local.pool_metadata
+  # Vanilla Container-Optimized OS (decisions/builds-in-containers-2026-11-03.md): no startup-script, nothing installed
+  # at boot, Docker the OS's own. The guest agent creates the user the manager connects as from the SSH key the
+  # fleeting plugin sets, in the OS's docker group. No OS update: the image changes only with its pin.
+  metadata = {
+    cos-update-strategy = "update_disabled"
+  }
 
   lifecycle {
     create_before_destroy = true
-    precondition {
-      condition     = filesha256("${path.module}/files/runner-startup.sh") == var.runner_image.startup_sha256
-      error_message = "files/runner-startup.sh is not the startup-script modules/settings pins (runner_image.startup_sha256): ci/runner-image.sh writes both."
-    }
   }
 }
 
@@ -177,7 +167,6 @@ resource "google_compute_instance" "manager" {
       project       = google_project.ci.project_id
       zone          = var.zone
       default_image = var.runner.default_image
-      username      = local.baked ? "fleeting" : "runner"
       pools         = { for k, p in var.pools : k => { group = google_compute_instance_group_manager.pool[k].name, max = p.max_instances } }
     })
   }

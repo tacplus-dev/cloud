@@ -19,12 +19,10 @@ resource "google_project_service" "service" {
     "cloudkms.googleapis.com",
     "compute.googleapis.com",
     "iam.googleapis.com",
-    "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
-    "sts.googleapis.com",
   ])
   project            = google_project.ci.project_id
   service            = each.key

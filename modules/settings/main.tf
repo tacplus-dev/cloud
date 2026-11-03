@@ -49,36 +49,21 @@ output "projects" {
 }
 
 output "ubuntu_arm64_image" {
-  description = "The boot image of every VM: one Ubuntu 24.04 arm64 image by name (never a family), and the Ubuntu archive snapshot its packages come from."
+  description = "The runner manager's boot image: one Ubuntu 24.04 arm64 image by name (never a family), and the Ubuntu archive snapshot its packages come from."
   value = {
     image    = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
     snapshot = "20261024T000000Z"
   }
 }
 
-output "runner_image" {
+output "cos_arm64_image" {
   description = <<-EOT
-    The runner pools' image (#4, looper#43): baked by looper's `runner-image build` (tacplus-dev/build's job
-    runner-image) in the ci project, Docker and the fleeting user already in place, and pinned here by name, never
-    by its family: a new bake reaches the workers only through a commit of this pin (ci/runner-image.sh), its plan
-    and its apply. image is that name (runner-arm64-docker-<date>-<time>), or null until the first bake: the pools
-    then boot ubuntu_arm64_image and install Docker from its snapshot at boot (worker-startup.sh). looper_commit is
-    the looper commit the image was baked from, whose runner/startup.sh is the pools' startup-script
-    (modules/projects/ci/files/runner-startup.sh, startup_sha256 its SHA-256). bake: the bake's identity.
+    The runner pools' boot image: Google's Container-Optimized OS for arm64, one image by name, never a family
+    (decisions/builds-in-containers-2026-11-03.md, #4). The VM is vanilla: nothing is installed at boot, and the
+    container runtime is the OS's own. A newer COS reaches the workers only as a commit of this pin, its plan and its
+    apply; a revert is the rollback. This one is the build the cos-arm64-stable family served on 2026-11-03.
   EOT
-  value = {
-    image          = null
-    looper_commit  = "03efbe66cdc1ce42dc56276031437712769a8088"
-    startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1"
-    bake = {
-      family         = "runner-arm64-docker"
-      account_id     = "runner-image"
-      pool           = "gitlab-com"
-      provider       = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build"
-      environment    = "runner-image"
-    }
-  }
+  value       = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
 }
 
 output "runner_pools" {

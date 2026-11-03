@@ -18,13 +18,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
   every plan. Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
   providers, the pipeline's rules, the plan/apply script, the policy, and the bootstrap against a stub gcloud.
-- **Runner image and readiness (#4):** every pool waits, bounded to ten minutes, for its VM's readiness marker and
-  Docker before a job (`instance_ready_command`), one job per VM. The pools boot the baked image `modules/settings`
-  pins by name (`runner_image.image`, never a family; `ci/policy.sh` refuses one), with looper's `runner/startup.sh`
-  at the pinned commit (by SHA-256) and the user `fleeting`; the pin is `null` until the first bake, so today they boot
-  the pinned Ubuntu and install Docker from its snapshot. The bake's identity is in `ci` (`runner-image`, its
-  conditioned role, the `runners` subnet, WIF pool `gitlab-com` / provider `tacplus-dev-build` for tacplus-dev/build's
-  protected main in environment `runner-image`); `ci/runner-image.sh` is the bump. Tested against mock providers only.
+- **Runner image and readiness (#4):** the pools boot Container-Optimized OS for arm64, pinned by image name in
+  `modules/settings` (`cos_arm64_image`, never a family: the module and `ci/policy.sh` refuse one), vanilla
+  (`decisions/builds-in-containers-2026-11-03.md`): no startup-script, nothing installed at boot, OS updates off, the
+  OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
+  (`instance_ready_command`), one job per VM. No baked image and no bake identity (superseded). Tested against mock
+  providers only.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -35,7 +34,5 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
   (README, Before the first pipeline); the dev zone's delegation is a record in jody1-328023 (README). The runners are
   registered paused and the cluster is empty until the later move off jody1-328023. Follow-ups in PROPOSALS.md.
-- **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue). #4's bake
-  on tacplus-dev/looper#67 (`runner-image build` in a subnet with no external address, a pinned Docker); then
-  tacplus-dev/build's `runner-image` variables, the first bake, its bump and `runner-image measure 20` (README, The
-  runners' image).
+- **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue). #4's
+  acceptance (`runner-image measure 20`, no first-job image-pull failure) waits for the runners' move off jody1-328023.

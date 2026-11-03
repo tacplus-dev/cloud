@@ -17,9 +17,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 - **Folders and projects:**
   - `bootstrap` / `tacplus-bootstrap`: this pipeline's state bucket, its identity and the secrets it reads (made by the
     bootstrap script, below);
-  - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 VMs, each used for one job, accounts with no
-    role or no account at all), the identity that bakes the pools' image (below, The runners' image), the build
-    bucket, and the tacplus-reader app's KMS key (import-only, empty until the reader moves);
+  - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs, each used for one
+    job, accounts with no role or no account at all: below, The runners' image), the build bucket, and the tacplus-reader app's KMS key (import-only, empty until the reader moves);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A nodes, private nodes), the DNS zone
     `dev.tacplus.dev`, and `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main;
   - `prod` is designed but **not built**: see PRODUCTION.md.
@@ -36,7 +35,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/org`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<org\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`, `runner-image` (the pools' image bump). |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -73,8 +72,9 @@ that Jody plays, on a commit already applied to dev.
 - Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.65.0 and its google ruleset
   0.41.0, shellcheck 0.11.0 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum database); the
   `google` 8.9.0 and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab` one our own reproducible build (below), by its commit and its SHA-256; the CI image by digest; the VMs' Ubuntu image by name, their packages from one Ubuntu archive
-  snapshot; the pools' baked image by name and their startup-script by SHA-256 (below, The runners' image); GitLab Runner and its fleeting plugin by SHA-256; the runners' default image by digest.
+  `-lockfile=readonly`), the `gitlab` one our own reproducible build (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, its packages from one Ubuntu
+  archive snapshot; the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its
+  fleeting plugin by SHA-256; the runners' default image by digest.
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
   (`ci/policy.sh`), and the only inputs are the commit, the pins, and the cloud's state.
 - Nothing is applied that isn't in a reviewed commit: `apply` applies only the plan its pipeline saved, of `CLOUD_COMMIT`,
@@ -212,50 +212,30 @@ Add the new token as the next version of `gitlab-token` (`gcloud secrets version
 
 ## The runners' image
 
-The pools' VMs boot an image with Docker already in it, and no job is placed on a VM before it is ready (#4;
-tacplus-dev/looper#43, its README "A fresh VM is ready before its job"); each VM takes one job and is deleted
-(`capacity_per_instance = 1`, `max_use_count = 1`, looper#42).
+The pools' VMs are vanilla: Google's **Container-Optimized OS** for arm64, pinned by image name, with nothing installed
+at boot and the OS's own container runtime (#4; `tacplus-dev/roadmap:decisions/builds-in-containers-2026-11-03.md`,
+which replaced the baked image of tacplus-dev/looper#43). No job is placed on a VM before that runtime answers, and each
+VM takes one job and is deleted (`capacity_per_instance = 1`, `max_use_count = 1`, looper#42).
 
-- **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, for the startup-script's
-  `/var/run/runner-ready` and an active Docker (`files/config.toml.tftpl`); a VM not ready by then is removed.
-- **The image** is baked by looper's `runner-image build` (tacplus-dev/build's job `runner-image`, from the web on main
-  or its monthly schedule) in `tacplus-ci`: a stock Ubuntu arm64 VM in the `runners` subnet, with no external address
-  (its NAT), no account and no scopes, installs Docker and the user `fleeting`, its disk is imaged, a VM of the
-  candidate must boot ready with nothing to install, and it is published as `runner-arm64-docker-<date>-<time>`, its
-  job's last line. Its identity is `runner-image@tacplus-ci` (`modules/projects/ci/runner-image.tf`): keyless, through
-  the pool `gitlab-com` and provider `tacplus-dev-build` of `tacplus-ci`, which admit only tacplus-dev/build's protected
-  `main` in its environment `runner-image`, from the web or a schedule; its role may manage only the bake's instances
-  and disks (`runner-image-*`) and images (`runner-arm64-docker-*`), and it may use only the `runners` subnet.
-- **The pin.** The pools boot the image `modules/settings` names (`runner_image.image`), **by name, never its family**
-  (`decisions/deterministic-deployments-2026-11-02.md`: a family resolves the newest image at each VM's creation, so a
-  bake would change every worker without a commit; `ci/policy.sh` refuses an image family). Their startup-script is
-  looper's `runner/startup.sh` at the commit the image was baked from (`runner_image.looper_commit`), kept as
-  `modules/projects/ci/files/runner-startup.sh` and pinned by its SHA-256 (the plan refuses another), with guest
-  attributes on, and the manager connects as `fleeting`. While `image` is `null` (no bake yet), they boot the pinned
-  Ubuntu and install Docker from its archive snapshot at boot (`files/worker-startup.sh`), the manager connecting as
-  `runner`; the gate holds each job until that is done.
-- **The bump**, after each bake: its job's last line names the image (tacplus-dev/looper#67), and an issue here, or a
-  merge request of the pin, asks for it (the hub's, until the job opens it: PROPOSALS.md). The change is one command
-  and a commit:
+- **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until `docker info` answers
+  the user the manager connects as (`files/config.toml.tftpl`); a VM not ready by then is removed. That user, `runner`,
+  is created by the OS's guest agent from the SSH key the fleeting plugin sets, in the OS's `docker` group.
+- **The VM.** No startup-script, and no OS update (`cos-update-strategy = update_disabled`): the image changes only
+  with its pin. COS's root is read-only, so a job's builds stay in the executor's own volume (no host `/builds`); the
+  jobs still get the host's Docker socket until looper's build jobs replace it (PROPOSALS.md).
+- **The pin.** The pools boot the image `modules/settings` names (`cos_arm64_image`), **by name, never its family**
+  (`decisions/deterministic-deployments-2026-11-02.md`: a family resolves the newest image at each VM's creation, so
+  Google's release would change every worker without a commit). The module refuses anything but a COS arm64 image
+  name, and `ci/policy.sh` refuses an image family anywhere in the source.
+- **A bump** is a normal pin commit: pick the build (`gcloud compute images list --project cos-cloud
+  --no-standard-images --filter="family~^cos-arm64-"`, the release notes at
+  cloud.google.com/container-optimized-os/docs/release-notes), change `cos_arm64_image`, and let the pipeline run:
+  `plan:ci` shows the templates replaced and `apply:ci` applies them; new VMs boot the new image, a VM already up
+  finishes its one job on the old one. **Rollback** is a revert, through the same plan and apply.
 
-  ```sh
-  ci/runner-image.sh runner-arm64-docker-<date>-<time> <the looper commit the bake ran>
-  git commit -am "runner pools: boot runner-arm64-docker-<date>-<time>"   # modules/settings, files/runner-startup.sh
-  ```
-
-  It pins the name, and writes that commit's `runner/startup.sh` with its commit and SHA-256; it refuses a family, a
-  path, or another name. Merged, the pipeline's `plan:ci` shows the templates replaced and `apply:ci` applies them: new
-  VMs boot the new image, a VM already up finishes its one job on the old one.
-- **Rollback** is a revert of the bump, through the same plan and apply, as long as the bake still keeps the old
-  image: it keeps the newest `RUNNER_IMAGE_KEEP` (3) of the family and deletes the rest, so bump before the fourth bake
-  after the pinned one, or the pools' template names an image that no longer exists (PROPOSALS.md).
-
-**Not yet:** the bake cannot run in `tacplus-ci` until `runner-image build` can use a subnet with no external address
-(tacplus-dev/looper#67, `RUNNER_IMAGE_SUBNET`, and a pinned Docker). Then tacplus-dev/build's job gets its variables,
-scoped to its environment `runner-image` so its other jobs keep theirs: `GCP_WIF_PROVIDER`, `GCP_RUNNER_IMAGE_SA` and
-`RUNNER_IMAGE_SUBNET` (the ci stack's output `runner_image_bake`), `RUNNER_IMAGE_PROJECT=tacplus-ci`,
-`RUNNER_IMAGE_ZONE=us-central1-b`; the first bake; its bump; and, once the runners have moved here and twenty jobs ran
-on fresh VMs, `runner-image measure 20` shows no first-job image-pull failure (#4's acceptance).
+**Not yet:** nothing is applied before Jody's bootstrap and the first pipeline, and the runners stay paused until they
+move off jody1-328023. Once twenty jobs have run here on fresh VMs, looper's `runner-image measure 20` should show no
+first-job image-pull failure (#4's acceptance).
 
 ## People
 

@@ -57,13 +57,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
   form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass
   one day and fail the next, which the plan and apply gates should not.
-- **The bake opens its bump** (looper, #4, 2026-11-03). What: tacplus-dev/looper's `runner-image` job, after it
-  publishes, opens an issue here (or a merge request running `ci/runner-image.sh <name> <its commit>`) naming the
-  image and the looper commit it baked from. Why: the hub's decision on #4 has each bake's job ask for its bump;
-  tacplus-dev/looper#67 asks only that it print the name, so today the bump waits for someone to read the job's log.
-  It is looper's code: a feature for its roadmap there.
-- **Never delete the pinned image** (looper, #4). What: `runner-image build` keeps the newest `RUNNER_IMAGE_KEEP` (3)
-  of the family and deletes older ones, whether or not a template still boots one; the bake should keep the images
-  labelled as pinned (a label this repository's apply sets, or a list it reads), or the ci stack should protect the
-  pinned one (an image's `deprecated` state, or a check in `plan:ci` that it exists). Why: after four bakes with no bump,
-  the pools' template names a deleted image and no VM can be created; a revert is then no rollback.
+- **The bake opens its bump; never delete the pinned image** (looper, #4, 2026-11-03): superseded 2026-11-03 by
+  `decisions/builds-in-containers-2026-11-03.md` (no baked image: the pools boot pinned Container-Optimized OS).
+- **No host Docker socket in the pools' jobs** (looper, #4, 2026-11-03). What: drop
+  `/var/run/docker.sock:/var/run/docker.sock` from `files/config.toml.tftpl`'s volumes once looper's build jobs replace
+  `looper-docker` and the host-socket gates. Why: `decisions/builds-in-containers-2026-11-03.md` gives an agent
+  container no container runtime and no host socket, and image builds run in rootless BuildKit; today every job of
+  every pool can still drive the VM's Docker. Kept for now: the jobs that use it change first (the decision's
+  follow-up issues), and the pools stay paused until the runners move.
+- **Tell when the pinned COS has a newer build** (looper, #4). What: the nightly drift job also lists `cos-cloud`'s
+  images of the pin's LTS family (`cos-arm64-<milestone>-lts`) and files an issue when a newer build than
+  `cos_arm64_image` exists, naming it and its release notes. Why: COS's security fixes ship as new builds; with the pin
+  by name (and updates off), the workers keep the old kernel and runtime until someone bumps it, and nothing says when.

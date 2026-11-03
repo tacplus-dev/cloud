@@ -37,13 +37,22 @@ variable "subnet_cidr" {
 }
 
 variable "image" {
-  description = "Every VM's boot image, by name (never a family)."
+  description = "The runner manager's boot image, by name (never a family)."
   type        = string
 }
 
 variable "apt_snapshot" {
-  description = "The Ubuntu archive snapshot every VM installs its packages from (apt --snapshot)."
+  description = "The Ubuntu archive snapshot the runner manager installs its packages from (apt --snapshot)."
   type        = string
+}
+
+variable "pool_image" {
+  description = "The pools' boot image: Container-Optimized OS for arm64, by name (never a family)."
+  type        = string
+  validation {
+    condition     = can(regex("^projects/cos-cloud/global/images/cos-arm64-[0-9]+-[0-9]+-[0-9]+-[0-9]+$", var.pool_image))
+    error_message = "The pools boot Container-Optimized OS for arm64 pinned by its image name (projects/cos-cloud/global/images/cos-arm64-<milestone>-<build>), never a family."
+  }
 }
 
 variable "manager_machine_type" {
@@ -88,29 +97,5 @@ variable "reader_app_key" {
   type = object({
     key_ring = string
     key      = string
-  })
-}
-
-variable "runner_image" {
-  description = "The pools' baked image (modules/settings runner_image): its name in this project (runner-arm64-docker-<date>-<time>, never a family), or null until the first bake, and the SHA-256 of files/runner-startup.sh, looper's runner/startup.sh at the commit it was baked from."
-  type = object({
-    image          = string
-    startup_sha256 = string
-  })
-  validation {
-    condition     = (var.runner_image.image == null || can(regex("^runner-arm64-docker-[0-9]{8}-[0-9]{6}$", var.runner_image.image))) && can(regex("^[0-9a-f]{64}$", var.runner_image.startup_sha256))
-    error_message = "The baked image is pinned by its name, runner-arm64-docker-<date>-<time> (never a family), and the startup-script by its SHA-256."
-  }
-}
-
-variable "runner_image_bake" {
-  description = "The bake's identity (modules/settings runner_image.bake): the image family it publishes in, its account, its Workload Identity pool and provider, and the GitLab project and environment whose protected main may use it."
-  type = object({
-    family         = string
-    account_id     = string
-    pool           = string
-    provider       = string
-    gitlab_project = string
-    environment    = string
   })
 }

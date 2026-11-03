@@ -36,6 +36,7 @@ module "ci" {
   subnet_cidr          = "10.10.0.0/20"
   image                = module.settings.ubuntu_arm64_image.image
   apt_snapshot         = module.settings.ubuntu_arm64_image.snapshot
+  pool_image           = module.settings.cos_arm64_image
   manager_machine_type = "t2a-standard-1"
   runner = {
     version           = "v19.5.2"
@@ -48,11 +49,6 @@ module "ci" {
   pools          = { for k, p in module.settings.runner_pools : k => { machine_type = p.machine_type, disk_gb = p.disk_gb, disk_type = p.disk_type, max_instances = p.max_instances, service_account = p.service_account } }
   build_buckets  = { build-cache = 30 }
   reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-  runner_image = {
-    image          = module.settings.runner_image.image
-    startup_sha256 = module.settings.runner_image.startup_sha256
-  }
-  runner_image_bake = module.settings.runner_image.bake
 }
 
 output "project_id" {
@@ -65,8 +61,4 @@ output "runner_token_secrets" {
 
 output "reader_app_key" {
   value = module.ci.reader_app_key
-}
-
-output "runner_image_bake" {
-  value = module.ci.runner_image_bake
 }

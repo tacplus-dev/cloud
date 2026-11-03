@@ -31,10 +31,6 @@ run "stack" {
     condition     = toset(keys(output.runner_token_secrets)) == toset(["loopers", "loopers-big", "build", "deploy", "cluster"])
     error_message = "Not every runner pool has its token secret."
   }
-  assert {
-    condition     = output.runner_image_bake.service_account == "stub-account@tacplus-ci.iam.gserviceaccount.com"
-    error_message = "The stack does not give the bake's account."
-  }
 }
 
 run "ci" {
@@ -52,6 +48,7 @@ run "ci" {
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
     apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version           = "v19.5.2"
@@ -67,11 +64,6 @@ run "ci" {
     }
     build_buckets  = { build-cache = 30 }
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-    runner_image   = { image = null, startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1" }
-    runner_image_bake = {
-      family         = "runner-arm64-docker", account_id = "runner-image", pool = "gitlab-com", provider = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build", environment = "runner-image"
-    }
   }
 
   assert {
@@ -87,8 +79,8 @@ run "ci" {
     error_message = "A pool with an account does not run as its own."
   }
   assert {
-    condition     = alltrue([for t in google_compute_instance_template.pool : t.disk[0].source_image == "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024" && startswith(t.machine_type, "t2a-") && length(t.network_interface[0].access_config) == 0])
-    error_message = "A pool's VMs are not arm64, on the pinned image, with no external address."
+    condition     = alltrue([for t in google_compute_instance_template.pool : t.disk[0].source_image == "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12" && startswith(t.machine_type, "t2a-") && length(t.network_interface[0].access_config) == 0])
+    error_message = "A pool's VMs are not arm64, on the pinned Container-Optimized OS, with no external address."
   }
   assert {
     condition     = alltrue([for g in google_compute_instance_group_manager.pool : g.target_size == 0])
@@ -103,45 +95,29 @@ run "ci" {
     condition     = !strcontains(google_compute_instance.manager.metadata["runner-config"], "glrt-") && strcontains(google_compute_instance.manager.metadata["runner-config"], "@TOKEN:no-account@") && strcontains(google_compute_instance.manager.metadata["runner-config"], "max_use_count = 1")
     error_message = "The manager's config holds a token, lacks a pool's placeholder, or reuses a VM."
   }
-  # No image baked yet: the pools boot the pinned Ubuntu and install Docker from its snapshot, the manager connecting
-  # as runner; either way the autoscaler waits, at most ten minutes, for the readiness marker and Docker.
+  # The pools' VMs are vanilla Container-Optimized OS: nothing installed at boot, no startup-script, no OS update
+  # (the pin is the only way their OS changes); the manager connects as runner, which the guest agent creates with
+  # the OS's docker group, and waits, at most ten minutes, for the OS's own container runtime to answer.
   assert {
-    condition     = alltrue([for t in google_compute_instance_template.pool : t.metadata["startup-script"] == file("../../modules/projects/ci/files/worker-startup.sh") && t.metadata["apt-snapshot"] == "20261024T000000Z"])
-    error_message = "Without a baked image, a pool's VMs do not install Docker from the snapshot at boot."
+    condition     = alltrue([for t in google_compute_instance_template.pool : length(t.metadata) == 1 && t.metadata["cos-update-strategy"] == "update_disabled"])
+    error_message = "A pool's VMs run a startup-script or update their OS."
   }
   assert {
     condition     = length(regexall("username = \"runner\"", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "Without a baked image, the manager does not connect as runner."
+    error_message = "The manager does not connect as runner."
   }
   assert {
-    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until test -f /var/run/runner-ready && systemctl is-active --quiet docker; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("max_use_count = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("capacity_per_instance = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "A pool does not wait, bounded, for its VM's readiness, or runs more than one job on a VM."
+    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("max_use_count = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("capacity_per_instance = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "A pool does not wait, bounded, for its VM's container runtime, or runs more than one job on a VM."
   }
-  # The bake's identity: only tacplus-dev/build's protected main, in its environment runner-image, from the web or
-  # its schedule, may become it; it manages only the bake's VMs, disks and images, and uses only the runners' subnet.
+  # COS's root file system is read-only: no job mounts a host directory outside the runtime's own.
   assert {
-    condition     = google_iam_workload_identity_pool_provider.runner_image.attribute_condition == "assertion.project_path == 'tacplus-dev/build' && assertion.ref_type == 'branch' && assertion.ref == 'main' && assertion.ref_protected == 'true' && assertion.environment == 'runner-image' && assertion.pipeline_source in ['web', 'schedule']" && google_iam_workload_identity_pool_provider.runner_image.oidc[0].issuer_uri == "https://gitlab.com"
-    error_message = "The bake's provider admits more than tacplus-dev/build's protected main in environment runner-image."
-  }
-  assert {
-    condition     = google_service_account_iam_member.runner_image_wif.role == "roles/iam.workloadIdentityUser" && endswith(google_service_account_iam_member.runner_image_wif.member, "/attribute.project_path/tacplus-dev/build")
-    error_message = "The bake's account is not federated to tacplus-dev/build alone."
+    condition     = length(regexall("\"/builds:/builds\"", google_compute_instance.manager.metadata["runner-config"])) == 0
+    error_message = "A pool mounts the host's /builds, which COS's read-only root does not have."
   }
   assert {
-    condition     = google_service_account.runner_image.account_id == "runner-image" && google_project_iam_member.runner_image.member == google_service_account.runner_image.member && google_project_iam_member.runner_image.role == google_project_iam_custom_role.runner_image.name
-    error_message = "The bake's account does not hold its custom role, or another does."
-  }
-  assert {
-    condition     = strcontains(google_project_iam_member.runner_image.condition[0].expression, "startsWith(\"runner-image-\")") && strcontains(google_project_iam_member.runner_image.condition[0].expression, "startsWith(\"runner-arm64-docker-\")")
-    error_message = "The bake's role is not limited to the bake's own instances, disks and images."
-  }
-  assert {
-    condition     = length([for p in google_project_iam_custom_role.runner_image.permissions : p if strcontains(p, "subnetworks") || strcontains(p, "setIamPolicy") || strcontains(p, "serviceAccounts")]) == 0 && contains(google_project_iam_custom_role.runner_image.permissions, "compute.instances.getGuestAttributes")
-    error_message = "The bake's role holds a permission beyond its VMs, disks and images."
-  }
-  assert {
-    condition     = google_compute_subnetwork_iam_member.runner_image.role == "roles/compute.networkUser" && google_compute_subnetwork_iam_member.runner_image.subnetwork == "runners-us-central1" && google_compute_subnetwork_iam_member.runner_image.member == google_service_account.runner_image.member
-    error_message = "The bake's account may not use the runners' subnet, or may use more."
+    condition     = google_compute_instance.manager.boot_disk[0].initialize_params[0].image == "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    error_message = "The manager does not boot the pinned Ubuntu image."
   }
   assert {
     condition     = google_compute_instance.manager.metadata["runner-pools"] == "no-account with-account"
@@ -180,6 +156,7 @@ run "unpinned_runner_refused" {
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
     apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version           = "v19.5.2"
@@ -192,73 +169,13 @@ run "unpinned_runner_refused" {
     pools          = {}
     build_buckets  = {}
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-    runner_image   = { image = null, startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1" }
-    runner_image_bake = {
-      family         = "runner-arm64-docker", account_id = "runner-image", pool = "gitlab-com", provider = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build", environment = "runner-image"
-    }
   }
   expect_failures = [var.runner]
 }
 
-# Once baked, the pools boot the image pinned by name, in the ci project, with looper's runner/startup.sh (which
-# installs nothing on it) and guest attributes on; the manager connects as fleeting, the user the image has.
-run "baked" {
-  command = plan
-  module {
-    source = "../../modules/projects/ci"
-  }
-  variables {
-    project_id           = "tacplus-ci"
-    name                 = "tacplus ci"
-    folder               = "folders/222"
-    billing_account      = "000000-111111-222222"
-    region               = "us-central1"
-    zone                 = "us-central1-b"
-    subnet_cidr          = "10.10.0.0/20"
-    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
-    manager_machine_type = "t2a-standard-1"
-    runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
-    }
-    pools = {
-      with-account = { machine_type = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5, service_account = true }
-      no-account   = { machine_type = "t2a-standard-4", disk_gb = 50, disk_type = "pd-balanced", max_instances = 2, service_account = false }
-    }
-    build_buckets  = { build-cache = 30 }
-    reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-    runner_image   = { image = "runner-arm64-docker-20261104-120000", startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1" }
-    runner_image_bake = {
-      family         = "runner-arm64-docker", account_id = "runner-image", pool = "gitlab-com", provider = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build", environment = "runner-image"
-    }
-  }
 
-  assert {
-    condition     = alltrue([for t in google_compute_instance_template.pool : t.disk[0].source_image == "projects/tacplus-ci/global/images/runner-arm64-docker-20261104-120000"])
-    error_message = "A pool's VMs do not boot the pinned baked image."
-  }
-  assert {
-    condition     = alltrue([for t in google_compute_instance_template.pool : t.metadata["startup-script"] == file("../../modules/projects/ci/files/runner-startup.sh") && t.metadata["enable-guest-attributes"] == "TRUE" && !contains(keys(t.metadata), "apt-snapshot")])
-    error_message = "A pool's VMs on the baked image do not run looper's runner/startup.sh with guest attributes."
-  }
-  assert {
-    condition     = length(regexall("username = \"fleeting\"", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("instance_ready_command = \"timeout 600 ", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "On the baked image, the manager does not connect as fleeting, or does not wait for readiness."
-  }
-  assert {
-    condition     = google_compute_instance.manager.boot_disk[0].initialize_params[0].image == "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    error_message = "The manager does not boot the pinned Ubuntu image."
-  }
-}
-
-# A family resolves the newest image at each VM's creation, which no commit fixes: refused.
+# A family resolves the newest image at each VM's creation, which no commit fixes: refused, as is any image but
+# Container-Optimized OS for arm64.
 run "family_refused" {
   command = plan
   module {
@@ -274,6 +191,7 @@ run "family_refused" {
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
     apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/family/cos-arm64-stable"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version           = "v19.5.2"
@@ -283,59 +201,10 @@ run "family_refused" {
       plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
       default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
-    pools = {
-      with-account = { machine_type = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5, service_account = true }
-      no-account   = { machine_type = "t2a-standard-4", disk_gb = 50, disk_type = "pd-balanced", max_instances = 2, service_account = false }
-    }
-    build_buckets  = { build-cache = 30 }
+    pools          = {}
+    build_buckets  = {}
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-    runner_image   = { image = "family/runner-arm64-docker", startup_sha256 = "1a372ed5fb1c1b333a041638d7fbd82fa4fa7ccffc250a95a4ff9e1cbb8ca4f1" }
-    runner_image_bake = {
-      family         = "runner-arm64-docker", account_id = "runner-image", pool = "gitlab-com", provider = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build", environment = "runner-image"
-    }
   }
-
-  expect_failures = [var.runner_image]
+  expect_failures = [var.pool_image]
 }
 
-# The startup-script must be the one the pin names (looper's runner/startup.sh at the image's commit).
-run "startup_mismatch_refused" {
-  command = plan
-  module {
-    source = "../../modules/projects/ci"
-  }
-  variables {
-    project_id           = "tacplus-ci"
-    name                 = "tacplus ci"
-    folder               = "folders/222"
-    billing_account      = "000000-111111-222222"
-    region               = "us-central1"
-    zone                 = "us-central1-b"
-    subnet_cidr          = "10.10.0.0/20"
-    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
-    manager_machine_type = "t2a-standard-1"
-    runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
-    }
-    pools = {
-      with-account = { machine_type = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5, service_account = true }
-      no-account   = { machine_type = "t2a-standard-4", disk_gb = 50, disk_type = "pd-balanced", max_instances = 2, service_account = false }
-    }
-    build_buckets  = { build-cache = 30 }
-    reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
-    runner_image   = { image = "runner-arm64-docker-20261104-120000", startup_sha256 = "0000000000000000000000000000000000000000000000000000000000000000" }
-    runner_image_bake = {
-      family         = "runner-arm64-docker", account_id = "runner-image", pool = "gitlab-com", provider = "tacplus-dev-build"
-      gitlab_project = "tacplus-dev/build", environment = "runner-image"
-    }
-  }
-
-  expect_failures = [google_compute_instance_template.pool]
-}
