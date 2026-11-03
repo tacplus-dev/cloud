@@ -1,10 +1,12 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#1).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#3).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
-  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, all pinned by checksum (`ci/tools.sh`).
+  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, all pinned by checksum (`ci/tools.sh`). The `gitlab`
+  provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
+  #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the domain's TXT record and the organization, the folder and project
   `bootstrap`, the state bucket, `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected
   main, the empty secrets; idempotent, refuses what differs, `--dry-run`); the stacks `org` (org policies, folders `ci`
@@ -16,6 +18,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
   every plan. Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
   providers, the pipeline's rules, the plan/apply script, the policy, and the bootstrap against a stub gcloud.
+- **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
+  provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
+  findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
+  when its fix ships (PROPOSALS.md). No job here runs the scan yet (PROPOSALS.md).
 - **Released / deployed:** nothing applied. No pipeline has run.
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its

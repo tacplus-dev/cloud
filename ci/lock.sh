@@ -4,13 +4,27 @@
 #
 # Writes each stack's .terraform.lock.hcl: the pinned version of each provider (stacks/*/versions.tf) and its
 # hashes for every platform the pipeline and its people run on. Run it after changing a provider's version, and
-# commit the lock files; the pipeline never writes them (ci/tofu.sh inits with -lockfile=readonly).
+# commit the lock files; the pipeline never writes them (ci/tofu.sh inits with -lockfile=readonly). gitlabhq/gitlab
+# is our own build (ci/gitlab-provider.sh): its hashes are those of the builds, for every platform, and none of
+# upstream's; every other provider's are its registry's.
 #
-#   ci/lock.sh        # needs bin/tofu (ci/tools.sh) and the OpenTofu registry
+#   ci/lock.sh        # needs bin/tofu (ci/tools.sh), the OpenTofu registry, and git and go (the gitlab provider)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$here/bin:$PATH
+source "$here/ci/tofurc.sh"
+platforms=(linux_arm64 linux_amd64 darwin_arm64 darwin_amd64)
+flags=("${platforms[@]/#/-platform=}")
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+"$here/ci/gitlab-provider.sh" "$tmp/mirror" "${platforms[@]}"
 for s in "$here"/stacks/*/; do
-  (cd "$s" && tofu providers lock -platform=linux_arm64 -platform=linux_amd64 -platform=darwin_arm64 -platform=darwin_amd64 >/dev/null)
+  mapfile -t sources < <(sed -n 's/^ *source *= *"\(.*\)"$/\1/p' "$s/versions.tf")
+  registry=() own=()
+  for p in "${sources[@]}"; do if [ "$p" = gitlabhq/gitlab ]; then own+=("$p"); else registry+=("$p"); fi; done
+  # From nothing, so that no hash of an earlier build or of upstream's stays.
+  rm -f "$s/.terraform.lock.hcl"
+  (cd "$s" && tofu get >/dev/null && { [ ${#registry[@]} = 0 ] || tofu providers lock "${flags[@]}" "${registry[@]}" >/dev/null; } &&
+    { [ ${#own[@]} = 0 ] || tofu providers lock -fs-mirror="$tmp/mirror" "${flags[@]}" "${own[@]}" >/dev/null; })
   echo "lock.sh: ${s#"$here"/}.terraform.lock.hcl"
 done

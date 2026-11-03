@@ -17,6 +17,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$here/bin:$PATH TF_IN_AUTOMATION=1 TF_INPUT=0
+source "$here/ci/tofurc.sh"
 die() { echo "tofu.sh: $*" >&2; exit 1; }
 [ $# = 2 ] || die "usage: ci/tofu.sh plan|apply|drift STACK"
 cmd=$1 stack=$2

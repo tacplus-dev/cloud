@@ -12,8 +12,12 @@
 #                     (bin/tflint.d, TFLINT_PLUGIN_DIR); `tflint --init` is never run
 #   bin/shellcheck    the scripts
 #   bin/yq            the tests (built from its pinned module version, checked against the Go checksum database)
+#   bin/providers     the gitlab provider, our own build from its source for this platform (ci/gitlab-provider.sh,
+#                     pinned by commit and by the SHA-256 of the build): OpenTofu installs it from there only
+#                     (ci/tofurc.sh)
 #
-#   ci/tools.sh       # needs curl, unzip, xz, sha256sum and go (ghcr.io/tacplus-dev/tacplus/build); linux arm64 or amd64
+#   ci/tools.sh       # needs curl, unzip, xz, sha256sum, git and go (ghcr.io/tacplus-dev/tacplus/build); linux arm64
+#                     # or amd64
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 bin=$here/bin
@@ -62,5 +66,6 @@ t=$(fetch "https://github.com/koalaman/shellcheck/releases/download/v$shellcheck
 tar -xJf "$t" -C "$tmp" "shellcheck-v$shellcheck_version/shellcheck"
 install -m 0755 "$tmp/shellcheck-v$shellcheck_version/shellcheck" "$bin/shellcheck"
 GOBIN=$bin GOFLAGS=-mod=mod go install "github.com/mikefarah/yq/v4@$yq_version"
+"$here/ci/gitlab-provider.sh" "$bin/providers" "linux_$arch"
 chmod 0755 "$bin/tofu" "$bin/tflint" "$plugin/tflint-ruleset-google"
-echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version"
+echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, the gitlab provider (providers/)"

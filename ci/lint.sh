@@ -15,6 +15,7 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$here/bin:$PATH TF_IN_AUTOMATION=1 TF_INPUT=0 TFLINT_PLUGIN_DIR=$here/bin/tflint.d
+source "$here/ci/tofurc.sh"
 cd "$here" || exit 1
 stacks=(stacks/*/)
 modules=(modules/settings modules/org modules/projects/ci modules/projects/dev modules/gitlab)

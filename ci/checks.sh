@@ -10,6 +10,7 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$here/bin:$PATH TF_IN_AUTOMATION=1 TF_INPUT=0
+source "$here/ci/tofurc.sh"
 failed=0
 for t in "$here"/tests/*_test.sh; do
   echo "== ${t#"$here"/}"

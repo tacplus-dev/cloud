@@ -39,3 +39,21 @@ the looper then marks it `promoted` or `declined` here with the date.
   artifact; and a "Security checks" section in the README. Why: cloud runs its own GitLab pipeline, not
   tacplus-dev/build's, so looper#49's checks never reach it; today only the nightly agent scan sees these, and it
   found 23 known vulnerabilities in the gitlab provider alone (#3).
+- **Track and bump the pins with known vulnerabilities** (looper, #3, 2026-11-03). What: move each to the first
+  upstream release that fixes its `security-exceptions.yaml` entries, and remove them: OpenTofu past 1.13.2 (x/net
+  >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), the `google` provider past 8.9.0 and tflint past
+  0.65.0 with its ruleset past 0.41.0 (x/net >= v0.62.0, x/crypto), GitLab Runner past v19.5.2 and
+  fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0); `ci/tools.sh` shas, `ci/lock.sh`, `stacks/ci/main.tf`.
+  Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
+  from source like the gitlab provider's, or a new decision.
+- **Drop the gitlab provider's build from source** (looper, #3). What: when gitlabhq/terraform-provider-gitlab
+  releases a version built with go >= 1.26.10 and x/net >= v0.62.0, pin it from the registry again: remove
+  `ci/gitlab-provider.sh` and `ci/tofurc.sh`, their calls (`ci/tools.sh`, `ci/lock.sh`, the scripts sourcing tofurc) and
+  `tests/providers_test.sh`'s provider checks, and run `ci/lock.sh`. Why: the build costs every `tools` job a Go build
+  and a fetch from gitlab.com, and it is ours to keep current; upstream's signed release is the normal path. Upstream
+  has not been asked yet: its issues are on gitlab.com (gitlab-org/terraform-provider-gitlab; the GitHub mirror takes
+  none), and this run had no gitlab.com account; the request is drafted on #3 for the hub to file.
+- **Enforce the exceptions' expiry** (looper, #3). What: the security job of the deterministic checks above fails on
+  an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
+  form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass
+  one day and fail the next, which the plan and apply gates should not.
