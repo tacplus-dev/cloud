@@ -77,19 +77,40 @@ variable "runner" {
 }
 
 variable "pools" {
-  description = "The runner pools (modules/settings runner_pools): one instance template and managed instance group each, a runner-token secret, and with service_account, an account of its own with no role."
+  description = "The runner pools (modules/settings runner_pools): one instance template and managed instance group each, a runner-token secret, and with service_account, an account of its own with no role. Each VM runs capacity jobs at once (more than one), each container within its job's limits; its disk is capacity times a job's disk_gb, plus os_disk_gb."
   type = map(object({
-    machine_type    = string
-    disk_gb         = number
-    disk_type       = string
-    max_instances   = number
+    machine_type  = string
+    disk_type     = string
+    os_disk_gb    = number
+    capacity      = number
+    max_instances = number
+    idle_count    = number
+    idle_time     = string
+    job = object({
+      cpus         = string
+      memory       = string
+      memory_swap  = string
+      disk_gb      = number
+      security_opt = list(string)
+    })
     service_account = bool
   }))
+  validation {
+    condition     = alltrue([for p in values(var.pools) : p.capacity > 1 && p.idle_count <= p.max_instances && can(regex("^[0-9.]+$", p.job.cpus)) && can(regex("^[0-9]+[mg]$", p.job.memory)) && p.job.memory_swap == p.job.memory && p.job.disk_gb > 0])
+    error_message = "Every pool runs more than one job per VM, keeps no more idle VMs than its maximum, and limits each job's CPUs, memory (no swap: memory_swap the same) and disk share."
+  }
 }
 
-variable "build_buckets" {
-  description = "The build buckets, by name suffix (<project>-<suffix>): how many days an object is kept."
-  type        = map(number)
+variable "build_cache" {
+  description = "The build cache (decisions/builds-in-containers-2026-11-03.md): a bucket <project>-<name> and a Docker registry <name>, an entry deleted once unused for days; written and read by the service account account_id only, which only the jobs of gitlab_project become, through the Workload Identity Federation pool wif_pool and its provider wif_provider for gitlab.com."
+  type = object({
+    name           = string
+    days           = number
+    gitlab_project = string
+    account_id     = string
+    wif_pool       = string
+    wif_provider   = string
+  })
 }
 
 variable "reader_app_key" {

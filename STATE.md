@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#4).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#5).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -10,8 +10,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
 - **Works (#1):** `bootstrap/bootstrap.sh` (the domain's TXT record and the organization, the folder and project
   `bootstrap`, the state bucket, `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected
   main, the empty secrets; idempotent, refuses what differs, `--dry-run`); the stacks `org` (org policies, folders `ci`
-  and `dev`, readers), `ci` (runner manager VM, five arm64 pools as MIGs at size 0 with no-role or no accounts, runner
-  token secrets, build bucket, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
+  and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
+  cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
@@ -22,8 +22,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   `modules/settings` (`cos_arm64_image`, never a family: the module and `ci/policy.sh` refuse one), vanilla
   (`decisions/builds-in-containers-2026-11-03.md`): no startup-script, nothing installed at boot, OS updates off, the
   OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
-  (`instance_ready_command`), one job per VM. No baked image and no bake identity (superseded). Tested against mock
-  providers only.
+  (`instance_ready_command`). No baked image and no bake identity (superseded). Tested against mock providers only.
+- **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
+  (two jobs of 4 CPUs and 14g, no swap) for agent, build and control jobs, a tacplus-dev group runner under today's tags
+  (`arm64`, `autoscale`, `autoscale-16`, `build`); `deploy` and `cluster`, protected and on demand. Job containers
+  share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
+  per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
+  `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
+  after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
+  mock providers only.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -33,6 +40,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
   (README, Before the first pipeline); the dev zone's delegation is a record in jody1-328023 (README). The runners are
-  registered paused and the cluster is empty until the later move off jody1-328023. Follow-ups in PROPOSALS.md.
+  registered paused and the cluster is empty until the later move off jody1-328023; with no host Docker socket, the
+  jobs that use one (looper-docker, the host-socket gates) must move to build jobs first (looper#71). The build jobs
+  do not use the cache yet: tacplus-dev/build's jobs need its `id_tokens` and BuildKit and compiler cache
+  configuration (tacplus-dev/tacplus#315). Follow-ups in PROPOSALS.md.
 - **Blocked on:** Jody's bootstrap run (README, What Jody runs, in order), then the hub's steps (no issue). #4's
   acceptance (`runner-image measure 20`, no first-job image-pull failure) waits for the runners' move off jody1-328023.

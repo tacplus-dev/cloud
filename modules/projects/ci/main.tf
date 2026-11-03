@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, each used once), the build buckets, and
-# the tacplus-reader app's key in Cloud KMS.
+# The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, shared by job containers), the build
+# cache, and the tacplus-reader app's key in Cloud KMS.
 
 resource "google_project" "ci" {
   project_id          = var.project_id
@@ -16,13 +16,16 @@ resource "google_project" "ci" {
 
 resource "google_project_service" "service" {
   for_each = toset([
+    "artifactregistry.googleapis.com",
     "cloudkms.googleapis.com",
     "compute.googleapis.com",
     "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
+    "sts.googleapis.com",
   ])
   project            = google_project.ci.project_id
   service            = each.key

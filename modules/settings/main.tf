@@ -66,37 +66,60 @@ output "cos_arm64_image" {
   value       = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
 }
 
+locals {
+  # The always-on shared VM's machine type (Jody, #5: "B for now"). Moving to t2a-standard-16, four jobs at once, is
+  # this one line, on Jody's word (if the recap shows jobs queueing): its capacity and its disk follow.
+  shared_machine_type = "t2a-standard-8"
+  # How many jobs a machine type runs at once at a job's limits below; what is left is the OS's, Docker's and the
+  # runner's helper containers' (8 vCPU and 32 GB: two jobs of 4 CPUs and 14g, 4 GB left).
+  shared_capacity = { "t2a-standard-8" = 2, "t2a-standard-16" = 4 }
+
+  # The job containers' settings, the agents' and the builds' kept apart (#5): the shared pool runs both under one
+  # registration, so with one setting, today the builds' (the same as the agents'). If the build jobs need settings
+  # the agents must not get (rootless BuildKit's seccomp and apparmor, tacplus-dev/tacplus#315), the split is a
+  # build pool of its own with job = local.jobs.build, and the shared pool's job = local.jobs.agent. disk_gb is a
+  # job's share of its VM's disk: the disk is bounded per VM, not per job (Container-Optimized OS has no per-container
+  # disk limit, #5), so a job that fills it fails the jobs beside it.
+  jobs = {
+    agent = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
+    build = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
+  }
+}
+
 output "runner_pools" {
   description = <<-EOT
-    The runner pools of the ci project: each a managed instance group (size 0 at rest; the manager's autoscaler
-    sizes it) of arm64 VMs, used once per job, and its runner registration in GitLab. A pool with
-    service_account = true runs as an account of its own with no role (the looper-runner pattern); false, with no
-    account and no scopes at all. Registered paused: moving the runners off jody1-328023 is a later issue, which
-    unpauses them.
+    The runner pools of the ci project: each a managed instance group of arm64 VMs, sized by the manager's
+    autoscaler, and its runner registration in GitLab. Job containers share a pool's VMs (capacity at once, each
+    within its job's CPU and memory limits, without swap) and the VMs are reused; each job's containers and volumes
+    are discarded (decisions/looper-job-per-issue-2026-11-03.md, #5). idle_count VMs are kept running, never more
+    than max_instances: raising max_instances is a commit, on Jody's word. A VM's disk is capacity times a job's
+    share, plus os_disk_gb for the OS and the jobs' images. A pool with service_account = true runs as an account of
+    its own with no role; false, with no account and no scopes at all. Registered paused: moving the runners off
+    jody1-328023 is a later issue, which unpauses them.
   EOT
   value = {
-    loopers = {
-      machine_type    = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5
-      service_account = true
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale"], protected = false }
-    }
-    loopers-big = {
-      machine_type    = "t2a-standard-16", disk_gb = 400, disk_type = "pd-standard", max_instances = 2
-      service_account = true
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale-16"], protected = true }
-    }
-    build = {
-      machine_type    = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5
+    # Always on: agent jobs (the loopers' tags), build jobs (tacplus-dev/build's) and the control jobs (the
+    # kicker, the planner, the recap, the drift) on one VM. The build identity is not on the VM: build jobs become it
+    # through Workload Identity Federation (the ci module's build cache).
+    shared = {
+      machine_type    = local.shared_machine_type, disk_type = "pd-balanced", os_disk_gb = 50
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 1, idle_time = "30m"
+      job             = local.jobs.build
       service_account = false
-      runner          = { type = "project_type", group = null, project = "tacplus-dev/build", tags = ["arm64", "build"], protected = false }
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false }
     }
+    # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
     deploy = {
-      machine_type    = "t2a-standard-4", disk_gb = 50, disk_type = "pd-balanced", max_instances = 2
+      machine_type    = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 30
+      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
+      job             = { cpus = "2", memory = "6g", memory_swap = "6g", disk_gb = 25, security_opt = [] }
       service_account = false
       runner          = { type = "project_type", group = null, project = "tacplus-dev/fleet-seatrials", tags = ["deploy"], protected = true }
     }
     cluster = {
-      machine_type    = "t2a-standard-2", disk_gb = 50, disk_type = "pd-balanced", max_instances = 1
+      machine_type    = "t2a-standard-2", disk_type = "pd-balanced", os_disk_gb = 30
+      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
+      job             = { cpus = "1", memory = "3g", memory_swap = "3g", disk_gb = 10, security_opt = [] }
       service_account = false
       runner          = { type = "project_type", group = null, project = "tacplus-dev/cluster", tags = ["cluster"], protected = true }
     }

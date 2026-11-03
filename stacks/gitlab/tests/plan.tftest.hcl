@@ -33,6 +33,10 @@ run "stack" {
     condition     = output.project_ids == { "tacplus-dev/cloud" = "77" }
     error_message = "The stack manages more projects than tacplus-dev/cloud."
   }
+  assert {
+    condition     = toset(keys(output.runner_ids)) == toset(["shared", "deploy", "cluster"])
+    error_message = "The stack does not register one runner per pool: shared, deploy and cluster."
+  }
 }
 
 run "gitlab" {

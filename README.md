@@ -17,8 +17,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 - **Folders and projects:**
   - `bootstrap` / `tacplus-bootstrap`: this pipeline's state bucket, its identity and the secrets it reads (made by the
     bootstrap script, below);
-  - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs, each used for one
-    job, accounts with no role or no account at all: below, The runners' image), the build bucket, and the tacplus-reader app's KMS key (import-only, empty until the reader moves);
+  - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
+    containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
+    tacplus-reader app's KMS key (import-only, empty until the reader moves);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A nodes, private nodes), the DNS zone
     `dev.tacplus.dev`, and `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main;
   - `prod` is designed but **not built**: see PRODUCTION.md.
@@ -214,8 +215,8 @@ Add the new token as the next version of `gitlab-token` (`gcloud secrets version
 
 The pools' VMs are vanilla: Google's **Container-Optimized OS** for arm64, pinned by image name, with nothing installed
 at boot and the OS's own container runtime (#4; `tacplus-dev/roadmap:decisions/builds-in-containers-2026-11-03.md`,
-which replaced the baked image of tacplus-dev/looper#43). No job is placed on a VM before that runtime answers, and each
-VM takes one job and is deleted (`capacity_per_instance = 1`, `max_use_count = 1`, looper#42).
+which replaced the baked image of tacplus-dev/looper#43). No job is placed on a VM before that runtime answers. Job
+containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-2026-11-03.md`; below, The pools).
 
 - **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until `docker info` answers
   the user the manager connects as (`files/config.toml.tftpl`); a VM not ready by then is removed. That user, `runner`,
@@ -230,8 +231,54 @@ VM takes one job and is deleted (`capacity_per_instance = 1`, `max_use_count = 1
 - **A bump** is a normal pin commit: pick the build (`gcloud compute images list --project cos-cloud
   --no-standard-images --filter="family~^cos-arm64-"`, the release notes at
   cloud.google.com/container-optimized-os/docs/release-notes), change `cos_arm64_image`, and let the pipeline run:
-  `plan:ci` shows the templates replaced and `apply:ci` applies them; new VMs boot the new image, a VM already up
-  finishes its one job on the old one. **Rollback** is a revert, through the same plan and apply.
+  `plan:ci` shows the templates replaced and `apply:ci` applies them; new VMs boot the new image. A VM already up
+  keeps the image it booted until it is replaced, the always-on one included (PROPOSALS.md, replace the always-on VM
+  on a bump). **Rollback** is a revert, through the same plan and apply.
+
+### The pools
+
+`modules/settings` (`runner_pools`), decided on #5:
+
+| Pool | Runner | VMs | Jobs per VM, each |
+|---|---|---|---|
+| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16`, `build` | **one, always on** (`idle_count = 1`, `max_instances = 1`): t2a-standard-8, 250 GB | 2: 4 CPUs, 14g, no swap, 100 GB of disk |
+| `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
+| `cluster` | tacplus-dev/cluster, protected; tag `cluster` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2, 50 GB | 2: 1 CPU, 3g, 10 GB |
+
+- **The shared VM** runs the agent jobs (the loopers'), the build jobs (tacplus-dev/build's) and the control jobs (the
+  kicker, the planner, the recap, the drift), under the tags today's jobs carry. One VM is one runner registration
+  (GitLab does not share an instance group between `[[runners]]` entries), so these jobs share one set of container
+  settings: the build jobs' (`jobs.build` in `modules/settings`, today the same as the agents'). If builds need
+  settings agents must not get (rootless BuildKit, tacplus-dev/tacplus#315), the split is a `build` pool of its own.
+- **Scaling.** Moving the shared VM to t2a-standard-16, four jobs at once, is one line (`shared_machine_type`), on
+  Jody's word; so is raising `max_instances`. Scaling down needs no ask.
+- **Deploy and cluster** are protected and on demand: their credentials never share a VM with agents, and they cost
+  nothing while no deploy runs.
+- **Each job:** its container within its CPU and memory limits, without swap; no privileged mode, no host Docker
+  socket (`decisions/builds-in-containers-2026-11-03.md`: agents never build; builds use rootless BuildKit); its
+  containers and volumes removed when it ends (`disable_cache`: no cache volume outlives its job). No pool's VM has a
+  Google account.
+- **Disk is bounded per VM, not per job:** COS has no per-container disk limit (overlay2's needs XFS with project
+  quotas, which vanilla COS does not have). A VM's disk is its jobs' shares plus 50 GB (30 for the on-demand pools)
+  for the OS and the jobs' images; a job that fills it fails the jobs beside it (PROPOSALS.md, per-job disk limits).
+
+## The build cache
+
+`decisions/builds-in-containers-2026-11-03.md`, #5: caches live outside the VMs, in `tacplus-ci`, keyed by content (a
+cache only speeds a build up).
+
+- **Where:** the bucket `gs://tacplus-ci-build-cache` (the compilers' remote caches) and the Artifact Registry Docker
+  repository `us-central1-docker.pkg.dev/tacplus-ci/build-cache` (BuildKit's registry cache).
+- **Who:** the service account `build-cache@tacplus-ci.iam.gserviceaccount.com` alone holds a role on either:
+  `storage.objectUser` on the bucket and `artifactregistry.writer` on the repository (authoritative bindings), which
+  read and write. Only tacplus-dev/build's jobs, the build jobs, may become it: Workload Identity Federation from
+  gitlab.com, the pool `gitlab-com` and provider `tacplus-dev-build` in `tacplus-ci`, condition
+  `assertion.project_path == 'tacplus-dev/build'`. A build job gets it with an `id_tokens` token whose audience is
+  `//iam.googleapis.com/projects/<tacplus-ci's number>/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build`.
+  No VM carries it: the agent jobs beside the builds get neither.
+- **Lifecycle:** an entry unused for 30 days is deleted. The registry deletes a version pushed 30 days ago (a cache
+  BuildKit exports again on every build stays young). GCS records no read time: a bucket object is deleted 30 days
+  after it was written, and the next build that misses it writes it again.
 
 **Not yet:** nothing is applied before Jody's bootstrap and the first pipeline, and the runners stay paused until they
 move off jody1-328023. Once twenty jobs have run here on fresh VMs, looper's `runner-image measure 20` should show no

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: runners, build buckets, the reader app's key. Its folder is the org stack's; its billing
+# The ci project: runners, the build cache, the reader app's key. Its folder is the org stack's; its billing
 # account is the bootstrap project's.
 
 module "settings" {
@@ -46,8 +46,8 @@ module "ci" {
     plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
     default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
   }
-  pools          = { for k, p in module.settings.runner_pools : k => { machine_type = p.machine_type, disk_gb = p.disk_gb, disk_type = p.disk_type, max_instances = p.max_instances, service_account = p.service_account } }
-  build_buckets  = { build-cache = 30 }
+  pools          = { for k, p in module.settings.runner_pools : k => { for a, v in p : a => v if a != "runner" } }
+  build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
   reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
 }
 

@@ -3,7 +3,10 @@
 # from Secret Manager (files/manager-startup.sh): no token is in this file or the metadata. No job is placed on a VM
 # before its container runtime answers the user the manager connects as (looper#43); one not ready in ten minutes
 # is removed. The VMs are Container-Optimized OS, whose root is read-only: a job's builds stay in the executor's own
-# volume, not a host directory.
+# volume, not a host directory. Job containers share a VM (capacity_per_instance), each within its pool's CPU and
+# memory limits, without swap; the VMs are reused (max_use_count = 0), and each job's containers and volumes are
+# removed when it ends (disable_cache: no cache volume outlives its job). No job is privileged, and none gets the
+# host's Docker socket (decisions/looper-job-per-issue-2026-11-03.md, #5).
 concurrent = 20
 check_interval = 3
 shutdown_timeout = 0
@@ -14,16 +17,21 @@ shutdown_timeout = 0
   url = "https://gitlab.com"
   token = "@TOKEN:${name}@"
   executor = "docker-autoscaler"
-  limit = ${pool.max}
+  limit = ${pool.max_instances * pool.capacity}
   [runners.docker]
     image = "${default_image}"
     privileged = false
-    volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]
+    disable_cache = true
+    volumes = []
+    cpus = "${pool.job.cpus}"
+    memory = "${pool.job.memory}"
+    memory_swap = "${pool.job.memory_swap}"
+    security_opt = ${jsonencode(pool.job.security_opt)}
   [runners.autoscaler]
     plugin = "/usr/local/bin/fleeting-plugin-googlecloud"
-    capacity_per_instance = 1
-    max_use_count = 1
-    max_instances = ${pool.max}
+    capacity_per_instance = ${pool.capacity}
+    max_use_count = 0
+    max_instances = ${pool.max_instances}
     instance_ready_command = "timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'"
     [runners.autoscaler.plugin_config]
       name = "${pool.group}"
@@ -33,6 +41,6 @@ shutdown_timeout = 0
       username = "runner"
       use_external_addr = false
     [[runners.autoscaler.policy]]
-      idle_count = 0
-      idle_time = "0s"
+      idle_count = ${pool.idle_count}
+      idle_time = "${pool.idle_time}"
 %{ endfor ~}

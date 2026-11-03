@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The runners: one manager VM (gitlab-runner, the docker-autoscaler executor and the googlecloud fleeting plugin)
-# and, per pool, an instance template and a managed instance group of arm64 Container-Optimized OS VMs, size 0 at
-# rest, each VM used for one job and deleted. Each pool's runner token is in Secret Manager (runner-token-<pool>),
+# and, per pool, an instance template and a managed instance group of arm64 Container-Optimized OS VMs, sized by
+# the manager, whose job containers share the VMs, which are reused. Each pool's runner token is in Secret Manager (runner-token-<pool>),
 # written by the gitlab stack when it registers the runner; the manager reads it at boot. No token is in this
 # repository or in a VM's metadata.
 
@@ -76,7 +76,7 @@ resource "google_compute_instance_template" "pool" {
 
   disk {
     source_image = var.pool_image
-    disk_size_gb = each.value.disk_gb
+    disk_size_gb = each.value.capacity * each.value.job.disk_gb + each.value.os_disk_gb
     disk_type    = each.value.disk_type
     boot         = true
     auto_delete  = true
@@ -122,7 +122,7 @@ resource "google_compute_instance_group_manager" "pool" {
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
   }
-  # The manager's autoscaler sizes the group, and deletes each VM after its job.
+  # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
   lifecycle {
     ignore_changes = [target_size]
   }
@@ -167,7 +167,7 @@ resource "google_compute_instance" "manager" {
       project       = google_project.ci.project_id
       zone          = var.zone
       default_image = var.runner.default_image
-      pools         = { for k, p in var.pools : k => { group = google_compute_instance_group_manager.pool[k].name, max = p.max_instances } }
+      pools         = { for k, p in var.pools : k => merge(p, { group = google_compute_instance_group_manager.pool[k].name }) }
     })
   }
 

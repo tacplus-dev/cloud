@@ -3,7 +3,8 @@
 #
 # The ci stack's plan against a stub organization and an empty project (mock providers: no credentials, no cloud):
 # the stack plans, and its module, with the stack's inputs, gives the runners, the buckets and the reader's key as
-# designed. (A test sees a module's resources only when it runs that module itself.)
+# designed, and the settings give the pools Jody decided (#5). (A test sees a module's resources only when it runs
+# that module itself.)
 
 mock_provider "google" {
   mock_data "google_organization" {
@@ -19,6 +20,9 @@ mock_provider "google" {
   mock_resource "google_service_account" {
     defaults = { email = "stub-account@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:stub-account@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/stub-account@tacplus-ci.iam.gserviceaccount.com" }
   }
+  mock_resource "google_iam_workload_identity_pool" {
+    defaults = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-com" }
+  }
 }
 
 run "stack" {
@@ -28,8 +32,43 @@ run "stack" {
     error_message = "The ci project is not tacplus-ci."
   }
   assert {
-    condition     = toset(keys(output.runner_token_secrets)) == toset(["loopers", "loopers-big", "build", "deploy", "cluster"])
+    condition     = toset(keys(output.runner_token_secrets)) == toset(["shared", "deploy", "cluster"])
     error_message = "Not every runner pool has its token secret."
+  }
+}
+
+# The pools Jody decided (#5): one shared pool, always on (one VM, kept idle, never more without a commit on his
+# word), for agent, build and control jobs, a tacplus-dev group runner not protected, under the tags today's jobs
+# carry; deploy and cluster their own protected pools, on demand, so their credentials never share a VM with agents.
+# Every pool runs more than one job per VM, each limited, and none has an account on its VMs but none needs one.
+run "settings" {
+  command = plan
+  module {
+    source = "../../modules/settings"
+  }
+  assert {
+    condition     = toset(keys(output.runner_pools)) == toset(["shared", "deploy", "cluster"])
+    error_message = "The pools are not shared, deploy and cluster."
+  }
+  assert {
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 2 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
+    error_message = "The shared pool is not one always-on t2a-standard-8 running two jobs."
+  }
+  assert {
+    condition     = output.runner_pools.shared.job.cpus == "4" && output.runner_pools.shared.job.memory == "14g" && output.runner_pools.shared.job.memory_swap == "14g"
+    error_message = "A shared pool's job is not limited to 4 CPUs and 14g, without swap."
+  }
+  assert {
+    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false } && !output.runner_pools.shared.service_account
+    error_message = "The shared pool is not an unprotected group runner of tacplus-dev under today's tags, with no account on its VM."
+  }
+  assert {
+    condition     = alltrue([for k in ["deploy", "cluster"] : output.runner_pools[k].runner.protected && output.runner_pools[k].runner.type == "project_type" && output.runner_pools[k].idle_count == 0 && output.runner_pools[k].max_instances == 1])
+    error_message = "deploy and cluster are not protected project runners, on demand."
+  }
+  assert {
+    condition     = alltrue([for p in values(output.runner_pools) : p.capacity > 1 && p.job.cpus != "" && p.job.memory != "" && p.job.memory_swap == p.job.memory && p.job.disk_gb > 0 && !p.service_account])
+    error_message = "A pool runs one job per VM, or a job without its CPU, memory (no swap) and disk share."
   }
 }
 
@@ -59,10 +98,16 @@ run "ci" {
       default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     pools = {
-      with-account = { machine_type = "t2a-standard-8", disk_gb = 100, disk_type = "pd-balanced", max_instances = 5, service_account = true }
-      no-account   = { machine_type = "t2a-standard-4", disk_gb = 50, disk_type = "pd-balanced", max_instances = 2, service_account = false }
+      with-account = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 2, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = true
+      }
+      no-account = {
+        machine_type = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 3, max_instances = 2, idle_count = 0, idle_time = "30m"
+        job          = { cpus = "1", memory = "4g", memory_swap = "4g", disk_gb = 20, security_opt = ["no-new-privileges"] }, service_account = false
+      }
     }
-    build_buckets  = { build-cache = 30 }
+    build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
   }
 
@@ -92,8 +137,8 @@ run "ci" {
     error_message = "A project role is granted to an account other than the manager."
   }
   assert {
-    condition     = !strcontains(google_compute_instance.manager.metadata["runner-config"], "glrt-") && strcontains(google_compute_instance.manager.metadata["runner-config"], "@TOKEN:no-account@") && strcontains(google_compute_instance.manager.metadata["runner-config"], "max_use_count = 1")
-    error_message = "The manager's config holds a token, lacks a pool's placeholder, or reuses a VM."
+    condition     = !strcontains(google_compute_instance.manager.metadata["runner-config"], "glrt-") && strcontains(google_compute_instance.manager.metadata["runner-config"], "@TOKEN:no-account@") && strcontains(google_compute_instance.manager.metadata["runner-config"], "@TOKEN:with-account@")
+    error_message = "The manager's config holds a token, or lacks a pool's placeholder."
   }
   # The pools' VMs are vanilla Container-Optimized OS: nothing installed at boot, no startup-script, no OS update
   # (the pin is the only way their OS changes); the manager connects as runner, which the guest agent creates with
@@ -107,8 +152,48 @@ run "ci" {
     error_message = "The manager does not connect as runner."
   }
   assert {
-    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("max_use_count = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2 && length(regexall("capacity_per_instance = 1\n", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "A pool does not wait, bounded, for its VM's container runtime, or runs more than one job on a VM."
+    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "A pool does not wait, bounded, for its VM's container runtime."
+  }
+  # Job containers share the pools' VMs (decisions/looper-job-per-issue-2026-11-03.md, #5): each pool runs its
+  # capacity of jobs on a VM, each job's container limited in CPU and memory (no swap), the disk bounded per VM (its
+  # capacity times a job's share, plus the OS's); the VMs are reused, and each job's containers and volumes discarded
+  # (no cache volume kept); no job is privileged or gets the host's Docker socket.
+  assert {
+    condition = alltrue([for pool in [
+      { name = "with-account", capacity = 2, limit = 2, max = 1, idle = 1, cpus = "4", memory = "14g", security_opt = "[]" },
+      { name = "no-account", capacity = 3, limit = 6, max = 2, idle = 0, cpus = "1", memory = "4g", security_opt = "[\"no-new-privileges\"]" },
+      ] : strcontains(google_compute_instance.manager.metadata["runner-config"], join("\n", [
+        "  limit = ${pool.limit}",
+        "  [runners.docker]",
+        "    image = \"alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a\"",
+        "    privileged = false",
+        "    disable_cache = true",
+        "    volumes = []",
+        "    cpus = \"${pool.cpus}\"",
+        "    memory = \"${pool.memory}\"",
+        "    memory_swap = \"${pool.memory}\"",
+        "    security_opt = ${pool.security_opt}",
+        "  [runners.autoscaler]",
+        "    plugin = \"/usr/local/bin/fleeting-plugin-googlecloud\"",
+        "    capacity_per_instance = ${pool.capacity}",
+        "    max_use_count = 0",
+        "    max_instances = ${pool.max}",
+      ])) && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-${pool.name}\"")
+    ])
+    error_message = "A pool does not run its capacity of jobs per reused VM, each limited in CPU and memory without swap, discarded with its volumes, unprivileged."
+  }
+  assert {
+    condition     = length(regexall("idle_count = 1\n      idle_time = \"30m\"", google_compute_instance.manager.metadata["runner-config"])) == 1 && length(regexall("idle_count = 0\n      idle_time = \"30m\"", google_compute_instance.manager.metadata["runner-config"])) == 1
+    error_message = "A pool does not keep its idle VMs as it says."
+  }
+  assert {
+    condition     = !strcontains(google_compute_instance.manager.metadata["runner-config"], "docker.sock") && !strcontains(google_compute_instance.manager.metadata["runner-config"], "privileged = true")
+    error_message = "A pool's jobs get the host's Docker socket, or run privileged."
+  }
+  assert {
+    condition     = google_compute_instance_template.pool["with-account"].disk[0].disk_size_gb == 250 && google_compute_instance_template.pool["no-account"].disk[0].disk_size_gb == 110
+    error_message = "A pool's disk is not its capacity times a job's share, plus the OS's."
   }
   # COS's root file system is read-only: no job mounts a host directory outside the runtime's own.
   assert {
@@ -127,9 +212,40 @@ run "ci" {
     condition     = length(regexall("image = \"alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a\"", google_compute_instance.manager.metadata["runner-config"])) == 2
     error_message = "A pool's default image is not the pinned alpine 3.24."
   }
+  # The build cache (decisions/builds-in-containers-2026-11-03.md, #5): a bucket and a Docker registry, written and
+  # read only by the build identity, which only the build jobs (tacplus-dev/build's) may become, through Workload
+  # Identity Federation from gitlab.com; an entry unused for 30 days is deleted.
   assert {
-    condition     = alltrue([for b in google_storage_bucket.build : b.uniform_bucket_level_access && b.public_access_prevention == "enforced" && b.location == "US-CENTRAL1"])
-    error_message = "A build bucket is not uniform, private and in us-central1."
+    condition     = google_storage_bucket.cache.name == "tacplus-ci-build-cache" && google_storage_bucket.cache.uniform_bucket_level_access && google_storage_bucket.cache.public_access_prevention == "enforced" && google_storage_bucket.cache.location == "US-CENTRAL1"
+    error_message = "The cache bucket is not tacplus-ci-build-cache, uniform, private and in us-central1."
+  }
+  assert {
+    condition     = google_artifact_registry_repository.cache.repository_id == "build-cache" && google_artifact_registry_repository.cache.format == "DOCKER" && google_artifact_registry_repository.cache.location == "us-central1"
+    error_message = "The cache registry is not the Docker repository build-cache in us-central1."
+  }
+  assert {
+    condition     = google_storage_bucket_iam_binding.cache.role == "roles/storage.objectUser" && google_storage_bucket_iam_binding.cache.members == toset([google_service_account.build_cache.member]) && google_artifact_registry_repository_iam_binding.cache.role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_binding.cache.members == toset([google_service_account.build_cache.member])
+    error_message = "The cache's write role is held by someone other than the build identity alone."
+  }
+  assert {
+    condition     = alltrue([for m in concat(tolist(google_storage_bucket_iam_binding.cache.members), tolist(google_artifact_registry_repository_iam_binding.cache.members), [google_service_account_iam_member.build_cache_wif.member]) : !contains(["allUsers", "allAuthenticatedUsers"], m)])
+    error_message = "The cache is granted to allUsers or allAuthenticatedUsers."
+  }
+  assert {
+    condition     = google_service_account.build_cache.account_id == "build-cache" && google_iam_workload_identity_pool_provider.build.attribute_condition == "assertion.project_path == 'tacplus-dev/build'" && google_iam_workload_identity_pool_provider.build.oidc[0].issuer_uri == "https://gitlab.com" && google_iam_workload_identity_pool_provider.build.attribute_mapping["attribute.project_path"] == "assertion.project_path"
+    error_message = "The build identity is not federated from tacplus-dev/build's jobs only."
+  }
+  assert {
+    condition     = google_service_account_iam_member.build_cache_wif.role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.build_cache_wif.member == "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/build"
+    error_message = "Something other than tacplus-dev/build's jobs may become the build identity."
+  }
+  assert {
+    condition     = length(google_storage_bucket.cache.lifecycle_rule) == 1 && one(google_storage_bucket.cache.lifecycle_rule[0].condition).age == 30 && one(google_storage_bucket.cache.lifecycle_rule[0].action).type == "Delete"
+    error_message = "The cache bucket does not delete an entry 30 days after it was last written."
+  }
+  assert {
+    condition     = !google_artifact_registry_repository.cache.cleanup_policy_dry_run && length(google_artifact_registry_repository.cache.cleanup_policies) == 1 && one(google_artifact_registry_repository.cache.cleanup_policies).action == "DELETE" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].tag_state == "ANY" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].older_than == "2592000s"
+    error_message = "The cache registry does not delete a version 30 days after it was pushed."
   }
   assert {
     condition     = google_kms_crypto_key.reader.import_only && google_kms_crypto_key.reader.skip_initial_version_creation && google_kms_crypto_key.reader.version_template[0].algorithm == "RSA_SIGN_PKCS1_2048_SHA256" && google_kms_key_ring.reader.location == "us-central1"
@@ -139,6 +255,44 @@ run "ci" {
     condition     = alltrue([for s in google_secret_manager_secret.runner_token : s.replication[0].user_managed[0].replicas[0].location == "us-central1"])
     error_message = "A runner-token secret is replicated outside us-central1."
   }
+}
+
+# A pool that runs one job per VM, or lets a job swap, is refused (#5).
+run "one_job_per_vm_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version           = "v19.5.2"
+      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
+      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
+      plugin_version    = "v1.3.1"
+      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    pools = {
+      swap = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 1, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "28g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
+  }
+  expect_failures = [var.pools]
 }
 
 run "unpinned_runner_refused" {
@@ -167,7 +321,7 @@ run "unpinned_runner_refused" {
       default_image     = "alpine:3.24"
     }
     pools          = {}
-    build_buckets  = {}
+    build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
   }
   expect_failures = [var.runner]
@@ -202,7 +356,7 @@ run "family_refused" {
       default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     pools          = {}
-    build_buckets  = {}
+    build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
   }
   expect_failures = [var.pool_image]

@@ -59,7 +59,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   one day and fail the next, which the plan and apply gates should not.
 - **The bake opens its bump; never delete the pinned image** (looper, #4, 2026-11-03): superseded 2026-11-03 by
   `decisions/builds-in-containers-2026-11-03.md` (no baked image: the pools boot pinned Container-Optimized OS).
-- **No host Docker socket in the pools' jobs** (looper, #4, 2026-11-03). What: drop
+- **No host Docker socket in the pools' jobs** (looper, #4, 2026-11-03): done by #5 (the socket is gone from every pool). What: drop
   `/var/run/docker.sock:/var/run/docker.sock` from `files/config.toml.tftpl`'s volumes once looper's build jobs replace
   `looper-docker` and the host-socket gates. Why: `decisions/builds-in-containers-2026-11-03.md` gives an agent
   container no container runtime and no host socket, and image builds run in rootless BuildKit; today every job of
@@ -69,3 +69,21 @@ the looper then marks it `promoted` or `declined` here with the date.
   images of the pin's LTS family (`cos-arm64-<milestone>-lts`) and files an issue when a newer build than
   `cos_arm64_image` exists, naming it and its release notes. Why: COS's security fixes ship as new builds; with the pin
   by name (and updates off), the workers keep the old kernel and runtime until someone bumps it, and nothing says when.
+- **Per-job disk limits** (looper, #5, 2026-11-03; option (b) on #5). What: an XFS data disk for Docker's
+  `/var/lib/docker`, mounted with `pquota` at boot (cloud-init on COS), and the readiness gate also checking the backing
+  filesystem, so the runners' `storage_opt size` gives each job a disk limit. Why: today the disk is bounded per VM, so
+  a job that fills it fails the jobs beside it; the decision on #5 kept the VM vanilla for now.
+- **Reused VMs collect images** (looper, #5). What: bound what a reused VM keeps: a large `max_use_count` on the shared
+  pool (the VM replaced after N jobs), or a pruning step the manager runs between jobs. Why: the always-on VM is never
+  replaced, so every image a job pulls stays on its disk until it fills; the 50 GB set aside for images is a guess.
+- **Replace the always-on VM on a bump** (looper, #5). What: a COS bump (or a change to the pool's template) also
+  replaces the shared pool's running VM: the instance group's update policy, or a step in the apply. Why: with VMs
+  reused, a VM already up keeps the image it booted, so the bump does not reach the always-on VM until it goes.
+- **The rest of the job containers' hardening** (looper, #5). What: `cap_drop = ["ALL"]`, a non-root user and a
+  read-only root where the jobs allow (`decisions/looper-job-per-issue-2026-11-03.md`: no capabilities, non-root,
+  read-only root where possible), once the jobs' images are checked against them. Why: #5 removed the privileged mode
+  and the host socket; Docker's default capabilities remain, which the decision asks to drop.
+- **GitLab's own `cache:` in the build cache** (looper, #5). What: a `[runners.cache]` on the GCS bucket, so a job's
+  `cache:` keyword survives its VM's volumes being discarded. Why: with `disable_cache`, a job's `cache:` is lost
+  when the job ends, as it was with one job per VM; it would need an identity of its own on the manager, which the
+  rule that only the build identity holds a role on the cache does not allow: a decision.
