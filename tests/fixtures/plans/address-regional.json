@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_address.lb","type":"google_compute_address","change":{"actions":["create"],"after":{"name":"lb","region":"us-central1","address_type":null},"after_unknown":{"address":true}}}]}

@@ -6,7 +6,7 @@
 # tests/fixtures/live): in what the projects hold, made by a stack or by hand, it reports an instance or template with
 # an external address, an allow rule open to the internet, a rule allowing port 22 (the runners' internal rule and
 # GKE's own internal rules excepted), a cluster without private nodes and a pool with public nodes or not on COS,
-# each once, saying the project; it reports a list it cannot read; it reports nothing in projects that keep the rules;
+# each once, saying the project; an external address but the global address gateway (#13); it reports a list it cannot read; it reports nothing in projects that keep the rules;
 # it only lists. The drift job audits the projects modules/settings names. Needs bash and jq.
 #
 #   tests/audit_test.sh
@@ -40,13 +40,15 @@ reports "GKE's SSH rule from outside the network" "live dirty-dev: firewall rule
 reports "a pool with public nodes" "live dirty-dev: node pool dev/hand has public nodes"
 reports "a pool not on COS" "live dirty-dev: node pool dev/hand does not run Container-Optimized OS"
 reports "a cluster without private nodes" "live dirty-dev: cluster hand-public has no private nodes"
-[ "$(wc -l < "$work/out")" = 9 ] && ok "nothing else is reported (the runners' rule, GKE's internal rules, a deny rule, a proxy LB's rule, clean VMs and pools)" ||
-  fail "the report is not those 9 lines: $(cat "$work/out")"
-grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
+reports "a second global external address" "live dirty-dev: global address hand-global is an external address"
+reports "a regional external address" "live dirty-dev: address hand-lb is an external address (a regional one)"
+[ "$(wc -l < "$work/out")" = 11 ] && ok "nothing else is reported (the runners' rule, GKE's internal rules, a deny rule, a proxy LB's rule, clean VMs and pools, the gateway's address)" ||
+  fail "the report is not those 11 lines: $(cat "$work/out")"
+grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates|addresses)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
   fail "the audit runs more than the lists" || ok "the audit only lists"
 
 audit clean && [ ! -s "$work/out" ] && ok "projects that keep the rules: nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
-audit missing && reports "a list it cannot read is reported" "live missing: cannot list firewall-rules: " "live missing: cannot list clusters: "
+audit missing && reports "a list it cannot read is reported" "live missing: cannot list firewall-rules: " "live missing: cannot list clusters: " "live missing: cannot list addresses: "
 "$here/ci/audit.sh" > /dev/null 2>&1 && fail "no project: passed" || ok "no project: usage"
 
 # The drift job audits what modules/settings names, after its plans.

@@ -57,6 +57,17 @@ ci_projects() {
   echo "$p"
 }
 
+# ci_zone: the dev project and the zone of the domain it holds (ci/dns.sh's PROJECT ZONE), as modules/settings names
+# them (projects, zone).
+ci_zone() {
+  local p z
+  p=$(sed -n 's|^ *dev *= *{ *folder *= *"[^"]*", *project *= *"\([a-z][a-z0-9-]*\)",.*|\1|p' "$ci_here/../modules/settings/main.tf")
+  z=$(sed -n 's|^ *zone *= *"\([a-z][a-z0-9-]*\)"$|\1|p' "$ci_here/../modules/settings/main.tf")
+  [ -n "$p" ] && [ -n "$z" ] && [ "$(printf '%s\n' "$z" | wc -l)" = 1 ] ||
+    { echo "dns: modules/settings/main.tf names no dev project or no single zone" >&2; return 1; }
+  echo "$p $z"
+}
+
 # ci_gitlab_secret: the GitLab token's secret version, as modules/settings names it.
 ci_gitlab_secret() {
   local s

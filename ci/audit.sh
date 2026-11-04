@@ -5,13 +5,14 @@
 # The drift job's live audit (#7): what each project holds, made by a stack or by hand, against the network rules of
 # 2026-11-03 that ci/policy.sh refuses in a plan. A drift plan sees only what a stack has in its state; a firewall
 # rule, a VM or a node pool made by hand is in none, so this lists them all (firewall rules, instances, instance
-# templates, clusters and their node pools), gives them the shape of a plan's changes, and runs the same checks
+# templates, clusters and their node pools, addresses), gives them the shape of a plan's changes, and runs the same checks
 # (ci/policy.sh plan) on them. One line per finding, "live <project>: ...", on stdout; a list it cannot read is a
 # finding too. It only lists, and exits 0 when it finds something: ci/drift.sh files what it prints.
 #
 # GKE's own firewall rules (gke-*, from the network's private ranges only: its nodes, its pods, its control plane)
 # open every port, 22 among them, inside the network; they are GKE's, not a stack's, so their port 22 is not
-# reported. Anything else they allow is, as is a gke-* rule from outside those ranges.
+# reported. Anything else they allow is, as is a gke-* rule from outside those ranges. An external address is
+# reported unless it is the one public IP, the global address gateway (#13).
 #
 #   ci/audit.sh PROJECT...    # needs gcloud (signed in: ci/lib.sh ci_gcp) and jq
 set -uo pipefail
@@ -21,7 +22,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 for project in "$@"; do
-  for what in "compute firewall-rules" "compute instances" "compute instance-templates" "container clusters"; do
+  for what in "compute firewall-rules" "compute instances" "compute instance-templates" "compute addresses" "container clusters"; do
     read -ra cmd <<< "$what"
     if ! gcloud "${cmd[@]}" list --project="$project" --format=json > "$tmp/${cmd[1]}.json" 2> "$tmp/err"; then
       echo "live $project: cannot list ${cmd[1]}: $(grep -m1 '^ERROR' "$tmp/err" || head -c 300 "$tmp/err" | tr '\n' ' ')"
@@ -29,7 +30,8 @@ for project in "$@"; do
     fi
   done
   args=(--arg p "$project" --slurpfile fw "$tmp/firewall-rules.json" --slurpfile vm "$tmp/instances.json"
-        --slurpfile tpl "$tmp/instance-templates.json" --slurpfile gke "$tmp/clusters.json")
+        --slurpfile tpl "$tmp/instance-templates.json" --slurpfile gke "$tmp/clusters.json"
+        --slurpfile adr "$tmp/addresses.json")
   jq -n "${args[@]}" '
     def rc($type; $what; $after): {address: "live \($p): \($what)", type: $type, change: {actions: ["create"], after: $after}};
     def nics: [.[]? | {access_config: (.accessConfigs // []), ipv6_access_config: (.ipv6AccessConfigs // [])}];
@@ -40,6 +42,8 @@ for project in "$@"; do
       (($vm[0] // [])[] | rc("google_compute_instance"; "instance \(.name)"; {network_interface: (.networkInterfaces | nics)})),
       (($tpl[0] // [])[] | rc(if .region then "google_compute_region_instance_template" else "google_compute_instance_template" end;
         "instance template \(.name)"; {network_interface: (.properties.networkInterfaces | nics)})),
+      (($adr[0] // [])[] | if .region then rc("google_compute_address"; "address \(.name)"; {name, address_type: .addressType})
+        else rc("google_compute_global_address"; "global address \(.name)"; {name, address_type: .addressType}) end),
       (($gke[0] // [])[] | .name as $c
        | rc("google_container_cluster"; "cluster \($c)"; {private_cluster_config: [{enable_private_nodes:
            (.privateClusterConfig.enablePrivateNodes // .networkConfig.defaultEnablePrivateNodes // false)}]}),

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The dev project: the dev GKE cluster (arm64, Axion, private COS nodes in a normal pool and a spot build pool), the DNS zone for dev hostnames, the cluster pipeline's
-# identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main, and each deployment's
-# certificate secrets and challenge zone (certificates.tf).
+# identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main, each deployment's
+# certificate secrets and challenge zone (certificates.tf), and the gateway's address and the domain's zone (dns.tf).
 
 resource "google_project" "dev" {
   project_id          = var.project_id
@@ -206,8 +206,8 @@ resource "google_container_node_pool" "pool" {
   }
 }
 
-# The zone for dev hostnames. Its delegation (NS records in tacplus.dev's zone, still in jody1-328023) is the
-# hub's step until DNS moves (README).
+# The zone for dev hostnames. Its delegation is an NS record of the domain's zone (dns.tf); in the zone it replaces,
+# still in jody1-328023 until the cutover, it is the hub's step (README).
 resource "google_dns_managed_zone" "dev" {
   project     = google_project.dev.project_id
   name        = var.dns.zone

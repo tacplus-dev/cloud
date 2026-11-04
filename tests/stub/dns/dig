@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# A stub dig for tests/dns_test.sh: `dig +short ... @RESOLVER NAME TYPE` answers from STUB_DNS/@RESOLVER, one
+# "NAME TYPE RDATA" line per record (names lower case, with the trailing dot), the records in the order given; a
+# resolver with no file times out, as dig does (exit 9). Every call is logged (STUB_LOG); any other form fails loudly.
+set -euo pipefail
+echo "dig $*" >> "$STUB_LOG"
+server='' args=() short=0
+for a in "$@"; do
+  case $a in
+    @*) server=${a#@} ;;
+    +short) short=1 ;;
+    +*) ;;
+    *) args+=("$a") ;;
+  esac
+done
+[ "$short" = 1 ] && [ -n "$server" ] && [ "${#args[@]}" = 2 ] || { echo "stub dig: not the form ci/dns.sh runs: $*" >&2; exit 99; }
+f=$STUB_DNS/@$server
+[ -f "$f" ] || { echo ";; connection timed out; no servers could be reached"; exit 9; }
+name=${args[0],,} type=${args[1]^^}
+[[ $name == *. ]] || name=$name.
+while read -r n t rdata; do
+  [ "$n" = "$name" ] && [ "$t" = "$type" ] && echo "$rdata"
+done < "$f"
+exit 0

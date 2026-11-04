@@ -77,7 +77,7 @@ resource "google_secret_manager_secret_iam_binding" "certificate" {
 }
 
 # The zone for _acme-challenge.<domain> alone: DNS-01 for <domain> and *.<domain> writes its TXT records here. Its
-# delegation (NS records in <domain>'s zone, still in jody1-328023) is the hub's step until DNS moves (README).
+# delegation is an NS record of the domain's zone (dns.tf), when this pipeline writes that zone.
 resource "google_dns_managed_zone" "acme_challenge" {
   for_each    = var.deployments
   project     = google_project.dev.project_id

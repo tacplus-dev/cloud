@@ -68,12 +68,38 @@ output "deployments" {
     gitlab_project, account_id and wif_provider. It alone adds and reads the versions of the secrets
     tls-<deployment> (the certificate and its key) and acme-account-<environment> (its ACME account key; environment
     is the deployment's GitLab environment), and it alone administers the zone for _acme-challenge.<domain> (the
-    certificate is <domain> and *.<domain>, so DNS-01 writes there only), delegated from <domain>'s zone.
+    certificate is <domain> and *.<domain>, so DNS-01 writes there only), delegated from <domain>'s zone. Its
+    hostnames are A records of the zone (zone, below) to the gateway's address, the one public IP (#13).
   EOT
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
     # Certificates); it becomes this identity when seatrials moves off jody1-328023.
-    seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    # idp.test.tacplus.dev is its test IdP's (tacplus-dev/fleet-seatrials, test-idp/), behind the same Gateway: the
+    # gateway's address is the one public IP, so the test IdP has no load balancer of its own (#13).
+    seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+  }
+}
+
+output "zone" {
+  description = <<-EOT
+    tacplus.dev's zone, in the dev project, written only by this pipeline (#13): it replaces the zone tacplus-dev of
+    jody1-328023, which was written by hand. records are that zone's records, copied as they are there (each name
+    with its trailing dot, rrdatas as Cloud DNS writes them: a TXT string in quotes), except what the dev stack
+    writes itself: the deployments' hostnames (A, to the gateway's address), the delegations of dev.tacplus.dev and
+    of the challenge zones (NS), and the zone's own SOA and NS. A record changed in the old zone during the cutover is
+    changed here too (README, The tacplus.dev cutover); after it, a record is a commit here.
+  EOT
+  value = {
+    zone   = "tacplus-dev"
+    domain = "tacplus.dev."
+    # As jody1-328023's zone served them on 2026-11-04: the site (GitHub Pages) and its verification, and DMARC.
+    records = [
+      { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153", "185.199.109.153", "185.199.110.153", "185.199.111.153"] },
+      { name = "tacplus.dev.", type = "AAAA", ttl = 3600, rrdatas = ["2606:50c0:8000::153", "2606:50c0:8001::153", "2606:50c0:8002::153", "2606:50c0:8003::153"] },
+      { name = "tacplus.dev.", type = "TXT", ttl = 300, rrdatas = ["\"google-site-verification=BBk1Mdc_mSNbbRfqhsfEK9bHKALRrMo7qCnZyGd99i4\""] },
+      { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      { name = "_dmarc.tacplus.dev.", type = "TXT", ttl = 3600, rrdatas = ["\"v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;\""] },
+    ]
   }
 }
 

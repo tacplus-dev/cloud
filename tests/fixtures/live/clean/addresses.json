@@ -1,0 +1,4 @@
+[
+  {"name": "gateway", "address": "203.0.113.10", "addressType": "EXTERNAL", "ipVersion": "IPV4", "status": "IN_USE"},
+  {"name": "internal-lb", "address": "10.20.0.50", "addressType": "INTERNAL", "region": "https://www.googleapis.com/compute/v1/projects/clean/regions/us-central1", "status": "RESERVED"}
+]

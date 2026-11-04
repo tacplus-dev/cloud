@@ -23,8 +23,10 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
     below, The network rules), the DNS zone
-    `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, and each
-    deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates);
+    `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, each
+    deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
+    and the one public IP, the global address `gateway` of the Gateway's load balancer, and `tacplus.dev`'s own zone,
+    which only this pipeline writes (below, The tacplus.dev cutover);
   - `prod` is designed but **not built**: see PRODUCTION.md.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
   Secret Manager by version, never in this repository), and the runner registrations of the `ci` pools (registered
@@ -39,7 +41,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `dns` (the drift's DNS check), `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -94,6 +96,10 @@ that Jody plays, on a commit already applied to dev.
 answers on #7 (2026-11-04), are in the stacks, and `ci/policy.sh plan` refuses every saved plan that breaks one, before it
 is applied:
 
+- **One public IP:** the dev stack's global address `gateway` (#13), which the Gateway names (`spec.addresses`,
+  `NamedAddress`), so that its load balancer is the only way in. In a plan, any other external address (global or
+  regional) and any external forwarding rule is refused: the Gateway's forwarding rules are GKE's, never a stack's. In the
+  source, a global address without `prevent_destroy` is refused, so that no apply takes the IP with it.
 - **Only load balancers are public, and every one is proxy-based.** No instance or instance template has an external
   address: an `access_config` or `ipv6_access_config`, or one known only after apply, is refused. The host organization's
   `compute.vmExternalIpAccess` (below) makes the API refuse one too. Egress is through Cloud NAT, in both projects.
@@ -112,10 +118,10 @@ is applied:
   (tacplus-dev/cluster#6). The dev stack's output `cluster` gives the label and the taint.
 
 A drift plan sees only what a stack has in its state, so a rule, a VM or a node pool made by hand is in none. The nightly
-**live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, cluster and node
+**live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, address, cluster and node
 pool in `tacplus-ci` and `tacplus-dev` and runs the same checks on them; each finding is a `live <project>: ...` line of
 the drift issue. GKE's own internal rules (`gke-*` from the network's private ranges, which open every port, 22 among
-them, between nodes, pods and the control plane) are not reported for port 22. Folder firewall policies, which would
+them, between nodes, pods and the control plane) are not reported for port 22; the address `gateway` is not reported. Folder firewall policies, which would
 enforce these rules rather than report them, come later (#7).
 
 ### Known vulnerabilities
@@ -276,11 +282,9 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
 5. **`.gitlab-ci.yml`** from `ci/pin.sh <commit of main>`, and a nightly schedule on main.
 
 The first pipeline on main then creates the folders, the `ci` and `dev` projects, and the GitLab
-settings, each from its saved plan. After `apply:dev`, the dev zone's delegation (its name servers are `apply:dev`'s output
-`dns_name_servers`) goes into tacplus.dev's zone, which is still in jody1-328023:
-`gcloud dns record-sets create dev.tacplus.dev. --type=NS --ttl=300 --zone=tacplus-dev --project=jody1-328023 --rrdatas=<the four name servers>`.
-The challenge zone's delegation is the hub's too, once seatrials' pipeline moves to its identity here (below,
-Certificates).
+settings, each from its saved plan. tacplus.dev's zone in `tacplus-dev` writes the delegations of the dev zone and the
+challenge zones itself; until the registrar names it, the zone in jody1-328023 still answers, and the hub gives it the
+same records (below, The tacplus.dev cutover).
 
 ## Break-glass
 
@@ -446,6 +450,65 @@ makes the identity, the empty secrets and the zone above. When seatrials moves o
 new secrets (no new order: Let's Encrypt's duplicate-certificate limit), the NS records of `_acme-challenge.tacplus.dev.`
 are replaced by the new zone's name servers, and the interim secrets and zone are deleted (PROPOSALS.md, the move of
 seatrials' certificates).
+
+## The tacplus.dev cutover
+
+#13; `decisions/only-vms-are-k8s-nodes-2026-11-04.md` (its addendum on the new cluster) and
+`network-exposure-2026-11-03.md` (tacplus-dev/roadmap).
+
+**The design.** The dev stack (`modules/projects/dev/dns.tf`) holds, in `tacplus-dev`:
+
+- **The global address `gateway`,** external, IPv4, with `prevent_destroy`: the Gateway's load balancer's, and the only
+  public IP. The Gateway names it (`spec.addresses: [{type: NamedAddress, value: gateway}]`, GatewayClass
+  `gke-l7-global-external-managed`); a rebuilt load balancer keeps it. IPv4 only: GKE documents one static global address
+  for that class, nothing of an IPv6 one beside it (PROPOSALS.md, IPv6 on the Gateway).
+- **The zone `tacplus-dev` for `tacplus.dev.`,** DNSSEC on, written only by this pipeline. It is in the dev project, beside
+  the dev zone and the challenge zones it delegates to, rather than in a `dns` project of its own: one project, one
+  stack, so the delegations are references, not values copied between stacks. It holds:
+  - the records copied from the zone in jody1-328023 (`modules/settings`, `zone`: the site, its verification, DMARC);
+  - each deployment's hostnames (`modules/settings`, `deployments`), A to the gateway's address, TTL 300: today
+    `seatrials.tacplus.dev` and `idp.test.tacplus.dev`. The test IdP is behind the same Gateway, not on a load balancer and
+    address of its own as in jody1-328023 (tacplus-dev/fleet-seatrials test-idp/README.md): one public IP, and nobody
+    but this pipeline writes the zone (PROPOSALS.md);
+  - the delegations, NS, TTL 300: `dev.tacplus.dev` to the dev zone, `_acme-challenge.tacplus.dev` to the challenge
+    zone (#6).
+
+`apply:dev` prints the values of the steps below in its outputs: `zone` (its `name_servers`, the registrar's values) and
+`gateway_address` (the IP the hostnames get), and `dns_name_servers` and `deployments` (the delegations').
+
+**The DNS check.** The drift job's `ci/dns.sh` asks 8.8.8.8 and 1.1.1.1 for each record set of the new zone but its SOA,
+its NS among them, and each answer that differs is a `dns tacplus-dev: ...` line of the drift issue, during the cutover
+and after it. Until the registrar names the new zone, that is its NS, and any record the two zones do not share.
+
+**The steps, propagation first.** The old zone is `tacplus-dev` in jody1-328023; its NS TTL is 21600 s (6 h), the
+`.dev` registry's 10800 s (3 h), and a resolver may keep a delegation up to 48 h.
+
+1. **Lower the TTLs (the hub), at least one old TTL before step 3:** the records that change, the old zone's own NS and
+   `seatrials.tacplus.dev` (600 s), to 300 s:
+   ```sh
+   z="--zone=tacplus-dev --project=jody1-328023"
+   gcloud dns record-sets update tacplus.dev. --type=NS --ttl=300 $z \
+     --rrdatas="$(gcloud dns record-sets describe tacplus.dev. --type=NS $z --format='value(rrdatas.list(separator=","))')"
+   gcloud dns record-sets update seatrials.tacplus.dev. --type=A --ttl=300 $z --rrdatas=146.148.80.132
+   ```
+2. **The new zone (the pipeline):** `apply:dev` creates it with the same records, plus the hostnames on the new address
+   and the delegations. The hub then gives the old zone the same records, so that both zones answer alike whichever a
+   resolver asks: `dev.tacplus.dev.` NS, TTL 300, to `dns_name_servers`, and the hostnames A to `gateway_address`
+   (`gcloud dns record-sets create` or `update` in the old zone, `--ttl=300`). `_acme-challenge.tacplus.dev.` moves to the
+   new challenge zone's name servers (`deployments`) with seatrials' move (Certificates). Then the drift issue lists only
+   the NS of `tacplus.dev.`.
+3. **The registrar (Jody, only he can),** once seatrials' pipeline writes its challenges in `tacplus-dev` (Certificates,
+   the move to its identity there): the new zone delegates `_acme-challenge.tacplus.dev` to that zone only, so an order
+   from the interim zone in jody1-328023 would fail. At the registrar of `tacplus.dev`, the name servers become the four of
+   `apply:dev`'s output `zone.name_servers`, exactly as printed, without the trailing dot (e.g.
+   `ns-cloud-b1.googledomains.com`). No DS record is added (the old zone has none, and the domain is unsigned); signing
+   it, with the new zone's DS, is a later step (PROPOSALS.md). Check, the registry's answer:
+   `dig +noall +authority +norecurse NS tacplus.dev @"$(dig +short NS dev. | head -1)"` gives the new four.
+4. **Both zones serve, unchanged, for 48 h** after step 3 (the old NS TTL and the registry's are within it). A record
+   changed meanwhile is changed in both: the new zone's by a commit (`modules/settings`), the old zone's by the hub. The
+   DNS check reports nothing once every resolver has the new name servers.
+5. **Then the old zone is retired** with the rest of jody1-328023 (`gcloud dns managed-zones delete tacplus-dev
+   --project=jody1-328023`, its records deleted first). From then on a record of `tacplus.dev` is a commit here.
 
 ## People
 

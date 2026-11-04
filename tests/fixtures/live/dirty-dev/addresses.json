@@ -1,0 +1,5 @@
+[
+  {"name": "gateway", "address": "203.0.113.10", "addressType": "EXTERNAL", "ipVersion": "IPV4", "status": "IN_USE"},
+  {"name": "hand-global", "address": "203.0.113.11", "addressType": "EXTERNAL", "ipVersion": "IPV4", "status": "RESERVED"},
+  {"name": "hand-lb", "address": "198.51.100.7", "addressType": "EXTERNAL", "region": "https://www.googleapis.com/compute/v1/projects/dirty-dev/regions/us-central1", "status": "RESERVED"}
+]

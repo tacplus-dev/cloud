@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#7).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#13).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -58,6 +58,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   `tacplus-ci` and `tacplus-dev` with the same checks, for what no state holds; GKE's own internal `gke-*` rules are not
   reported for port 22. Tested with plan and live fixtures and the stacks' plan tests, against mocks and a stub gcloud
   only; the runner VMs are not spot (moot: they go with #11).
+- **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
+  (`prevent_destroy`) for the Gateway's load balancer, and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
+  only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
+  hostnames (`seatrials.tacplus.dev`, `idp.test.tacplus.dev`) A to the address, and the delegations of
+  `dev.tacplus.dev` and `_acme-challenge.tacplus.dev`; `apply:dev` prints the zone's name servers for the registrar.
+  `ci/policy.sh` refuses a global address without `prevent_destroy` in the source, and in a plan any other external
+  address and any external forwarding rule; the live audit reports them. The drift job's DNS check (`ci/dns.sh`)
+  compares 8.8.8.8's and 1.1.1.1's answers with the zone. The cutover (TTLs first, the registrar's name servers, both
+  zones for 48 h) is in the README; nothing of it is done. IPv4 only (PROPOSALS.md). Tested with the stacks' plan
+  tests, plan, source and live fixtures, and a stub gcloud and dig; `ci/dns.sh` also run against the real resolvers.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -74,7 +84,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
-  (README, Before the first pipeline); the dev zone's delegation is a record in jody1-328023 (README). The runners are
+  (README, Before the first pipeline); until Jody's registrar change, tacplus.dev resolves through the zone in
+jody1-328023, which the hub keeps alike (README, The tacplus.dev cutover). The test IdP's own load balancer and address
+in jody1-328023 do not carry over: in the new cluster it is behind the Gateway (PROPOSALS.md). The runners are
   registered paused and the cluster is empty until the later move off jody1-328023; with no host Docker socket, the
   jobs that use one (looper-docker, the host-socket gates) must move to build jobs first (looper#71). The build jobs
   do not use the cache yet: tacplus-dev/build's jobs need its `id_tokens` and BuildKit and compiler cache

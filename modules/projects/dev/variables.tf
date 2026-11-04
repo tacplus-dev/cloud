@@ -70,6 +70,28 @@ variable "dns" {
   })
 }
 
+variable "zone" {
+  description = "The domain's own zone (tacplus.dev), written only by this pipeline (#13): its zone name, its domain (with the trailing dot) and the records copied from the zone it replaces (names with the trailing dot, rrdatas as Cloud DNS writes them). The deployments' hostnames, to the gateway's address, and the delegations of the dev zone and the challenge zones are added to them."
+  type = object({
+    zone   = string
+    domain = string
+    records = list(object({
+      name    = string
+      type    = string
+      ttl     = number
+      rrdatas = list(string)
+    }))
+  })
+  validation {
+    condition     = alltrue([for r in var.zone.records : (r.name == var.zone.domain || endswith(r.name, ".${var.zone.domain}")) && r.type != "SOA" && !(r.type == "NS" && r.name == var.zone.domain)])
+    error_message = "A copied record is outside the zone's domain, or is its SOA or its own NS: Cloud DNS writes those."
+  }
+  validation {
+    condition     = length(distinct([for r in var.zone.records : "${r.name} ${r.type}"])) == length(var.zone.records)
+    error_message = "Two copied records have the same name and type: one record set each."
+  }
+}
+
 variable "cluster_pipeline" {
   description = "The cluster pipeline's identity: its service account's ID, the GitLab project it federates (protected main only), and the pool and provider names."
   type = object({
@@ -81,11 +103,12 @@ variable "cluster_pipeline" {
 }
 
 variable "deployments" {
-  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, and its identity's service account ID and provider name."
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name."
   type = map(object({
     gitlab_project = string
     environment    = string
     domain         = string
+    hostnames      = list(string)
     account_id     = string
     wif_provider   = string
   }))

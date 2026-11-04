@@ -41,3 +41,20 @@ output "deployments" {
     }
   }
 }
+
+output "gateway_address" {
+  description = "The Gateway's address: its name, which the Gateway names (spec.addresses, type NamedAddress), and its IP."
+  value = {
+    name    = google_compute_global_address.gateway.name
+    address = google_compute_global_address.gateway.address
+  }
+}
+
+output "zone" {
+  description = "The domain's zone: its name, its domain, and its name servers, the values the registrar is given (README, The tacplus.dev cutover)."
+  value = {
+    name         = google_dns_managed_zone.zone.name
+    domain       = google_dns_managed_zone.zone.dns_name
+    name_servers = google_dns_managed_zone.zone.name_servers
+  }
+}

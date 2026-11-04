@@ -97,12 +97,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   servers; the interim secrets and zone are deleted. Why: a zone and a secret cannot move between projects, and a new
   order would spend Let's Encrypt's duplicate-certificate budget (tacplus-dev/fleet-seatrials#4); written as a runbook
   with the move, or the dev stack's apply printing the steps.
-- **The challenge zone's delegation in a stack** (looper, #6). What: the NS records of `_acme-challenge.<domain>.` (and
+- **The challenge zone's delegation in a stack** (looper, #6): done by #13 (tacplus.dev's zone in the dev stack
+  delegates both; until the registrar names it, the old zone's copies are the hub's: README, The tacplus.dev cutover). What: the NS records of `_acme-challenge.<domain>.` (and
   `dev.tacplus.dev.`'s) made by the pipeline, once tacplus.dev's zone is under the parent folder. Why: today they are hand
   steps in jody1-328023, which the nightly drift does not see.
 - **DS records for the delegated zones** (looper, #6). What: the challenge zone's (and the dev zone's) DS record in its
   parent, from the zone's DNSSEC keys. Why: both zones sign, but with NS records only the delegation is insecure, so
-  resolvers do not validate their answers.
+  resolvers do not validate their answers. Since #13 the parent is in the same stack, so the DS records can be
+  `google_dns_record_set`s from each zone's keys (`google_dns_keys`); they matter once tacplus.dev itself is signed at
+  the registry (below, Sign tacplus.dev).
 - **The 2026-11-03 network and node-pool rules in the stacks, and plan checks that refuse violations** (looper, #7,
   2026-11-03). What: the org policy `compute.vmExternalIpAccess` denied to all (since #8, the host organization's to
   set: README, What the host organization provides, lists it once it does); the IAP SSH rule removed from `ci` (the
@@ -121,7 +124,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   stop only the pipeline and the live audit only reports; a folder policy would enforce the rules against a rule made by
   hand. Its first apply must check that `roles/owner` on the parent folder may set one, and that GKE's own rules still
   work under it.
-- **No regional external address in the stacks** (looper, #7, 2026-11-04). What: `ci/policy.sh plan` refuses a
+- **No regional external address in the stacks** (looper, #7, 2026-11-04): done by #13 (with any external address but
+  `gateway`, and any external forwarding rule, in a plan and in the live audit). What: `ci/policy.sh plan` refuses a
   `google_compute_address` whose `address_type` is `EXTERNAL` (the default): a proxy-based load balancer takes a global
   address (#13), and Cloud NAT allocates its own (`AUTO_ONLY`). Why: a regional external address is for a VM or a
   passthrough load balancer, both of which the rules exclude; today only `compute.vmExternalIpAccess` and the access-config
@@ -151,3 +155,27 @@ the looper then marks it `promoted` or `declined` here with the date.
   lock files are not a format it knows): the providers are covered by govulncheck on their binaries instead. If a
   manifest it reads is ever added (a go.mod, a Dockerfile), it is scanned with no change. Why: so that nobody reads
   "OSV-Scanner: no finding" as "the providers are clean".
+- **Sign tacplus.dev** (looper, #13, 2026-11-04). What: once the cutover is over (README, The tacplus.dev cutover), the
+  new zone's DS record (`gcloud dns dns-keys list --zone=tacplus-dev --project=tacplus-dev`, the key-signing key's
+  `ds_record`), given by the dev stack as an output, at the registrar: Jody's step, like the name servers. Why: the zone
+  signs (DNSSEC on), but the registry has no DS for tacplus.dev (the old zone had none), so resolvers do not validate
+  it; adding one during the cutover would break resolution through the old, unsigned zone.
+- **IPv6 on the Gateway** (looper, #13, 2026-11-04). What: a second global address `gateway-v6` (`ip_version = "IPV6"`,
+  `prevent_destroy`), admitted by `ci/policy.sh` beside `gateway`, and the hostnames' AAAA records to it, once a Gateway
+  of class `gke-l7-global-external-managed` on the dev cluster is shown to take both addresses (two `NamedAddress`
+  entries in `spec.addresses`), or the IPv6 one on a Gateway of its own. Why: the issue asks for IPv6 if the Gateway
+  takes it; GKE's GatewayClass capabilities list one static global address for that class and say nothing of IPv6, so it
+  is unverified until the cluster runs, and an address reserved for a Gateway that cannot use it would be a public IP
+  serving nothing.
+- **The test IdP behind the Gateway** (looper, #13, 2026-11-04). What: tacplus-dev/fleet-seatrials' test IdP (its
+  `test-idp/`, today a GKE Ingress with a load balancer of its own on the global address `test-idp`, whose A record its
+  pipeline writes into the zone `tacplus-dev`) served as an HTTPRoute for `idp.test.tacplus.dev` on the Gateway, with a
+  certificate the Gateway serves; `test-idp-deploy` loses its write on the zone. Why: in the new cluster the gateway's address
+  is the one public IP and only this pipeline writes tacplus.dev's zone (#13), which already points
+  `idp.test.tacplus.dev` at the gateway; the policy refuses a second global address and the audit reports one. A
+  fleet-seatrials change, with its retarget to the new cluster.
+- **The DNS check against both zones during the cutover** (looper, #13, 2026-11-04). What: `ci/dns.sh` also lists the
+  zone in jody1-328023, while it exists, and reports a record the two zones do not share. Why: until the registrar's
+  change has propagated, resolvers may ask either zone; today the hub keeps them alike by hand, and a difference shows
+  only once a resolver answers from the old one. The drift job's identity has no read on jody1-328023, so this needs
+  that grant, or the check run by the hub.

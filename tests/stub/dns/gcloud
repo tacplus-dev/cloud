@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/dns_test.sh: it answers the one list ci/dns.sh runs, a zone's record sets, from
+# STUB_DNS/<project>/<zone>.json; a zone with no file is refused, as the API refuses one. Every call is logged
+# (STUB_LOG, one line each); any other command fails loudly.
+set -euo pipefail
+echo "gcloud $*" >> "$STUB_LOG"
+project='' zone='' format='' words=()
+for a in "$@"; do
+  case $a in
+    --project=*) project=${a#*=} ;;
+    --zone=*) zone=${a#*=} ;;
+    --format=*) format=${a#*=} ;;
+    --*) echo "stub gcloud: a flag ci/dns.sh does not pass: $a" >&2; exit 99 ;;
+    *) words+=("$a") ;;
+  esac
+done
+[ "${words[*]}" = "dns record-sets list" ] && [ "$format" = json ] && [ -n "$project" ] && [ -n "$zone" ] ||
+  { echo "stub gcloud: not the list ci/dns.sh runs: $*" >&2; exit 99; }
+f=$STUB_DNS/$project/$zone.json
+[ -f "$f" ] || { echo "ERROR: (gcloud.dns.record-sets.list) HTTPError 404: stub: no zone $zone in $project" >&2; exit 1; }
+cat "$f"

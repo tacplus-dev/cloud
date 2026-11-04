@@ -6,8 +6,11 @@
 # pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
 # spot=true, #7), the dev zone and the
 # cluster pipeline's identity, federated from tacplus-dev/cluster's protected main alone, and each deployment's
-# certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6). (A test sees
-# a module's resources only when it runs that module itself.)
+# certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6), and the
+# gateway's one global address, kept from destruction (ci/policy.sh checks prevent_destroy and that no other external
+# address is in a plan), and tacplus.dev's zone: its copied records, the deployment's hostnames to that address, the
+# delegations, and its name servers for the registrar (#13). (A test sees a module's resources only when it runs that
+# module itself.)
 
 mock_provider "google" {
   mock_data "google_active_folder" {
@@ -22,6 +25,12 @@ mock_provider "google" {
   }
   mock_resource "google_iam_workload_identity_pool" {
     defaults = { name = "projects/555/locations/global/workloadIdentityPools/gitlab-com" }
+  }
+  mock_resource "google_compute_global_address" {
+    defaults = { address = "203.0.113.10" }
+  }
+  mock_resource "google_dns_managed_zone" {
+    defaults = { name_servers = ["ns-cloud-b1.googledomains.com.", "ns-cloud-b2.googledomains.com.", "ns-cloud-b3.googledomains.com.", "ns-cloud-b4.googledomains.com."] }
   }
 }
 
@@ -43,6 +52,14 @@ run "stack" {
   assert {
     condition     = output.deployments["seatrials"].secrets.tls == "projects/tacplus-dev/secrets/tls-seatrials" && output.deployments["seatrials"].secrets.acme_account == "projects/tacplus-dev/secrets/acme-account-seatrials" && output.deployments["seatrials"].challenge_zone == "acme-challenge-tacplus-dev"
     error_message = "The stack does not give seatrials its certificate secrets and tacplus.dev's challenge zone."
+  }
+  assert {
+    condition     = output.gateway_address == { name = "gateway", address = "203.0.113.10" }
+    error_message = "The stack does not give the Gateway its address's name and IP."
+  }
+  assert {
+    condition     = output.zone.name == "tacplus-dev" && output.zone.domain == "tacplus.dev." && length(output.zone.name_servers) == 4
+    error_message = "The stack does not print tacplus.dev's zone and its name servers, the registrar's values."
   }
 }
 
@@ -72,6 +89,14 @@ run "dev" {
       control_plane = "172.16.0.0/28"
     }
     dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
     cluster_pipeline = {
       account_id     = "cluster-admin-pipeline"
       gitlab_project = "tacplus-dev/cluster"
@@ -79,7 +104,7 @@ run "dev" {
       provider       = "tacplus-dev-cluster"
     }
     deployments = {
-      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
     }
   }
 
@@ -155,6 +180,30 @@ run "dev" {
     condition     = google_dns_managed_zone_iam_binding.acme_challenge["seatrials"].role == "roles/dns.admin" && google_dns_managed_zone_iam_binding.acme_challenge["seatrials"].members == toset([google_service_account.deploy["seatrials"].member])
     error_message = "Someone besides the seatrials pipeline administers its challenge zone, or the pipeline does not."
   }
+  assert {
+    condition     = google_compute_global_address.gateway.name == "gateway" && google_compute_global_address.gateway.address_type == "EXTERNAL" && google_compute_global_address.gateway.ip_version == "IPV4"
+    error_message = "The gateway's address is not the global external IPv4 address gateway."
+  }
+  assert {
+    condition     = google_dns_managed_zone.zone.name == "tacplus-dev" && google_dns_managed_zone.zone.dns_name == "tacplus.dev." && google_dns_managed_zone.zone.dnssec_config[0].state == "on"
+    error_message = "The domain's zone is not tacplus-dev for tacplus.dev, with DNSSEC."
+  }
+  assert {
+    condition     = toset(keys(google_dns_record_set.gateway)) == toset(["seatrials.tacplus.dev.", "idp.test.tacplus.dev."]) && alltrue([for r in google_dns_record_set.gateway : r.type == "A" && r.ttl == 300 && r.rrdatas == tolist([google_compute_global_address.gateway.address]) && r.managed_zone == "tacplus-dev"])
+    error_message = "The deployment's hostnames are not A records of the zone to the gateway's address."
+  }
+  assert {
+    condition     = toset(keys(google_dns_record_set.copied)) == toset(["tacplus.dev. A", "www.tacplus.dev. CNAME"]) && google_dns_record_set.copied["www.tacplus.dev. CNAME"].rrdatas == tolist(["tacplus-dev.github.io."]) && google_dns_record_set.copied["tacplus.dev. A"].ttl == 3600
+    error_message = "The zone does not hold the copied records as they are."
+  }
+  assert {
+    condition     = toset(keys(google_dns_record_set.delegation)) == toset(["dev.tacplus.dev.", "_acme-challenge.tacplus.dev."]) && google_dns_record_set.delegation["dev.tacplus.dev."].rrdatas == google_dns_managed_zone.dev.name_servers && google_dns_record_set.delegation["_acme-challenge.tacplus.dev."].rrdatas == google_dns_managed_zone.acme_challenge["seatrials"].name_servers && alltrue([for r in google_dns_record_set.delegation : r.type == "NS" && r.managed_zone == "tacplus-dev"])
+    error_message = "The zone does not delegate dev.tacplus.dev and _acme-challenge.tacplus.dev to their zones' name servers."
+  }
+  assert {
+    condition     = output.zone.name_servers == google_dns_managed_zone.zone.name_servers && output.gateway_address.address == google_compute_global_address.gateway.address
+    error_message = "The module does not give the zone's name servers, the registrar's values, and the gateway's address."
+  }
 }
 
 run "x86_nodes_refused" {
@@ -183,6 +232,14 @@ run "x86_nodes_refused" {
       control_plane = "172.16.0.0/28"
     }
     dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
     cluster_pipeline = {
       account_id     = "cluster-admin-pipeline"
       gitlab_project = "tacplus-dev/cluster"
@@ -190,7 +247,7 @@ run "x86_nodes_refused" {
       provider       = "tacplus-dev-cluster"
     }
     deployments = {
-      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
     }
   }
   expect_failures = [var.cluster]
@@ -222,6 +279,14 @@ run "empty_normal_pool_refused" {
       control_plane = "172.16.0.0/28"
     }
     dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
     cluster_pipeline = {
       account_id     = "cluster-admin-pipeline"
       gitlab_project = "tacplus-dev/cluster"
@@ -229,7 +294,7 @@ run "empty_normal_pool_refused" {
       provider       = "tacplus-dev-cluster"
     }
     deployments = {
-      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
     }
   }
   expect_failures = [var.cluster]
@@ -261,6 +326,14 @@ run "shared_environment_refused" {
       control_plane = "172.16.0.0/28"
     }
     dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
     cluster_pipeline = {
       account_id     = "cluster-admin-pipeline"
       gitlab_project = "tacplus-dev/cluster"
@@ -269,9 +342,153 @@ run "shared_environment_refused" {
     }
     # Two pipelines would share one ACME account and one challenge zone.
     deployments = {
-      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
-      other     = { gitlab_project = "tacplus-dev/fleet-dev", environment = "seatrials", domain = "tacplus.dev", account_id = "other-deploy", wif_provider = "tacplus-dev-fleet-dev" }
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+      other     = { gitlab_project = "tacplus-dev/fleet-dev", environment = "seatrials", domain = "tacplus.dev", hostnames = [], account_id = "other-deploy", wif_provider = "tacplus-dev-fleet-dev" }
     }
   }
   expect_failures = [var.deployments]
+}
+
+run "hostname_outside_zone_refused" {
+  # A hostname the zone cannot hold.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.example.com"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [google_dns_managed_zone.zone]
+}
+
+run "copied_record_at_hostname_refused" {
+  # A copied record where the gateway's A record goes.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "seatrials.tacplus.dev.", type = "A", ttl = 600, rrdatas = ["146.148.80.132"] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [google_dns_managed_zone.zone]
+}
+
+run "copied_apex_ns_refused" {
+  # The zone's own name servers are Cloud DNS's, never copied.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "tacplus.dev.", type = "NS", ttl = 21600, rrdatas = ["ns-cloud-a1.googledomains.com."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [var.zone]
 }

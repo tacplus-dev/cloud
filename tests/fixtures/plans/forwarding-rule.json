@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_global_forwarding_rule.lb","type":"google_compute_global_forwarding_rule","change":{"actions":["create"],"after":{"name":"lb","load_balancing_scheme":"EXTERNAL_MANAGED","ip_address":null},"after_unknown":{"ip_address":true}}}]}

@@ -14,6 +14,10 @@
 #     no ports, 22, or a range covering it): no SSH anywhere, not even IAP, the one exception being the runners' internal
 #     rule, exactly as it is, until the runner VMs go (#11); a cluster without private nodes, a node pool with public
 #     ones (one that does not say inherits the cluster's), or a node pool whose image is not COS_CONTAINERD;
+#   - the one public IP (decisions/network-exposure-2026-11-03.md, #13): in a plan, an external address but the one
+#     global address `gateway` (the Gateway's load balancer's, the dev stack's), a regional external address, or an
+#     external forwarding rule (the Gateway's are GKE's, never a stack's); in the source, a global address without
+#     prevent_destroy, so that no apply destroys it and its IP with it;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -43,6 +47,12 @@ source_check() {
           [ -n "$n" ] && refuse "$f:$n: ${why[$re]}: ${line#"${line%%[![:space:]]*}"}"
         done < <(grep -nE "$re" "$f" 2>/dev/null)
       done
+      # A global address's block, to its closing brace at the start of a line, says prevent_destroy = true.
+      while IFS= read -r line; do
+        [ -n "$line" ] && refuse "$f:$line has no prevent_destroy: a public address outlives every apply"
+      done < <(awk '/^resource "google_compute_global_address" "/ { n = FNR; a = $3; gsub(/"/, "", a); p = 0 }
+        n && /^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
+        n && /^}/ { if (!p) print n ": google_compute_global_address." a; n = 0 }' "$f")
     done < <(find "$dir" -type d -name .terraform -prune -o -type f \( -name '*.tf' -o -name '*.tftpl' \) -print0 | sort -z)
   done
 }
@@ -84,6 +94,13 @@ plan_check() {
              (select(any($after.allow[]?; ssh) and ($after | runner_ssh | not))
               | "\($a) allows port 22 (SSH): no SSH anywhere, not even IAP")
            end),
+        (select(.type == "google_compute_address" and ($after.address_type // "EXTERNAL") == "EXTERNAL")
+         | "\($a) is an external address (a regional one): the only public IP is the global address gateway"),
+        (select(.type == "google_compute_global_address" and ($after.address_type // "EXTERNAL") == "EXTERNAL" and $after.name != "gateway")
+         | "\($a) is an external address: the only public IP is the global address gateway"),
+        (select(.type | IN("google_compute_forwarding_rule", "google_compute_global_forwarding_rule"))
+         | select(($after.load_balancing_scheme // "EXTERNAL") | IN("EXTERNAL", "EXTERNAL_MANAGED"))
+         | "\($a) is an external forwarding rule: the Gateway load balancer is GKE-made, on the global address gateway"),
         (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
         (select(.type == "google_container_node_pool")

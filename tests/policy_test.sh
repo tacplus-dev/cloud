@@ -10,7 +10,9 @@
 # template with an external address (an access config, or one known only after apply), an allow rule open to the
 # internet (0.0.0.0/0, ::/0, or no source at all), a rule allowing port 22 (a port, a range or all ports, either
 # direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, a pool
-# with public nodes or not on COS, and passes a plan that keeps them. Needs bash and jq.
+# with public nodes or not on COS, and passes a plan that keeps them; and the one public IP (#13): in the source, a
+# global address without prevent_destroy, and in a plan, an external address but the one global address `gateway`, or
+# an external forwarding rule (the Gateway's are GKE's, never a stack's). Needs bash and jq.
 #
 #   tests/policy_test.sh
 set -uo pipefail
@@ -39,6 +41,7 @@ refuses "a module with timestamp()" "timestamp(" source "$fx/policy/timestamp"
 refuses "a module with an image at :latest" ":latest" source "$fx/policy/latest"
 refuses "a module booting an image family" "an image family" source "$fx/policy/family"
 refuses "the repository and a bad module together" "google_service_account_key" source "$here/modules" "$fx/policy/key"
+refuses "a global address without prevent_destroy" "google_compute_global_address.gateway has no prevent_destroy" source "$fx/policy/unprotected-address"
 passes "a clean module" source "$fx/policy/clean"
 passes "this repository's modules and stacks" source "$here/modules" "$here/stacks"
 refuses "a missing directory" "no such directory" source "$fx/policy/none"
@@ -67,6 +70,10 @@ refuses "a plan widening the runners' SSH rule" "port 22" plan "$fx/plans/ssh-ex
 refuses "a plan with a cluster without private nodes" "private nodes" plan "$fx/plans/cluster-public-nodes.json"
 refuses "a plan with a pool with public nodes" "public nodes" plan "$fx/plans/pool-public-nodes.json"
 refuses "a plan with a pool not on COS" "Container-Optimized OS" plan "$fx/plans/pool-not-cos.json"
+refuses "a plan with a regional external address" "google_compute_address.lb is an external address" plan "$fx/plans/address-regional.json"
+refuses "a plan with a second global address" "module.dev.google_compute_global_address.other is an external address" plan "$fx/plans/address-second.json"
+refuses "a plan with an external forwarding rule" "google_compute_global_forwarding_rule.lb is an external forwarding rule" plan "$fx/plans/forwarding-rule.json"
+passes "a plan with the gateway's address, internal ones and a deleted one" plan "$fx/plans/address-clean.json"
 passes "a plan keeping the network rules" plan "$fx/plans/network-clean.json"
 passes "a plan deleting an SSH rule" plan "$fx/plans/ssh-deleted.json"
 echo '{' > "${tmp:=$(mktemp)}"

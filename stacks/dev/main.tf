@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
-# certificate secrets and challenge zones. Its folder is the folder stack's; its billing account is the bootstrap
+# certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone. Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
 variable "parent_folder" {
@@ -50,7 +50,8 @@ module "dev" {
     services      = "10.28.0.0/20"
     control_plane = "172.16.0.0/28"
   }
-  dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+  dns  = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+  zone = module.settings.zone
   cluster_pipeline = {
     account_id     = "cluster-admin-pipeline"
     gitlab_project = "tacplus-dev/cluster"
@@ -78,4 +79,12 @@ output "cluster_pipeline" {
 
 output "deployments" {
   value = module.dev.deployments
+}
+
+output "gateway_address" {
+  value = module.dev.gateway_address
+}
+
+output "zone" {
+  value = module.dev.zone
 }
