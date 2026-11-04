@@ -11,3 +11,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-03 looper issue Certificate secrets per deployment and a delegated _acme-challenge zone; only the deployment pipeline writes them (#6, da9e0e6)
 - 2026-11-03 looper issue Run in a folder handed to it, not an organization of its own: bootstrap and stacks take a parent folder (#8, 814594b)
 - 2026-11-04 looper issue Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, with an enforced security-exceptions.yaml (#10, 1cf15ed)
+- 2026-11-04 looper issue bootstrap.sh: gcloud lists the folder by bare ID, so the bootstrap cannot see the folder it created and refuses on re-run (Jody's bootstrap stopped) (#14, 5acf3f7)
