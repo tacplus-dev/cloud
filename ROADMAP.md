@@ -11,6 +11,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - ci: the shared build cache, pools whose job containers share VMs, one always-on VM (#5). Agent, at Jody's request, 2026-11-03 (`tacplus-dev/roadmap:decisions/looper-job-per-issue-2026-11-03.md`).
 - Certificate secrets per deployment and a delegated _acme-challenge zone, written only by the deployment pipeline (#6). Agent, at Jody's request, 2026-11-03 (`tacplus-dev/roadmap:decisions/certificates-by-pipeline-2026-11-03.md`).
 - Run in a folder that a host organization hands to it (today seabeam.net's `tacplus-dev`), with no organization of its own: the bootstrap and the stacks take a parent folder (#8). Agent, at Jody's request, 2026-11-03 (`tacplus-dev/roadmap:decisions/cloud-org-seabeam-2026-11-03.md`).
+- Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, an enforced security-exceptions.yaml (#10). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:suggestions/2026-11-04-the-deterministic-security-checks-in-the-pipelines-that-apply-infrastructure.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
