@@ -73,6 +73,10 @@ command -v jq >/dev/null || die "needs jq"
 
 # look CMD...: a reading gcloud command's output, or nothing when it fails (absent, or not visible).
 look() { gcloud "$@" 2>/dev/null || true; }
+# as_name TYPE: each line read as TYPE/ID, a bare numeric ID given its prefix (newer gcloud lists folders by it: cloud#14).
+as_name() { sed -E "s|^([0-9]+)\$|$1/\\1|"; }
+# list_folder: the folder bootstrap in the parent folder, by name (folders/ID), one line each.
+list_folder() { look resource-manager folders list --folder="$parent_id" --filter="displayName=$FOLDER" --format='value(name)' | as_name folders; }
 # has_binding POLICY-JSON ROLE MEMBER
 has_binding() { [ -n "$1" ] && jq -e --arg r "$2" --arg m "$3" '[.bindings[]? | select(.role == $r) | .members[]] | index($m)' <<< "$1" >/dev/null 2>&1; }
 
@@ -105,12 +109,12 @@ refuse() { refused+=("$*"); }
 
 parent_policy='' folder='' project='' linked='' enabled='' bucket='' bucket_policy='' sa='' sa_policy='' project_policy='' pool='' provider='' number=''
 parent_policy=$(look resource-manager folders get-iam-policy "$parent_id" --format=json)
-folder=$(look resource-manager folders list --folder="$parent_id" --filter="displayName=$FOLDER" --format='value(name)')
+folder=$(list_folder)
 [ "$(grep -c . <<< "$folder")" -le 1 ] || refuse "more than one folder $FOLDER in $parent: $folder"
 project=$(look projects describe "$PROJECT" --format=json)
 if [ -n "$project" ]; then
   state=$(jq -r '.lifecycleState' <<< "$project")
-  in=$(jq -r '"\(.parent.type)s/\(.parent.id)"' <<< "$project")
+  in=$(jq -r '.parent | if type == "string" then . else "\(.type)s/\(.id)" end' <<< "$project" | as_name folders)
   [ "$state" = ACTIVE ] || refuse "the project $PROJECT is $state"
   [ -n "$folder" ] && [ "$in" = "$folder" ] || refuse "the project $PROJECT is in $in, not in the folder $FOLDER (${folder:-none yet})"
   linked=$(look billing projects describe "$PROJECT" --format='value(billingAccountName)')
@@ -156,7 +160,7 @@ fi
 if [ -z "$folder" ]; then
   run "the folder $FOLDER in $parent" resource-manager folders create --display-name="$FOLDER" --folder="$parent_id" --format=none
   if [ "$dry" = 0 ]; then
-    folder=$(look resource-manager folders list --folder="$parent_id" --filter="displayName=$FOLDER" --format='value(name)')
+    folder=$(list_folder)
     [[ $folder =~ ^folders/[0-9]+$ ]] || die "the folder $FOLDER was created, but is not listed: run this again"
   else
     folder="folders/<the folder $FOLDER>"

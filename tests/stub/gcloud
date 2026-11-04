@@ -2,7 +2,8 @@
 # A stub gcloud for tests/bootstrap_test.sh, over a directory of state (STUB_STATE): each resource bootstrap.sh
 # looks at or creates is a file there, IAM policies one "role member" line per binding. Every call is logged
 # (STUB_LOG, one line each). It answers only the commands bootstrap.sh runs, in the forms it runs them; any other
-# fails the test loudly.
+# fails the test loudly. With STUB_BARE_IDS=1 it lists folders by their bare ID (352999330848), as newer gcloud does,
+# not by their name (folders/352999330848).
 set -euo pipefail
 st=$STUB_STATE
 echo "gcloud $*" >> "$STUB_LOG"
@@ -26,7 +27,9 @@ case $cmd in
     if [ "$(flag format)" = 'value(lifecycleState)' ]; then echo ACTIVE
     else jq -n --arg id "${words[3]}" '{name: "folders/\($id)", displayName: "parent", lifecycleState: "ACTIVE"}'; fi ;;
   "resource-manager folders get-iam-policy "*) [ -f "$st/parent" ] && [ "${words[3]}" = "$(cat "$st/parent")" ] || absent folder; policy parent ;;
-  "resource-manager folders list") [ "$(flag folder)" = "$(cat "$st/parent")" ] || absent folder; cat "$st/folder" 2>/dev/null || true ;;
+  "resource-manager folders list")
+    [ "$(flag folder)" = "$(cat "$st/parent")" ] || absent folder
+    if [ "${STUB_BARE_IDS:-0}" = 1 ]; then sed 's|^folders/||' "$st/folder" 2>/dev/null || true; else cat "$st/folder" 2>/dev/null || true; fi ;;
   "resource-manager folders create") echo folders/456 > "$st/folder"; echo "folders/$(flag folder)" > "$st/folder-parent" ;;
   "projects describe "*)
     [ -f "$st/project" ] || absent project

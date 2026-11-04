@@ -10,7 +10,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
-  idempotent, refuses what differs, `--dry-run`); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
+  idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
   cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every

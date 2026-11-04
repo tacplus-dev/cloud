@@ -10,7 +10,9 @@
 # or above it: those are the host's grants, which it reports), the pool, the provider (tacplus-dev/cloud's
 # protected main only) and the secrets; a second run is a no-op that changes nothing; a run after a partial one
 # creates only the rest; and it refuses, before changing anything, a bucket without versioning, a provider with
-# another condition, a project in another folder or a bucket of no project.
+# another condition, a project in another folder or a bucket of no project. With a gcloud that lists folders by their
+# bare ID (STUB_BARE_IDS), a run creates and then uses the folder, a second run is a no-op, and a run after one that
+# created only the folder creates the rest.
 # Needs bash and jq.
 #
 #   tests/bootstrap_test.sh
@@ -114,6 +116,27 @@ rm "$STUB_STATE/provider" "$STUB_STATE/secret-gitlab-token"
 boot --folder "$PARENT" --billing-account "$BILLING"
 [ "$rc" = 0 ] && [ "$(changes | tr '\n' ';')" = "gcloud iam workload-identity-pools providers create-oidc tacplus-dev-cloud;gcloud secrets create gitlab-token;" ] &&
   ok "after a partial run it creates only the rest" || fail "partial: rc $rc, ran [$(changes | tr '\n' ';')]"
+
+# A gcloud that lists folders by their bare ID (cloud#14): the folder it created is seen, and used.
+export STUB_BARE_IDS=1
+fresh
+boot --folder "$PARENT" --billing-account "$BILLING"
+[ "$rc" = 0 ] && jq -e '.parent == {type: "folder", id: "456"}' "$STUB_STATE/project" >/dev/null &&
+  ok "folders listed by bare ID: a run creates the folder, and the project in it" || fail "bare IDs, first run: rc $rc: $(cat "$work/out")"
+boot --folder "$PARENT" --billing-account "$BILLING"
+[ "$rc" = 0 ] && none_changed "bare IDs, the second run" && grep -q 'nothing to do' "$work/out" && grep -q 'the folder bootstrap exists: folders/456$' "$work/out" &&
+  ok "folders listed by bare ID: a second run is a no-op" || fail "bare IDs, second run: rc $rc: $(cat "$work/out")"
+jq '.parent = "folders/456"' "$STUB_STATE/project" > "$STUB_STATE/p" && mv "$STUB_STATE/p" "$STUB_STATE/project"
+boot --folder "$PARENT" --billing-account "$BILLING"
+[ "$rc" = 0 ] && none_changed "the project's parent by name" && grep -q 'nothing to do' "$work/out" &&
+  ok "a project whose parent is given by name (folders/ID) is in the folder" || fail "the project's parent by name: rc $rc: $(cat "$work/out")"
+fresh
+echo folders/456 > "$STUB_STATE/folder" && echo "folders/$PARENT" > "$STUB_STATE/folder-parent"
+boot --folder "$PARENT" --billing-account "$BILLING"
+[ "$rc" = 0 ] && ! changes | grep -q 'folders create' && jq -e '.parent == {type: "folder", id: "456"}' "$STUB_STATE/project" >/dev/null &&
+  [ -f "$STUB_STATE/secret-gitlab-token" ] && ok "folders listed by bare ID: after a run that created only the folder, it creates the rest" ||
+  fail "bare IDs, the folder alone: rc $rc, ran [$(changes | tr '\n' ';')]: $(cat "$work/out")"
+unset STUB_BARE_IDS
 
 refusal() { # refusal WHAT EXPECTED SETUP: a finished state changed by SETUP is refused, before any change
   local what=$1 want=$2
