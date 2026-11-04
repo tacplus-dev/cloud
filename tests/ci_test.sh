@@ -5,7 +5,7 @@
 # Tests ci/gitlab-project.gitlab-ci.yml and ci/pin.sh: the file parses; every job runs on the project's runner (tag
 # cloud), in the pinned image (by digest). The pipelines GitLab makes of it, by its workflow and its jobs' rules
 # (`extends` resolved): fmt, validate, tflint, shellcheck, policy and test in every pipeline, so every push and
-# merge request; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
+# merge request, with security on the nightly schedule too; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
 # manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
 # Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
 # run in order (folder, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
@@ -31,7 +31,7 @@ yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.ext
 q() { yq -r "$1" "$ci"; }
 
 mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
-want="tools,fmt,validate,tflint,shellcheck,policy,test,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
+want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
 [ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
 stages=" $(q '.stages | join(" ")') "
 for j in "${jobs[@]}"; do
@@ -89,7 +89,7 @@ pipeline() {
   )
 }
 
-lint="tools:on_success,fmt:on_success,validate:on_success,tflint:on_success,shellcheck:on_success,policy:on_success,test:on_success,"
+lint="tools:on_success,fmt:on_success,validate:on_success,tflint:on_success,shellcheck:on_success,policy:on_success,test:on_success,security:on_success,"
 stacks="plan:folder:on_success,apply:folder:on_success,plan:ci:on_success,apply:ci:on_success,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
 check() { # check WHAT WANT SOURCE BRANCH [VAR=VALUE...]
   local what=$1 want=$2 got; shift 2
@@ -119,7 +119,7 @@ for s in folder ci dev gitlab; do
 done
 ok "each apply needs its own plan and applies that saved plan, in its environment, one at a time"
 [ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:folder" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:folder" ] &&
-  [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test ]] &&
+  [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test,security ]] &&
   ok "the order: the checks, folder, then ci and dev, then gitlab" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
 
 for j in "${jobs[@]}"; do
@@ -130,6 +130,10 @@ done
 ok "only the plan, apply and drift jobs have an id_token"
 [[ $(q '.drift.script | join(" ")') == *'ci/drift.sh folder ci dev gitlab' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
   ok "drift plans every stack and never applies" || fail "drift: $(q '.drift.script')"
+[[ $(q '.security.script | join(" ")') == *'--unshallow'*'ci/tools.sh security && ci/security.sh' ]] &&
+  [ "$(q '.security.artifacts.paths | join(",")')" = src/security/ ] && [ "$(q '.security.artifacts.when')" = always ] &&
+  ok "security scans the full history with the pinned scanners, its report an artifact even when it fails" ||
+  fail "security: $(q '.security')"
 [ "$(q '[.[] | select(tag == "!!map") | .rules[]? | select(.when == "manual")] | length')" = 0 ] &&
   ok "no job is manual: production is not built, nothing waits for Jody" || fail "a job is manual"
 

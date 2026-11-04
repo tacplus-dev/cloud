@@ -9,6 +9,11 @@
 #   tools                       the pinned tools into bin/ (ci/tools.sh), the copy checked (ci/pin.sh --check)
 #   fmt, validate, tflint,      every push and merge request (ci/lint.sh, ci/checks.sh): no credential, no cloud;
 #   shellcheck, policy, test    test plans every stack against mock providers
+#   security                    every push, merge request and nightly schedule (ci/security.sh, #10): OSV-Scanner,
+#                               govulncheck -mode=binary on the pinned binaries, gitleaks on the tree and its
+#                               history, Trivy on this image; fails on a secret, or a HIGH or CRITICAL finding with
+#                               a fix that no unexpired security-exceptions.yaml entry accepts; its report the
+#                               artifact src/security/. No plan runs unless it passes.
 #   plan:<stack>                main: the plan, saved (ci/tofu.sh plan), refused if ci/policy.sh refuses it
 #   apply:<stack>               main, automatic once its plan succeeds: applies exactly that saved plan
 #                               (ci/tofu.sh apply); the stack's environment, one apply at a time
@@ -42,7 +47,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web|api|schedule)$/
 
 default:
-  image: ghcr.io/tacplus-dev/tacplus/build:2.5@sha256:021e7fcb6b4d807a42e4aa6a8ee21861d8a9cd8e8df54d7b31950d9d4960f208
+  image: ghcr.io/tacplus-dev/tacplus/build:2.5@sha256:82154c0263fb66e0b6533672a677d0c7a930b2883879a9191c84631cc0d4ce12
   tags: [cloud]
   interruptible: false
   before_script:
@@ -101,6 +106,18 @@ test:
   script:
     - cd src && ci/checks.sh
 
+# tacplus-dev/looper#49's floor, which tacplus-dev/build's checks never bring here. The full history, for gitleaks.
+security:
+  stage: lint
+  needs: [tools]
+  script:
+    - git -C src fetch -q --unshallow https://github.com/tacplus-dev/cloud.git "$CLOUD_COMMIT"
+    - cd src && ci/tools.sh security && ci/security.sh
+  artifacts:
+    when: always
+    paths: [src/security/]
+    expire_in: 30 days
+
 # The jobs that reach GCP: main only, never from a merge request, each with its id_token.
 .gcp:
   id_tokens:
@@ -133,7 +150,7 @@ test:
 plan:folder:
   extends: .plan
   stage: folder
-  needs: [tools, fmt, validate, tflint, shellcheck, policy, test]
+  needs: [tools, fmt, validate, tflint, shellcheck, policy, test, security]
   variables: { STACK: folder }
 
 apply:folder:

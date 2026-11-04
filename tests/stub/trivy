@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# A stub trivy for tests/security_test.sh: `image ... -o FILE IMAGE` writes STUB_TRIVY_JSON (no vulnerability:
+# {"Results": []}) to FILE, logs IMAGE to STUB_LOG if set, and exits STUB_TRIVY_RC (0).
+set -euo pipefail
+o=
+img=${*: -1}
+while [ $# -gt 0 ]; do [ "$1" = -o ] && o=$2; shift; done
+[ -z "${STUB_LOG:-}" ] || echo "trivy $img" >> "$STUB_LOG"
+if [ -n "${STUB_TRIVY_JSON:-}" ]; then cp "$STUB_TRIVY_JSON" "$o"; else echo '{"Results": []}' > "$o"; fi
+exit "${STUB_TRIVY_RC:-0}"

@@ -1,10 +1,11 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by the looper (#8).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#10).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest; OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
-  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, all pinned by checksum (`ci/tools.sh`). The `gitlab`
+  `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
+  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0,
+  govulncheck v1.1.4 (built from their modules with go1.27.3) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
@@ -48,7 +49,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-03 by th
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
-  when its fix ships (PROPOSALS.md). No job here runs the scan yet (PROPOSALS.md).
+  when its fix ships (PROPOSALS.md).
+- **Security job (#10):** `security` (`ci/security.sh`), on every push, merge request and nightly, before `plan:folder`:
+  OSV-Scanner on the tree, `govulncheck -mode=binary` on every pinned binary (the tools, the scanners, both providers,
+  GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
+  `security-exceptions.yaml` enforced (an expired entry fails); its report `security/report.json`, the artifact. Its
+  first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
+  standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**.
+  Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
+  the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Released / deployed:** nothing applied. No pipeline has run.
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its

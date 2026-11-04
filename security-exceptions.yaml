@@ -4,8 +4,10 @@
 # The known vulnerabilities this repository accepts, each until its expiry, in the form looper-scan reads
 # (tacplus-dev/looper#49: exactly id, reason, decided_by and expires, YYYY-MM-DD; tests/providers_test.sh checks it).
 # Found by `govulncheck -mode=binary` (symbols present) in the pinned binaries, each at its latest upstream release,
-# none with a fixed one (#3). The gitlab provider is not here: it is built from source with the fixes
-# (ci/gitlab-provider.sh). Track and bump: move each pin to the first upstream release with the fix and remove its
+# none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
+# The gitlab provider is not here: it is built from source with the fixes (ci/gitlab-provider.sh); nor are the
+# scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor the CI image's,
+# fixed by its digest. Track and bump: move each pin to the first upstream release with the fix and remove its
 # entries (PROPOSALS.md). The binaries, by pin:
 #
 #   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6866
@@ -13,6 +15,7 @@
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
 #   GitLab Runner v19.5.2 (stacks/ci/main.tf)             GO-2026-6603 6610 6611 6612 6617
 #   fleeting-plugin-googlecloud v1.3.1 (stacks/ci)        GO-2026-6603 6610 6611 6612 6617
+#   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
@@ -58,3 +61,7 @@ exceptions:
     reason: "x/net html raw-text rendering namespaces (OpenTofu, the google provider, tflint and its ruleset): no untrusted HTML is rendered. Fixed in x/net v0.62.0; no release of them with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
+  - id: GO-2025-3922
+    reason: "github.com/ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (the security job's secrets scan): memory leaks decoding corrupted LZMA archives. gitleaks decodes no archive here (--max-archive-depth is not set: archives are not scanned), and what it reads is this repository's tree and history. Fixed in xz v0.5.15; no gitleaks release with it yet."
+    decided_by: "jodydadescott (tacplus-dev/cloud#10, 2026-11-04: accept what has no fixed release, 30 days)"
+    expires: 2026-12-04

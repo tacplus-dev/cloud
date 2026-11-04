@@ -2,3 +2,4 @@
 .terraform/
 *.tfplan
 /plans/
+/security/

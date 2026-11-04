@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# A stub govulncheck for tests/security_test.sh: `-mode=binary -format json BINARY` prints STUB_GOVULNCHECK_JSON
+# (nothing: no finding) when BINARY's name is STUB_GOVULNCHECK_FOR (any, unset), and exits STUB_GOVULNCHECK_RC (0).
+set -euo pipefail
+b=${*: -1}
+[ -n "${STUB_GOVULNCHECK_JSON:-}" ] && [[ -z ${STUB_GOVULNCHECK_FOR:-} || $(basename "$b") == "$STUB_GOVULNCHECK_FOR" ]] &&
+  cat "$STUB_GOVULNCHECK_JSON"
+exit "${STUB_GOVULNCHECK_RC:-0}"

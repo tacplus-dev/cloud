@@ -33,7 +33,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   config (`google_folder_iam_audit_config` on the parent folder) for IAM and Secret Manager reads, in the folder stack,
   unless the host sets it above. Why: break-glass and the pipeline's secret reads are then traced beyond Admin
   Activity.
-- **Deterministic security checks in this pipeline** (nightly scan, 2026-11-03). What: a `security` job, run on every
+- **Deterministic security checks in this pipeline** (nightly scan, 2026-11-03): done by #10 (the `security` job,
+  `ci/security.sh`; the runners' default image is not scanned: the runners go with #11). What: a `security` job, run on every
   push and nightly, applying tacplus-dev/looper#49's floor to what this repository pins: `govulncheck -mode=binary` of
   the tools (`ci/tools.sh`), both providers (from the lock files), GitLab Runner and its fleeting plugin; Trivy on the CI
   image and the runners' default image; a checked-in `security-exceptions.yaml` with expiries; its JSON report as an
@@ -44,7 +45,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   upstream release that fixes its `security-exceptions.yaml` entries, and remove them: OpenTofu past 1.13.2 (x/net
   >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), the `google` provider past 8.9.0 and tflint past
   0.65.0 with its ruleset past 0.41.0 (x/net >= v0.62.0, x/crypto), GitLab Runner past v19.5.2 and
-  fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0); `ci/tools.sh` shas, `ci/lock.sh`, `stacks/ci/main.tf`.
+  fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
+  GO-2025-3922, accepted until 2026-12-04, #10); `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`.
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
 - **Drop the gitlab provider's build from source** (looper, #3). What: when gitlabhq/terraform-provider-gitlab
@@ -54,7 +56,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   and a fetch from gitlab.com, and it is ours to keep current; upstream's signed release is the normal path. Upstream
   has not been asked yet: its issues are on gitlab.com (gitlab-org/terraform-provider-gitlab; the GitHub mirror takes
   none), and this run had no gitlab.com account; the request is drafted on #3 for the hub to file.
-- **Enforce the exceptions' expiry** (looper, #3). What: the security job of the deterministic checks above fails on
+- **Enforce the exceptions' expiry** (looper, #3): done by #10 (the `security` job, not `ci/checks.sh`). What: the security job of the deterministic checks above fails on
   an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
   form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass
   one day and fail the next, which the plan and apply gates should not.
@@ -121,3 +123,16 @@ the looper then marks it `promoted` or `declined` here with the date.
   that is not the README's set, without setting one. Why: since #8 the guardrails are the host organization's
   (decided: option B), so a change there would reach these projects unseen; the host's own drift check covers its side
   only.
+- **Trivy on each platform of the CI image** (looper, #10). What: `ci/security.sh` scans the CI image's index for the
+  runner's platform only (Trivy's default); scan each platform the index holds (`--platform linux/arm64`, then
+  `linux/amd64`). Why: the jobs run on one platform today (arm64), but the image is multi-platform, and a job moved to
+  the other would run in an image never scanned.
+- **One security job for the three apply pipelines** (looper, #10). What: cloud, cluster and fleet-seatrials each run the
+  same floor (tacplus-dev/cluster#5, tacplus-dev/fleet-seatrials#36); one shared job file (a GitLab `include` of a
+  pinned commit) or looper-scan itself pinned into each `ci/tools.sh`, instead of three copies of the policy. Why: the
+  suggestion (`suggestions/2026-11-04-...`) asked for one shared job; `ci/security.sh` copies looper-scan's policy and
+  exceptions reader, which can drift from it.
+- **A better scan of the tree's dependencies** (looper, #10). What: OSV-Scanner reads no file of this tree (OpenTofu's
+  lock files are not a format it knows): the providers are covered by govulncheck on their binaries instead. If a
+  manifest it reads is ever added (a go.mod, a Dockerfile), it is scanned with no change. Why: so that nobody reads
+  "OSV-Scanner: no finding" as "the providers are clean".

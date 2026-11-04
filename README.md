@@ -37,8 +37,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`. |
-| `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry (below). |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`. |
+| `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
 ## How it runs
@@ -60,9 +60,10 @@ repository it plans and applies. Every job fetches this repository at that commi
 
 | Job | When | What |
 |---|---|---|
-| `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck and yq, pinned by version and SHA-256, and the gitlab provider built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
+| `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck, yq and gitleaks, pinned by version and SHA-256, and the gitlab provider built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). |
+| `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock; if anything differs, an issue here (one open at a time; a new drift is a comment). Never applies. |
@@ -74,7 +75,8 @@ that Jody plays, on a commit already applied to dev.
 ### Determinism
 
 - Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.65.0 and its google ruleset
-  0.41.0, shellcheck 0.11.0 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum database); the
+  0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
+  database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
   `google` 8.9.0 and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
   `-lockfile=readonly`), the `gitlab` one our own reproducible build (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, its packages from one Ubuntu
   archive snapshot; the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its
@@ -102,7 +104,34 @@ moves to the first upstream release with the fix (#3):
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
   TLS), and none of them has a fixed release yet.
 
-No job here runs the scan yet (PROPOSALS.md, deterministic security checks): the nightly agent scan does.
+- **Accepted until 2026-12-04** (#10): gitleaks v8.30.1's xz (GO-2025-3922), with no gitleaks release past it yet.
+
+The `security` job enforces it (below), on every pipeline.
+
+### Security checks
+
+tacplus-dev/looper#49's floor, in this pipeline (#10): tacplus-dev/build's checks, which run it elsewhere, never reach
+this one, which applies with the strongest credentials we have. `ci/security.sh`, the `security` job, on every push, merge
+request and nightly schedule:
+
+- **OSV-Scanner** on the tree's dependency manifests and lock files (the commit's tree; today it reads none of them:
+  the providers' lock files are OpenTofu's, and their binaries are scanned below);
+- **`govulncheck -mode=binary`** on every pinned binary the pipeline runs or installs, symbols present: OpenTofu, tflint
+  and its google ruleset, yq, gitleaks, OSV-Scanner, Trivy and govulncheck, the `gitlab` provider (`bin/`), the `google`
+  provider (from the lock files' hashes) and GitLab Runner and its fleeting plugin (from `stacks/ci/main.tf`'s pins)
+  (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
+- **gitleaks** on the tree and its whole history (the job fetches it: a shallow clone fails);
+- **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
+
+**The policy** is looper-scan's: it fails on any secret, and on any HIGH or CRITICAL finding that has a fixed version,
+unless an unexpired entry of `security-exceptions.yaml` names it (its ID or an alias); an entry that has expired, or
+whose fields are not exactly `id`, `reason`, `decided_by` and `expires` (YYYY-MM-DD), fails it too, and so does a tool
+that cannot run or a pinned binary missing. A failing `security` job stops the pipeline before `plan:folder`. The report:
+`security/report.json` (every finding: blocking, accepted or neither; the problems; the verdict), with each tool's own
+report in `security/raw/`; the job's artifact, kept 30 days. The vulnerability databases are the day's, so a commit
+that passed can fail the next night: fix the pin, or accept the finding with a reason and an expiry, at most 30 days.
+`tests/security_test.sh` tests it (a planted secret, an expired exception, a clean tree, the policy) with stubs for
+the scanners that need a database.
 
 ### How a change flows
 
@@ -392,8 +421,10 @@ accounts.
 ## Locally
 
 ```sh
-ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), shellcheck, yq, the gitlab provider
-                                 # (needs go, git, curl, unzip, xz)
+ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), shellcheck, yq, gitleaks, the gitlab
+                                 # provider (needs go, git, curl, unzip, xz, jq)
+ci/tools.sh security             # bin/: osv-scanner, trivy, govulncheck; bin/scan/: the binaries to scan (dpkg-deb)
+ci/security.sh                   # the security job: security/report.json (needs the full history)
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers
 bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run    # with your gcloud: changes nothing

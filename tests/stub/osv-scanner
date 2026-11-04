@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# A stub osv-scanner for tests/security_test.sh: `scan source ... --output FILE DIR` writes STUB_OSV_JSON (no
+# vulnerability: {"results": []}) to FILE and exits STUB_OSV_RC (0).
+set -euo pipefail
+o=
+while [ $# -gt 0 ]; do [ "$1" = --output ] && o=$2; shift; done
+if [ -n "${STUB_OSV_JSON:-}" ]; then cp "$STUB_OSV_JSON" "$o"; else echo '{"results": []}' > "$o"; fi
+exit "${STUB_OSV_RC:-0}"
