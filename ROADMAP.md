@@ -15,6 +15,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - No VMs outside GKE: the runner manager, runner pools, templates, MIGs and SSH rules removed from the stacks; a plan check refuses any (#11). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 - The 2026-11-03 network and node-pool rules in the stacks, with plan checks that refuse violations: no external IPs (org policy), no 0.0.0.0/0 ingress, no SSH, private COS nodes, a normal pool of 3 x c4a-standard-2 and a spot build pool of c4a-standard-4 from 0 to 3, a nightly live audit (#7). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:decisions/network-exposure-2026-11-03.md`, `cluster-node-pools-2026-11-03.md`).
 - gitlab stack: a read-only project token on tacplus-dev/build for the nightly recap, rotated, in Secret Manager (#12). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:suggestions/2026-11-04-let-the-recap-see-the-build-pipeline.md`).
+- dev: a reserved global static IP for the gateway's load balancer, the tacplus.dev zone written only by the pipeline in seabeam.net, and a TTL-first cutover with Jody's registrar name-server change (#13). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
