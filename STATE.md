@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#13).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#12).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -68,6 +68,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   compares 8.8.8.8's and 1.1.1.1's answers with the zone. The cutover (TTLs first, the registrar's name servers, both
   zones for 48 h) is in the README; nothing of it is done. IPv4 only (PROPOSALS.md). Tested with the stacks' plan
   tests, plan, source and live fixtures, and a stub gcloud and dig; `ci/dns.sh` also run against the real resolvers.
+- **The recap reads tacplus-dev/build (#12):** the gitlab stack makes `tacplus-looper-bot` a Reporter (20) of
+  tacplus-dev/build until 2027-10-01 (Jody's option B: the looper's `GITLAB_TOKEN`, no new secret; Free gitlab.com has no
+  project access tokens). The module's `members` take Guest or Reporter only, each with an expiry from the commit; the
+  drift job's expiry check (`ci/expiry.sh`) reports one past or within 30 days, and a commit renews it. Tested with the
+  stack's plan tests against mock providers and a fixture; not applied yet: `apply:gitlab` on main does it.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

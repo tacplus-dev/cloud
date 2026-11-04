@@ -43,3 +43,22 @@ variable "runners" {
     error_message = "A runner is group_type with a group, or project_type with a project."
   }
 }
+
+variable "members" {
+  description = <<-EOT
+    Memberships of users in projects, by PROJECT:USER (the project's path, the user's username): access_level
+    guest or reporter, never higher (the readers of a project this module does not otherwise manage, #12), and
+    expires_at, a date YYYY-MM-DD, always: renewing it is a commit of a later date (the drift job reports one within
+    30 days, ci/expiry.sh).
+  EOT
+  type = map(object({
+    access_level = string
+    expires_at   = string
+  }))
+  default = {}
+  validation {
+    condition = alltrue([for k, m in var.members :
+    can(regex("^[^:]+/[^:]+:[^:/]+$", k)) && contains(["guest", "reporter"], m.access_level) && can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", coalesce(m.expires_at, "-")))])
+    error_message = "A member is PROJECT:USER, guest or reporter (nothing higher), with expires_at a date YYYY-MM-DD."
+  }
+}

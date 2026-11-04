@@ -3,8 +3,9 @@
 #
 # The gitlab stack's plan against a stub GitLab and stub secrets (mock providers: no token, no cloud): the stack
 # plans, and its module, with the stack's inputs, gives protected settings, variables from Secret Manager by
-# version, and paused runners whose tokens go to Secret Manager only. (A test sees a module's resources only when
-# it runs that module itself.)
+# version, paused runners whose tokens go to Secret Manager only, and memberships of other projects that read
+# only (Reporter, 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module
+# itself.)
 
 mock_provider "google" {
   mock_data "google_project" {
@@ -22,6 +23,9 @@ mock_provider "gitlab" {
   mock_data "gitlab_group" {
     defaults = { group_id = 88 }
   }
+  mock_data "gitlab_user" {
+    defaults = { user_id = 99 }
+  }
 }
 
 run "stack" {
@@ -36,6 +40,20 @@ run "stack" {
   assert {
     condition     = toset(keys(output.runner_ids)) == toset(["shared", "deploy", "cluster"])
     error_message = "The stack does not register one runner per pool: shared, deploy and cluster."
+  }
+  # The looper's recap reads tacplus-dev/build as tacplus-looper-bot, through every looper job's GITLAB_TOKEN (#12,
+  # option B): Reporter, nothing higher, and an expiry.
+  assert {
+    condition     = keys(output.members) == ["tacplus-dev/build:tacplus-looper-bot"]
+    error_message = "The stack makes other members than tacplus-looper-bot of tacplus-dev/build."
+  }
+  assert {
+    condition     = output.members["tacplus-dev/build:tacplus-looper-bot"].access_level == "reporter" && output.members["tacplus-dev/build:tacplus-looper-bot"].user_id == 99 && output.members["tacplus-dev/build:tacplus-looper-bot"].project == "77"
+    error_message = "tacplus-looper-bot is not a Reporter (20) of tacplus-dev/build."
+  }
+  assert {
+    condition     = can(regex("^20[0-9]{2}-[01][0-9]-[0-3][0-9]$", output.members["tacplus-dev/build:tacplus-looper-bot"].expires_at))
+    error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
 }
 
@@ -59,6 +77,9 @@ run "gitlab" {
     runners = {
       group = { type = "group_type", group = "tacplus-dev", tags = ["arm64", "autoscale"], protected = false, paused = true, token_secret = "projects/tacplus-ci/secrets/runner-token-group" }
       proj  = { type = "project_type", project = "tacplus-dev/cloud", tags = ["cluster"], protected = true, paused = true, token_secret = "projects/tacplus-ci/secrets/runner-token-proj" }
+    }
+    members = {
+      "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
     }
   }
 
@@ -90,6 +111,14 @@ run "gitlab" {
     condition     = google_secret_manager_secret_version.runner_token["proj"].secret == "projects/tacplus-ci/secrets/runner-token-proj"
     error_message = "A runner's token does not go to its pool's secret."
   }
+  assert {
+    condition     = gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"].project == "77" && gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"].user_id == 99 && data.gitlab_user.member["tacplus-looper-bot"].username == "tacplus-looper-bot"
+    error_message = "A membership is not the user's of the project its key names."
+  }
+  assert {
+    condition     = alltrue([for m in gitlab_project_membership.member : contains(["guest", "reporter"], m.access_level) && m.expires_at != null])
+    error_message = "A membership is higher than Reporter (20), or does not expire."
+  }
 }
 
 run "latest_secret_refused" {
@@ -109,4 +138,44 @@ run "latest_secret_refused" {
     runners = {}
   }
   expect_failures = [var.projects]
+}
+
+# A membership higher than Reporter (20), or with no expiry, or not PROJECT:USER, is refused before any plan (#12).
+run "member_above_reporter_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    members  = { "tacplus-dev/build:tacplus-looper-bot" = { access_level = "developer", expires_at = "2027-10-01" } }
+  }
+  expect_failures = [var.members]
+}
+
+run "member_without_expiry_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    members  = { "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = null } }
+  }
+  expect_failures = [var.members]
+}
+
+run "member_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    members  = { "tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" } }
+  }
+  expect_failures = [var.members]
 }

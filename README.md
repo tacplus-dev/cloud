@@ -29,8 +29,10 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     which only this pipeline writes (below, The tacplus.dev cutover);
   - `prod` is designed but **not built**: see PRODUCTION.md.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
-  Secret Manager by version, never in this repository), and the runner registrations of the `ci` pools (registered
-  **paused**: moving the runners off jody1-328023 is a later issue).
+  Secret Manager by version, never in this repository), the runner registrations of the `ci` pools (registered
+  **paused**: moving the runners off jody1-328023 is a later issue), and the read-only memberships of other projects,
+  each with an expiry: `tacplus-looper-bot` a Reporter of tacplus-dev/build, for the looper's nightly recap (below,
+  Memberships).
 
 ## Layout
 
@@ -41,7 +43,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `dns` (the drift's DNS check), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -70,7 +72,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below); if anything differs or breaks them, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -304,6 +306,23 @@ When the pipeline itself is broken (its identity refused, its state locked, a ba
 
 Add the new token as the next version of `gitlab-token` (`gcloud secrets versions add ...`), change the version in
 `modules/settings` (`gitlab_token_secret`) in a commit, and let the pipeline run; then disable the old version.
+
+## Memberships
+
+The gitlab stack's `members` (`stacks/gitlab/main.tf`), by `PROJECT:USER`: memberships of projects whose other settings
+this repository does not manage, Guest or Reporter only (the module refuses anything higher), each with `expires_at`, a
+date in the commit (never computed: the plan is the commit's alone). Today one (#12, Jody's option B):
+
+- `tacplus-dev/build:tacplus-looper-bot`, **Reporter (20)**, until 2027-10-01: the looper's nightly recap reads
+  tacplus-dev/build's pipelines as `tacplus-looper-bot`, with the `GITLAB_TOKEN` (its personal access token
+  `looper-jobs`, `read_api`) every looper job holds. gitlab.com's Free tier has no project access tokens, and GitLab adds
+  no project bot to another project, so the bot is an ordinary member. tacplus-dev/build's code is public and its jobs
+  and artifacts hold no secret (its credentials come through WIF), so every looper job reading it adds little; if its
+  artifacts ever carry anything sensitive, this becomes a bot account of the recap's own, its token in Secret Manager.
+  Its expiry is the token's: renew both together.
+
+**Renewing one:** the drift job's expiry check (`ci/expiry.sh`) reports every `expires_at` of the stacks that is past or
+within 30 days, in the drift issue. A commit of a later date renews it; the pipeline applies it.
 
 ## The runners' image
 

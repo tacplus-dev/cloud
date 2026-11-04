@@ -39,6 +39,14 @@ module "gitlab" {
       }
     }
   }
+  # The looper's nightly recap reads tacplus-dev/build's pipelines as tacplus-looper-bot, a free bot account, with
+  # every looper job's GITLAB_TOKEN (#12, Jody's option B: tacplus-dev/build's code is public and its jobs and
+  # artifacts hold no secret, so Reporter read for every looper job adds little; if its artifacts ever carry anything
+  # sensitive, this becomes a bot of the recap's own). Free gitlab.com has no project access tokens. Reporter (20),
+  # nothing higher; the expiry is the bot's token's (looper-jobs, 2027-10-01), renewed by a commit with it.
+  members = {
+    "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
+  }
   # Registered paused: moving the runners off jody1-328023 is a later issue, which unpauses them.
   runners = {
     for k, p in module.settings.runner_pools : k => merge(p.runner, {
@@ -73,4 +81,8 @@ output "project_ids" {
 
 output "runner_ids" {
   value = module.gitlab.runner_ids
+}
+
+output "members" {
+  value = module.gitlab.members
 }
