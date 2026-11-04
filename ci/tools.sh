@@ -100,7 +100,9 @@ security() {
   # shellcheck source=ci/tofurc.sh
   source "$here/ci/tofurc.sh"
   for s in "$here"/stacks/*/; do
-    (cd "$s" && TF_PLUGIN_CACHE_DIR=$bin/scan/plugins "$bin/tofu" init -backend=false -input=false -lockfile=readonly -no-color >/dev/null) ||
+    # Its own data directory: the stack's .terraform/ is left as it was.
+    (cd "$s" && TF_DATA_DIR=$tmp/tf-$(basename "$s") TF_PLUGIN_CACHE_DIR=$bin/scan/plugins \
+      "$bin/tofu" init -backend=false -input=false -lockfile=readonly -no-color >/dev/null) ||
       die "tofu init ${s#"$here"/}: the providers to scan"
   done
   main=$here/stacks/ci/main.tf
