@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_region_instance_template.t","type":"google_compute_region_instance_template","change":{"actions":["create"],"after":{"network_interface":[{"subnetwork":"s","access_config":[],"ipv6_access_config":[{"network_tier":"PREMIUM"}]}]},"after_unknown":{}}}]}

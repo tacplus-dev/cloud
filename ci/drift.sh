@@ -6,6 +6,8 @@
 # state lock), and when anything differs, an issue on github.com/tacplus-dev/cloud saying what, filed through the
 # tacplus-reader app (github_app_token in ci/lib.sh, issues: write on this repository alone). One open issue at a
 # time: while it is open, a new drift is a comment on it, and the same drift again is nothing. It never applies.
+# A plan sees only what is in a stack's state, so the live audit (ci/audit.sh) then checks everything the projects
+# hold, hand-made or not, against the network rules ci/policy.sh refuses in a plan (#7): its findings are drift too.
 # (tacplus-dev/cluster ci/drift.sh is the pattern.)
 #
 #   ci/drift.sh STACK...    # sources ci/lib.sh; needs what ci/tofu.sh needs, and curl, jq, openssl
@@ -25,11 +27,13 @@ trap 'rm -rf "$tmp"' EXIT
 for stack in "$@"; do
   PLAN_SUMMARY=$tmp/summary "$here/tofu.sh" drift "$stack"
 done
+# shellcheck disable=SC2046 # one project ID a word
+"$here/audit.sh" $(ci_projects) | tee -a "$tmp/summary" || echo "live: the audit failed: see the job's log" | tee -a "$tmp/summary"
 [ -s "$tmp/summary" ] || { echo "drift: none"; exit 0; }
 
 mark="drift-sha256:$(sha256sum < "$tmp/summary" | cut -c1-16)"
 {
-  echo "The nightly drift check found the cloud accounts differ from $repo@${CLOUD_COMMIT:-unknown} (what an apply of each stack would change):"
+  echo "The nightly drift check found the cloud accounts differ from $repo@${CLOUD_COMMIT:-unknown} (what an apply of each stack would change, and, as \`live\`, what the projects hold against the network rules):"
   echo
   echo '```'
   cat "$tmp/summary"

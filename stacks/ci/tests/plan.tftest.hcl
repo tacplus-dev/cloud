@@ -3,7 +3,8 @@
 #
 # The ci stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no cloud):
 # the stack plans, and its module, with the stack's inputs, gives the runners, the buckets and the reader's key as
-# designed, and the settings give the pools Jody decided (#5). (A test sees a module's resources only when it runs
+# designed, with no SSH but the runners' internal rule and no external address (#7), and the settings give the pools
+# Jody decided (#5). (A test sees a module's resources only when it runs
 # that module itself.)
 
 mock_provider "google" {
@@ -120,6 +121,15 @@ run "ci" {
   assert {
     condition     = google_project.ci.folder_id == "folders/222" && google_project.ci.billing_account == "000000-111111-222222" && !google_project.ci.auto_create_network && google_project.ci.deletion_policy == "PREVENT"
     error_message = "The project is not in its folder, billed, without a default network and protected from deletion."
+  }
+  # The one port-22 rule, exactly as ci/policy.sh admits it, until the runner VMs go (#11); no IAP SSH (#7).
+  assert {
+    condition     = google_compute_firewall.manager_to_workers.direction == "INGRESS" && length(coalesce(google_compute_firewall.manager_to_workers.source_ranges, [])) == 0 && google_compute_firewall.manager_to_workers.source_tags == toset(["runner-manager"]) && google_compute_firewall.manager_to_workers.target_tags == toset(["runner-worker"]) && length(google_compute_firewall.manager_to_workers.allow) == 1 && one(google_compute_firewall.manager_to_workers.allow).protocol == "tcp" && one(google_compute_firewall.manager_to_workers.allow).ports == tolist(["22"])
+    error_message = "The runners' SSH rule is not the manager to its workers alone, by network tag, on port 22 alone."
+  }
+  assert {
+    condition     = length(google_compute_instance.manager.network_interface[0].access_config) == 0
+    error_message = "The runner manager has an external address."
   }
   assert {
     condition     = length(google_compute_instance_template.pool["no-account"].service_account) == 0

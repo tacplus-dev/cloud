@@ -1,0 +1,10 @@
+[
+  {
+    "name": "gke-dev-normal-1234",
+    "networkInterfaces": [
+      {
+        "networkIP": "10.20.0.5"
+      }
+    ]
+  }
+]

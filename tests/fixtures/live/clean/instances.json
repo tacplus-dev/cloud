@@ -1,0 +1,10 @@
+[
+  {
+    "name": "gke-dev-spot-1",
+    "networkInterfaces": [
+      {
+        "networkIP": "10.20.0.6"
+      }
+    ]
+  }
+]

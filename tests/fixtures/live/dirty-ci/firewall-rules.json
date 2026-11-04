@@ -1,0 +1,62 @@
+[
+  {
+    "name": "runner-manager-to-workers-ssh",
+    "direction": "INGRESS",
+    "sourceTags": [
+      "runner-manager"
+    ],
+    "targetTags": [
+      "runner-worker"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "22"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "hand-iap-ssh",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "35.235.240.0/20"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "22"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "hand-https",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "443"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "deny-world",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "denied": [
+      {
+        "IPProtocol": "all"
+      }
+    ]
+  }
+]

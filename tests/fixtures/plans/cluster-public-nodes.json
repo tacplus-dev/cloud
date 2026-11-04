@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_container_cluster.c","type":"google_container_cluster","change":{"actions":["create"],"after":{"name":"c","private_cluster_config":[]},"after_unknown":{}}}]}

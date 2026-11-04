@@ -113,7 +113,22 @@ the looper then marks it `promoted` or `declined` here with the date.
   tofu drift plan sees only what is in state, so hand-made additions need folder firewall policies or a live audit in
   the drift job (#7 Q7). Why: `decisions/network-exposure-2026-11-03.md` and `cluster-node-pools-2026-11-03.md` were
   applied by hand in jody1-328023; the pipeline must be the only agent of change, and `ci` and `dev` are built fresh.
-  Links: #7 (design and Jody's seven questions on the issue).
+  Links: #7 (design and Jody's seven questions on the issue). **Promoted** (ROADMAP, 2026-11-04) and done by #7: the
+  runner pools stay on demand and the internal SSH rule stays, admitted by name, until #11 removes the runner VMs.
+- **Folder firewall policies on `ci` and `dev`** (looper, #7, 2026-11-04; Jody's Q7 (a), "later"). What: a hierarchical
+  firewall policy on each folder denying tcp:22 from anywhere and ingress from outside the networks' private ranges and
+  Google's LB and health-check ranges (`130.211.0.0/22`, `35.191.0.0/16`), in the folder stack. Why: the plan checks
+  stop only the pipeline and the live audit only reports; a folder policy would enforce the rules against a rule made by
+  hand. Its first apply must check that `roles/owner` on the parent folder may set one, and that GKE's own rules still
+  work under it.
+- **No regional external address in the stacks** (looper, #7, 2026-11-04). What: `ci/policy.sh plan` refuses a
+  `google_compute_address` whose `address_type` is `EXTERNAL` (the default): a proxy-based load balancer takes a global
+  address (#13), and Cloud NAT allocates its own (`AUTO_ONLY`). Why: a regional external address is for a VM or a
+  passthrough load balancer, both of which the rules exclude; today only `compute.vmExternalIpAccess` and the access-config
+  check stand in the way, and they do not see a passthrough LB's forwarding rule.
+- **Drop the runners' SSH exception with the runner VMs** (looper, #7, 2026-11-04). What: when #11 removes the runner
+  VMs, remove `runner_ssh` from `ci/policy.sh` and its fixture case, and the README's exception. Why: it is admitted by
+  name only while those VMs exist.
 - **`GCP_PARENT_FOLDER` adopted by the gitlab stack** (looper, #8, 2026-11-03). What: the gitlab stack manages the
   protected variable `GCP_PARENT_FOLDER` (from its own `parent_folder`, with an import block, as `GCP_WIF_PROVIDER`).
   Why: today the hub sets it by hand (README, Before the first pipeline) and the nightly drift does not see it.

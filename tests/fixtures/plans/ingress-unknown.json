@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.unknown","type":"google_compute_firewall","change":{"actions":["create"],"after":{"name":"unknown","direction":"INGRESS","allow":[{"protocol":"tcp","ports":["443"]}]},"after_unknown":{"source_ranges":true}}}]}

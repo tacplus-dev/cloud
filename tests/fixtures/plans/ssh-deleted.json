@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.ssh","type":"google_compute_firewall","change":{"actions":["delete"],"before":{"name":"ssh","direction":"INGRESS","source_ranges":["0.0.0.0/0"],"allow":[{"protocol":"tcp","ports":["22"]}]},"after":null}}]}

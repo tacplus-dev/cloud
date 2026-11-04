@@ -39,10 +39,10 @@ module "dev" {
     name            = "dev"
     zone            = "${module.settings.region}-a"
     release_channel = "REGULAR"
-    machine_type    = "c4a-standard-4"
     disk_gb         = 100
-    min_nodes       = 1
-    max_nodes       = 3
+    # Jody, 2026-11-04 (#7): 3 x c4a-standard-2 on demand; builds on c4a-standard-4 spot, from 0 to 3.
+    normal = { machine_type = "c4a-standard-2", nodes = 3 }
+    spot   = { machine_type = "c4a-standard-4", max_nodes = 3 }
   }
   network = {
     nodes         = "10.20.0.0/20"

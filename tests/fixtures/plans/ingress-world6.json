@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.world6","type":"google_compute_firewall","change":{"actions":["create"],"after":{"name":"world6","direction":"INGRESS","source_ranges":["::/0"],"allow":[{"protocol":"tcp","ports":["443"]}]},"after_unknown":{}}}]}

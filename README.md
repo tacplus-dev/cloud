@@ -20,7 +20,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
     tacplus-reader app's KMS key (import-only, empty until the reader moves);
-  - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A nodes, private nodes), the DNS zone
+  - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
+    pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
+    below, The network rules), the DNS zone
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, and each
     deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates);
   - `prod` is designed but **not built**: see PRODUCTION.md.
@@ -37,7 +39,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -64,9 +66,9 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan. The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock; if anything differs, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below); if anything differs or breaks them, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -85,6 +87,36 @@ that Jody plays, on a commit already applied to dev.
   (`ci/policy.sh`), and the only inputs are the commit, the pins, and the cloud's state.
 - Nothing is applied that isn't in a reviewed commit: `apply` applies only the plan its pipeline saved, of `CLOUD_COMMIT`,
   a commit of main. Anything changed by hand shows up in the nightly drift.
+
+### The network rules
+
+`decisions/network-exposure-2026-11-03.md` and `cluster-node-pools-2026-11-03.md` (tacplus-dev/roadmap), with Jody's
+answers on #7 (2026-11-04), are in the stacks, and `ci/policy.sh plan` refuses every saved plan that breaks one, before it
+is applied:
+
+- **Only load balancers are public, and every one is proxy-based.** No instance or instance template has an external
+  address: an `access_config` or `ipv6_access_config`, or one known only after apply, is refused. The host organization's
+  `compute.vmExternalIpAccess` (below) makes the API refuse one too. Egress is through Cloud NAT, in both projects.
+- **No ingress from the internet:** a firewall rule allowing ingress from `0.0.0.0/0` or `::/0`, or from no source at all
+  (which is `0.0.0.0/0`), is refused, with no exception list: a proxy-based load balancer needs only Google's ranges
+  (`130.211.0.0/22`, `35.191.0.0/16`), whose rules GKE makes itself. A deny rule is not refused.
+- **No SSH anywhere, not even IAP:** a firewall rule allowing port 22 in either direction (`tcp` or `all` with no ports,
+  `22`, or a range covering it) is refused. The one exception, exactly as it is, is the runners' internal rule
+  `runner-manager-to-workers-ssh` (the manager to its workers, by network tag), which goes with the runner VMs (#11).
+  Break-glass on a VM is its serial console and its logs.
+- **Private nodes, on Container-Optimized OS:** a cluster without `private_cluster_config.enable_private_nodes`, a node pool
+  with public nodes, or one whose `image_type` is not `COS_CONTAINERD`, is refused. The control plane's endpoint stays
+  public (Jody, 2026-11-04).
+- **The pools:** `normal`, 3 x c4a-standard-2, on demand and fixed, runs the platform; `spot`, c4a-standard-4 spot from 0
+  to 3, labelled `spot=true` and tainted `spot=true:NoSchedule`, runs build pods only: only they tolerate the taint
+  (tacplus-dev/cluster#6). The dev stack's output `cluster` gives the label and the taint.
+
+A drift plan sees only what a stack has in its state, so a rule, a VM or a node pool made by hand is in none. The nightly
+**live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, cluster and node
+pool in `tacplus-ci` and `tacplus-dev` and runs the same checks on them; each finding is a `live <project>: ...` line of
+the drift issue. GKE's own internal rules (`gke-*` from the network's private ranges, which open every port, 22 among
+them, between nodes, pods and the control plane) are not reported for port 22. Folder firewall policies, which would
+enforce these rules rather than report them, come later (#7).
 
 ### Known vulnerabilities
 
@@ -185,6 +217,8 @@ The host organization's admin (its own pipeline, outside this repository) provid
   - `gcp.resourceLocations`: `in:us-central1-locations` (the region `modules/settings` names);
   - `storage.uniformBucketLevelAccess` and `storage.publicAccessPrevention`, enforced: no object ACL, no public bucket;
   - `compute.skipDefaultNetworkCreation`, enforced: no default network;
+  - `compute.vmExternalIpAccess`, denied to all, with no exception for nodes or VMs: only load balancers are public
+    (above, The network rules);
   - `iam.allowedPolicyMemberDomains`: the host's own directories (the readers below are of one of them).
 - **Who signs in as a person:** the accounts, the readers' and the break-glass account (below, Break-glass), are the
   host's directory's.
@@ -258,6 +292,7 @@ When the pipeline itself is broken (its identity refused, its state locked, a ba
 3. The fix is made as narrow as it can be: a stuck state lock is released with
    `tofu force-unlock <id>` in the stack (from a checkout at main, `ci/tools.sh`, `tofu init -lockfile=readonly`); an
    identity is restored with `bootstrap/bootstrap.sh` (it creates only what is missing); anything else with `gcloud`.
+   Never over SSH, which no rule admits: a VM is read through its serial console and its logs.
 4. Then it is made deterministic: the change is captured as a commit here and applied by the pipeline, or reverted. The
    next drift check must show no difference.
 
@@ -435,6 +470,8 @@ ci/lock.sh                       # after changing a provider's version, or ci/gi
 
 - Applies anything not in a plan saved by its own pipeline, of a commit of main.
 - Creates a service-account key, or grants anything to `allUsers` or `allAuthenticatedUsers`.
+- Gives a VM an external address, admits the internet to anything but a load balancer, or opens port 22 (above, The
+  network rules).
 - Deletes a project, a folder, the cluster or the reader's key: projects are `deletion_policy = PREVENT`, folders and the
   cluster deletion-protected, the key `prevent_destroy`. Deleting one is Jody's, on purpose.
 - Builds `prod`.

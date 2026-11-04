@@ -49,6 +49,14 @@ ci_gitlab() {
   echo "gitlab: the token of $secret"
 }
 
+# ci_projects: the projects the pipeline builds, one ID a line, as modules/settings names them (projects).
+ci_projects() {
+  local p
+  p=$(sed -n 's|^ *[a-z][a-z0-9]* *= *{ *folder *= *"[^"]*", *project *= *"\([a-z][a-z0-9-]*\)",.*|\1|p' "$ci_here/../modules/settings/main.tf")
+  [ -n "$p" ] || { echo "projects: modules/settings/main.tf names no project" >&2; return 1; }
+  echo "$p"
+}
+
 # ci_gitlab_secret: the GitLab token's secret version, as modules/settings names it.
 ci_gitlab_secret() {
   local s

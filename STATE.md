@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#10).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#7).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -11,12 +11,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
-  cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, `dev.tacplus.dev` zone,
+  cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
-  every plan. Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
+  every plan, and the network rules on every plan (#7, below). Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
   providers, the pipeline's rules, the plan/apply script, the policy, and the bootstrap against a stub gcloud.
 - **In a folder handed to it (#8):** no organization of its own: everything is under a parent folder the host
   organization hands over (README, What the host organization provides, and its hosting note), whose
@@ -46,6 +46,18 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   `_acme-challenge.<domain>` (only it holds `dns.admin`), all authoritative bindings. Tested against mock providers
   only. Interim: the same for tacplus.dev, by hand in jody1-328023 for `seatrials-deploy@jody1-328023`, with the
   commands in the README (Certificates), which the hub runs.
+- **The network rules of 2026-11-03 (#7):** `ci/policy.sh plan` refuses an instance or template with an external address
+  (or one unknown until apply), any allow rule from `0.0.0.0/0`/`::/0` or with no source (no exception list: every LB is
+  proxy-based), any rule allowing port 22 in either direction but the runners' internal `runner-manager-to-workers-ssh`
+  exactly as it is (it goes with #11), a cluster without private nodes and a pool with public nodes or not
+  `COS_CONTAINERD` (README, The network rules). The IAP SSH rule is gone from `ci`. In `dev`, the `arm64` pool is
+  replaced by `normal` (3 x c4a-standard-2, on demand, fixed) and `spot` (c4a-standard-4 spot, 0 to 3, label `spot=true`,
+  taint `spot=true:NoSchedule`, given in the stack's output `cluster` for tacplus-dev/cluster#6), both private and
+  `COS_CONTAINERD`; the control plane stays public (Jody). `compute.vmExternalIpAccess` (deny all) is on the README's list
+  of the host's org policies (since #8 this repository sets none). The drift job runs a live audit (`ci/audit.sh`) of
+  `tacplus-ci` and `tacplus-dev` with the same checks, for what no state holds; GKE's own internal `gke-*` rules are not
+  reported for port 22. Tested with plan and live fixtures and the stacks' plan tests, against mocks and a stub gcloud
+  only; the runner VMs are not spot (moot: they go with #11).
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

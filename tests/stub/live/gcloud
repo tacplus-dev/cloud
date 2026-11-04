@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/audit_test.sh: it answers the lists ci/audit.sh runs, each from
+# STUB_LIVE/<project>/<what>.json (what: firewall-rules, instances, instance-templates, clusters); a list with no file
+# is refused, as the API refuses one. Every call is logged (STUB_LOG, one line each); any other command fails loudly.
+set -euo pipefail
+echo "gcloud $*" >> "$STUB_LOG"
+project='' format='' words=()
+for a in "$@"; do
+  case $a in
+    --project=*) project=${a#*=} ;;
+    --format=*) format=${a#*=} ;;
+    --*) echo "stub gcloud: a flag ci/audit.sh does not pass: $a" >&2; exit 99 ;;
+    *) words+=("$a") ;;
+  esac
+done
+[ "$format" = json ] && [ -n "$project" ] || { echo "stub gcloud: no --project or --format=json: $*" >&2; exit 99; }
+case "${words[*]}" in
+  "compute firewall-rules list") what=firewall-rules ;;
+  "compute instances list") what=instances ;;
+  "compute instance-templates list") what=instance-templates ;;
+  "container clusters list") what=clusters ;;
+  *) echo "stub gcloud: not a command ci/audit.sh runs: $*" >&2; exit 99 ;;
+esac
+f=$STUB_LIVE/$project/$what.json
+[ -f "$f" ] || { echo "ERROR: (gcloud.${words[0]}.${words[1]}.list) PERMISSION_DENIED: stub: no $what in $project" >&2; exit 1; }
+cat "$f"

@@ -1,0 +1,40 @@
+[
+  {
+    "name": "dev",
+    "privateClusterConfig": {
+      "enablePrivateNodes": true,
+      "enablePrivateEndpoint": false
+    },
+    "nodePools": [
+      {
+        "name": "normal",
+        "config": {
+          "imageType": "COS_CONTAINERD"
+        },
+        "networkConfig": {
+          "enablePrivateNodes": true
+        }
+      },
+      {
+        "name": "hand",
+        "config": {
+          "imageType": "UBUNTU_CONTAINERD"
+        },
+        "networkConfig": {
+          "enablePrivateNodes": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "hand-public",
+    "nodePools": [
+      {
+        "name": "default-pool",
+        "config": {
+          "imageType": "COS_CONTAINERD"
+        }
+      }
+    ]
+  }
+]

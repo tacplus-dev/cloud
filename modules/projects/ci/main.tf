@@ -65,8 +65,9 @@ resource "google_compute_router_nat" "runners" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
-# The manager reaches its workers over SSH (the docker-autoscaler executor); break-glass SSH to the manager is
-# through IAP only.
+# The manager reaches its workers over SSH (the docker-autoscaler executor): the one port-22 rule, internal and by
+# network tag, which ci/policy.sh admits exactly as it is until the runner VMs go (#11). Nothing else reaches port 22,
+# not even IAP (decisions/network-exposure-2026-11-03.md): break-glass on a VM is its serial console and its logs.
 resource "google_compute_firewall" "manager_to_workers" {
   project     = google_project.ci.project_id
   name        = "runner-manager-to-workers-ssh"
@@ -74,19 +75,6 @@ resource "google_compute_firewall" "manager_to_workers" {
   direction   = "INGRESS"
   source_tags = ["runner-manager"]
   target_tags = ["runner-worker"]
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-}
-
-resource "google_compute_firewall" "iap_to_manager" {
-  project       = google_project.ci.project_id
-  name          = "iap-to-runner-manager-ssh"
-  network       = google_compute_network.runners.id
-  direction     = "INGRESS"
-  source_ranges = ["35.235.240.0/20"]
-  target_tags   = ["runner-manager"]
   allow {
     protocol = "tcp"
     ports    = ["22"]

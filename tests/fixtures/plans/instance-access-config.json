@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_instance.vm","type":"google_compute_instance","change":{"actions":["create"],"after":{"name":"vm","network_interface":[{"subnetwork":"s","access_config":[{"network_tier":"PREMIUM"}],"ipv6_access_config":[]}]},"after_unknown":{}}}]}

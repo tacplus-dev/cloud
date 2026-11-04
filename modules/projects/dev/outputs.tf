@@ -7,8 +7,13 @@ output "project_id" {
 }
 
 output "cluster" {
-  description = "The dev cluster's name and zone."
-  value       = { name = google_container_cluster.dev.name, zone = google_container_cluster.dev.location }
+  description = "The dev cluster's name and zone, and the spot build pool's node label and taint, which only build pods tolerate (tacplus-dev/cluster#6)."
+  value = {
+    name       = google_container_cluster.dev.name
+    zone       = google_container_cluster.dev.location
+    spot_label = local.pools.spot.labels
+    spot_taint = local.pools.spot.taints[0]
+  }
 }
 
 output "dns_name_servers" {

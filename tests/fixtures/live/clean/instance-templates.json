@@ -1,0 +1,12 @@
+[
+  {
+    "name": "gke-dev-spot-1",
+    "properties": {
+      "networkInterfaces": [
+        {
+          "network": "n"
+        }
+      ]
+    }
+  }
+]

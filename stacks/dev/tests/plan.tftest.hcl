@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The dev stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no
-# cloud): the stack plans, and its module, with the stack's inputs, gives the arm64 cluster, the dev zone and the
+# cloud): the stack plans, and its module, with the stack's inputs, gives the arm64 cluster (private COS nodes: a normal
+# pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
+# spot=true, #7), the dev zone and the
 # cluster pipeline's identity, federated from tacplus-dev/cluster's protected main alone, and each deployment's
 # certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6). (A test sees
 # a module's resources only when it runs that module itself.)
@@ -59,10 +61,9 @@ run "dev" {
       name            = "dev"
       zone            = "us-central1-a"
       release_channel = "REGULAR"
-      machine_type    = "c4a-standard-4"
       disk_gb         = 100
-      min_nodes       = 1
-      max_nodes       = 3
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -87,12 +88,28 @@ run "dev" {
     error_message = "The project is not in its folder, without a default network and protected from deletion."
   }
   assert {
-    condition     = google_container_node_pool.arm64.node_config[0].machine_type == "c4a-standard-4" && google_container_cluster.dev.deletion_protection
-    error_message = "The cluster's only nodes are not Axion (arm64), or the cluster is not deletion-protected."
+    condition     = toset(keys(google_container_node_pool.pool)) == toset(["normal", "spot"]) && google_container_cluster.dev.deletion_protection
+    error_message = "The cluster's pools are not normal and spot, or the cluster is not deletion-protected."
   }
   assert {
-    condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_nodes && google_container_node_pool.arm64.node_config[0].workload_metadata_config[0].mode == "GKE_METADATA"
-    error_message = "The nodes have external addresses, or pods see the node's metadata."
+    condition     = google_container_node_pool.pool["normal"].node_config[0].machine_type == "c4a-standard-2" && google_container_node_pool.pool["normal"].node_count == 3 && length(google_container_node_pool.pool["normal"].autoscaling) == 0 && !google_container_node_pool.pool["normal"].node_config[0].spot && length(google_container_node_pool.pool["normal"].node_config[0].taint) == 0
+    error_message = "The normal pool is not 3 x c4a-standard-2, fixed, on demand, untainted."
+  }
+  assert {
+    condition     = google_container_node_pool.pool["spot"].node_config[0].machine_type == "c4a-standard-4" && google_container_node_pool.pool["spot"].node_config[0].spot && google_container_node_pool.pool["spot"].autoscaling[0].min_node_count == 0 && google_container_node_pool.pool["spot"].autoscaling[0].max_node_count == 3
+    error_message = "The build pool is not c4a-standard-4 spot, from 0 to 3."
+  }
+  assert {
+    condition     = google_container_node_pool.pool["spot"].node_config[0].labels["spot"] == "true" && length(google_container_node_pool.pool["spot"].node_config[0].taint) == 1 && google_container_node_pool.pool["spot"].node_config[0].taint[0].key == "spot" && google_container_node_pool.pool["spot"].node_config[0].taint[0].value == "true" && google_container_node_pool.pool["spot"].node_config[0].taint[0].effect == "NO_SCHEDULE" && !contains(keys(google_container_node_pool.pool["normal"].node_config[0].labels), "spot")
+    error_message = "The build pool is not labelled spot=true and tainted spot=true:NoSchedule, or the normal pool is labelled spot."
+  }
+  assert {
+    condition     = output.cluster.spot_label == { spot = "true" } && output.cluster.spot_taint == { key = "spot", value = "true", effect = "NO_SCHEDULE" }
+    error_message = "The module does not give the build pool's label and taint."
+  }
+  assert {
+    condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_nodes && !google_container_cluster.dev.private_cluster_config[0].enable_private_endpoint && alltrue([for p in google_container_node_pool.pool : p.network_config[0].enable_private_nodes && p.node_config[0].image_type == "COS_CONTAINERD" && p.node_config[0].workload_metadata_config[0].mode == "GKE_METADATA"])
+    error_message = "The nodes have external addresses or do not run Container-Optimized OS, pods see the node's metadata, or the control plane is not public (Jody, 2026-11-04: it stays public)."
   }
   assert {
     condition     = google_dns_managed_zone.dev.dns_name == "dev.tacplus.dev." && google_dns_managed_zone.dev.dnssec_config[0].state == "on"
@@ -155,10 +172,48 @@ run "x86_nodes_refused" {
       name            = "dev"
       zone            = "us-central1-a"
       release_channel = "REGULAR"
-      machine_type    = "e2-standard-4"
       disk_gb         = 100
-      min_nodes       = 1
-      max_nodes       = 3
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "e2-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [var.cluster]
+}
+
+run "empty_normal_pool_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 0 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -195,10 +250,9 @@ run "shared_environment_refused" {
       name            = "dev"
       zone            = "us-central1-a"
       release_channel = "REGULAR"
-      machine_type    = "c4a-standard-4"
       disk_gb         = 100
-      min_nodes       = 1
-      max_nodes       = 3
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
     }
     network = {
       nodes         = "10.20.0.0/20"

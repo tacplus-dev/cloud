@@ -1,0 +1,51 @@
+[
+  {
+    "name": "runner-manager-to-workers-ssh",
+    "direction": "INGRESS",
+    "sourceTags": [
+      "runner-manager"
+    ],
+    "targetTags": [
+      "runner-worker"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "22"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "gke-dev-1a2b3c4d-vms",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "10.20.0.0/20"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "1-65535"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "gke-dev-1a2b3c4d-master",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "172.16.0.0/28"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "10250",
+          "443"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_container_node_pool.p","type":"google_container_node_pool","change":{"actions":["create"],"after":{"name":"p","network_config":[],"node_config":[{"image_type":"UBUNTU_CONTAINERD"}]},"after_unknown":{}}}]}

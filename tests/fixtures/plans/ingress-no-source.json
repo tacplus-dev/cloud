@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.nosource","type":"google_compute_firewall","change":{"actions":["create"],"after":{"name":"nosource","direction":"INGRESS","source_ranges":null,"source_tags":null,"source_service_accounts":null,"allow":[{"protocol":"tcp","ports":["443"]}]},"after_unknown":{}}}]}

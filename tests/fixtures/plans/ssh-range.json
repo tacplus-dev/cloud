@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.range","type":"google_compute_firewall","change":{"actions":["create"],"after":{"name":"range","direction":"INGRESS","source_ranges":["10.0.0.0/8"],"allow":[{"protocol":"tcp","ports":["80","1-65535"]}]},"after_unknown":{}}}]}

@@ -1,0 +1,99 @@
+[
+  {
+    "name": "gke-dev-1a2b3c4d-vms",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "10.20.0.0/20"
+    ],
+    "targetTags": [
+      "gke-dev-1a2b3c4d-node"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "icmp"
+      },
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "1-65535"
+        ]
+      },
+      {
+        "IPProtocol": "udp",
+        "ports": [
+          "1-65535"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "gke-dev-1a2b3c4d-all",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "10.24.0.0/14"
+    ],
+    "targetTags": [
+      "gke-dev-1a2b3c4d-node"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp"
+      },
+      {
+        "IPProtocol": "udp"
+      },
+      {
+        "IPProtocol": "icmp"
+      }
+    ]
+  },
+  {
+    "name": "gke-dev-1a2b3c4d-ssh",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "34.9.9.9/32"
+    ],
+    "targetTags": [
+      "gke-dev-1a2b3c4d-node"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "22"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "k8s-fw-l7--abc",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "130.211.0.0/22",
+      "35.191.0.0/16"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "30000-32767"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "k8s-fw-a1b2c3",
+    "direction": "INGRESS",
+    "sourceRanges": [
+      "0.0.0.0/0"
+    ],
+    "allowed": [
+      {
+        "IPProtocol": "tcp",
+        "ports": [
+          "80"
+        ]
+      }
+    ]
+  }
+]

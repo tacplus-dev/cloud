@@ -1,0 +1,16 @@
+[
+  {
+    "name": "dev",
+    "networkConfig": {
+      "defaultEnablePrivateNodes": true
+    },
+    "nodePools": [
+      {
+        "name": "spot",
+        "config": {
+          "imageType": "COS_CONTAINERD"
+        }
+      }
+    ]
+  }
+]

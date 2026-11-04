@@ -27,19 +27,28 @@ variable "region" {
 }
 
 variable "cluster" {
-  description = "The dev GKE cluster: its name and zone, its release channel, and its one node pool (arm64, Axion C4A)."
+  description = "The dev GKE cluster: its name and zone, its release channel, its nodes' disk, and its two node pools (arm64, Axion C4A): normal, a fixed number of on-demand nodes, and spot, the build pool, from 0 to max_nodes."
   type = object({
     name            = string
     zone            = string
     release_channel = string
-    machine_type    = string
     disk_gb         = number
-    min_nodes       = number
-    max_nodes       = number
+    normal = object({
+      machine_type = string
+      nodes        = number
+    })
+    spot = object({
+      machine_type = string
+      max_nodes    = number
+    })
   })
   validation {
-    condition     = startswith(var.cluster.machine_type, "c4a-")
-    error_message = "The node pool is Axion (c4a-*): arm64."
+    condition     = startswith(var.cluster.normal.machine_type, "c4a-") && startswith(var.cluster.spot.machine_type, "c4a-")
+    error_message = "The node pools are Axion (c4a-*): arm64."
+  }
+  validation {
+    condition     = var.cluster.normal.nodes >= 1 && var.cluster.spot.max_nodes >= 1
+    error_message = "The normal pool has a node, and the spot pool can grow to one."
   }
 }
 

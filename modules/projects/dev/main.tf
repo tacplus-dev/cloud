@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The dev project: the dev GKE cluster (arm64, Axion), the DNS zone for dev hostnames, the cluster pipeline's
+# The dev project: the dev GKE cluster (arm64, Axion, private COS nodes in a normal pool and a spot build pool), the DNS zone for dev hostnames, the cluster pipeline's
 # identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main, and each deployment's
 # certificate secrets and challenge zone (certificates.tf).
 
@@ -130,27 +130,69 @@ resource "google_container_cluster" "dev" {
   depends_on = [google_project_iam_member.nodes]
 }
 
-resource "google_container_node_pool" "arm64" {
-  project  = google_project.dev.project_id
-  name     = "arm64"
-  location = var.cluster.zone
-  cluster  = google_container_cluster.dev.name
+# The nodes (decisions/cluster-node-pools-2026-11-03.md): private, Container-Optimized OS, arm64 (Axion C4A). The normal
+# pool, fixed and on demand, runs the platform; the build pool, spot and from 0, runs build pods only: they alone
+# tolerate its taint (tacplus-dev/cluster#6). Both pools share the rest.
+locals {
+  pools = {
+    normal = {
+      machine_type = var.cluster.normal.machine_type
+      node_count   = var.cluster.normal.nodes
+      autoscaling  = null
+      spot         = false
+      labels       = {}
+      taints       = []
+    }
+    spot = {
+      machine_type = var.cluster.spot.machine_type
+      node_count   = null
+      autoscaling  = { min = 0, max = var.cluster.spot.max_nodes }
+      spot         = true
+      labels       = { spot = "true" }
+      taints       = [{ key = "spot", value = "true", effect = "NO_SCHEDULE" }]
+    }
+  }
+}
 
-  autoscaling {
-    min_node_count = var.cluster.min_nodes
-    max_node_count = var.cluster.max_nodes
+resource "google_container_node_pool" "pool" {
+  for_each   = local.pools
+  project    = google_project.dev.project_id
+  name       = each.key
+  location   = var.cluster.zone
+  cluster    = google_container_cluster.dev.name
+  node_count = each.value.node_count
+
+  dynamic "autoscaling" {
+    for_each = each.value.autoscaling == null ? [] : [each.value.autoscaling]
+    content {
+      min_node_count = autoscaling.value.min
+      max_node_count = autoscaling.value.max
+    }
   }
   management {
     auto_repair  = true
     auto_upgrade = true
   }
+  network_config {
+    enable_private_nodes = true
+  }
   node_config {
-    machine_type    = var.cluster.machine_type
+    machine_type    = each.value.machine_type
+    image_type      = "COS_CONTAINERD"
+    spot            = each.value.spot
     disk_type       = "hyperdisk-balanced"
     disk_size_gb    = var.cluster.disk_gb
     service_account = google_service_account.nodes.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
-    labels          = { managed-by = "tacplus-dev-cloud" }
+    labels          = merge({ managed-by = "tacplus-dev-cloud" }, each.value.labels)
+    dynamic "taint" {
+      for_each = each.value.taints
+      content {
+        key    = taint.value.key
+        value  = taint.value.value
+        effect = taint.value.effect
+      }
+    }
     gvnic {
       enabled = true
     }

@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_compute_firewall.out","type":"google_compute_firewall","change":{"actions":["create"],"after":{"name":"out","direction":"EGRESS","destination_ranges":["10.0.0.0/8"],"allow":[{"protocol":"tcp"}]},"after_unknown":{}}}]}
