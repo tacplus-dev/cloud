@@ -13,3 +13,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-04 looper issue Security job in the pipeline: OSV-Scanner, govulncheck on pinned binaries, gitleaks, Trivy on the CI image, with an enforced security-exceptions.yaml (#10, 1cf15ed)
 - 2026-11-04 looper issue bootstrap.sh: gcloud lists the folder by bare ID, so the bootstrap cannot see the folder it created and refuses on re-run (Jody's bootstrap stopped) (#14, 5acf3f7)
 - 2026-11-04 looper issue Encode the 2026-11-03 rules: only LBs public, no internet ingress, no SSH, private COS nodes, normal plus spot pools; plan tests that refuse violations (#7, f47a4ea)
+- 2026-11-04 looper issue dev: a reserved global static IP for the gateway's LB, the tacplus.dev zone under the pipeline in seabeam.net, and a TTL-first cutover with Jody's registrar NS change (#13, 44dc21e)
