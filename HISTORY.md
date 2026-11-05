@@ -15,3 +15,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-04 looper issue Encode the 2026-11-03 rules: only LBs public, no internet ingress, no SSH, private COS nodes, normal plus spot pools; plan tests that refuse violations (#7, f47a4ea)
 - 2026-11-04 looper issue dev: a reserved global static IP for the gateway's LB, the tacplus.dev zone under the pipeline in seabeam.net, and a TTL-first cutover with Jody's registrar NS change (#13, 44dc21e)
 - 2026-11-04 looper issue gitlab stack: a read-only (Reporter, read_api) project token on tacplus-dev/build for the looper's nightly recap, rotated, in Secret Manager (#12, c4b0c4a)
+- 2026-11-05 looper issue First apply stopped: KMS counted against tacplus-bootstrap (API not enabled), and a new project's IAM not yet propagated when its WIF pool is created (#16, f80b41a)
