@@ -18,6 +18,9 @@
 #     global address `gateway` (the Gateway's load balancer's, the dev stack's), a regional external address, or an
 #     external forwarding rule (the Gateway's are GKE's, never a stack's); in the source, a global address without
 #     prevent_destroy, so that no apply destroys it and its IP with it;
+#   - in a plan, roles/owner or roles/container.admin to a service account (#18), in a member, a member list or a
+#     policy document, or to a member known only after apply, but the pipeline's own owner of its folders: either could
+#     delete the cluster, and cluster-admin inside it is a ClusterRoleBinding, not IAM;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -28,6 +31,9 @@ set -uo pipefail
 die() { echo "policy: $*" >&2; exit 2; }
 refused=0
 refuse() { echo "policy: refused: $*" >&2; refused=1; }
+# The pipeline's own identity (modules/settings, bootstrap.pipeline_sa): owner of the folders it creates, the one
+# service account that holds roles/owner.
+pipeline_sa=cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
 
 source_check() {
   local dir f n line
@@ -101,12 +107,23 @@ plan_check() {
         (select(.type | IN("google_compute_forwarding_rule", "google_compute_global_forwarding_rule"))
          | select(($after.load_balancing_scheme // "EXTERNAL") | IN("EXTERNAL", "EXTERNAL_MANAGED"))
          | "\($a) is an external forwarding rule: the Gateway load balancer is GKE-made, on the global address gateway"),
+        (select(.type | test("^google_[a-z0-9_]+_iam_(member|binding|policy)$"))
+         | (if .type | endswith("_iam_policy") then
+              ($after.policy_data // "{}" | fromjson? // {} | .bindings[]? | {role, members: (.members // [])})
+            else {role: $after.role, members: ([$after.member // empty] + ($after.members // []))} end)
+         | select(.role | IN("roles/owner", "roles/container.admin")) as $b
+         | if any($unknown[]; test("^(member|members|policy_data)($|\\.)")) then
+             "\($a) grants \($b.role) to a member known only after apply: no service account holds it but the pipeline itself"
+           else
+             ($b.members[] | select(startswith("serviceAccount:") and . != $pipeline)
+              | "\($a) grants \($b.role) to \(.): no service account holds it but the pipeline itself (it could delete the cluster)")
+           end),
         (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
         (select(.type == "google_container_node_pool")
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
-            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)"))' "$p") ||
+            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)"))' --arg pipeline "serviceAccount:$pipeline_sa" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done

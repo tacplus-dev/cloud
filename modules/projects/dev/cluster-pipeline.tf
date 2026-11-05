@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # cluster-admin-pipeline: tacplus-dev/cluster's pipeline identity, keyless. Only that GitLab project's protected
-# main may become it (the provider's condition). In GCP it may get the dev cluster's credentials; its cluster-admin
-# inside the cluster is a ClusterRoleBinding, which tacplus-dev/cluster's README lists for the hub.
+# main may become it (the provider's condition). In GCP it may get the dev cluster's credentials, and read the runners'
+# tokens (runner-tokens.tf); its cluster-admin is a ClusterRoleBinding inside the cluster, made here (#18), through the
+# stack's kubernetes provider, as this pipeline: never roles/container.admin in IAM, which could delete the cluster
+# (ci/policy.sh refuses it).
 
 resource "google_iam_workload_identity_pool" "gitlab" {
   project                   = google_project.dev.project_id
@@ -48,4 +50,25 @@ resource "google_project_iam_member" "cluster_pipeline" {
   project = google_project.dev.project_id
   role    = "roles/container.clusterViewer"
   member  = google_service_account.cluster_pipeline.member
+}
+
+# The kubernetes provider is the stack's, configured from cluster_api: on a plan before the cluster exists (or of its
+# replacement) its endpoint is known only after apply, and the binding is made once the cluster is.
+resource "kubernetes_cluster_role_binding_v1" "cluster_pipeline" {
+  metadata {
+    name   = var.cluster_pipeline.account_id
+    labels = { managed-by = "tacplus-dev-cloud" }
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = "cluster-admin"
+  }
+  # GKE names a Google service account by its email; spelled out, so that the plan shows it before the account exists.
+  subject {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "User"
+    name      = "${var.cluster_pipeline.account_id}@${var.project_id}.iam.gserviceaccount.com"
+  }
+  depends_on = [terraform_data.iam_ready]
 }

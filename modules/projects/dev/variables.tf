@@ -118,3 +118,13 @@ variable "deployments" {
     error_message = "Each deployment has an environment and a domain of its own: its ACME account and its challenge zone are its pipeline's alone."
   }
 }
+
+variable "runner_token_adders" {
+  description = "Who adds the runners' token versions (runner-tokens.tf): secretVersionAdder on gitlab-runner-build and gitlab-runner-control, which adds versions and reads none. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for m in var.runner_token_adders : can(regex("^(user|group|serviceAccount):[^@]+@[^@]+$", m))])
+    error_message = "An adder is user:, group: or serviceAccount: and an email."
+  }
+}

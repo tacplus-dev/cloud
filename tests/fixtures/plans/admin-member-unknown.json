@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"google_secret_manager_secret_iam_member.x","type":"google_secret_manager_secret_iam_member","change":{"actions":["create"],"after":{"secret_id":"s","role":"roles/owner"},"after_unknown":{"member":true}}}]}

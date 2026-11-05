@@ -22,10 +22,6 @@ the looper then marks it `promoted` or `declined` here with the date.
   then nobody but the pipeline and break-glass sees the parent folder.
 - **Remove the organization's default grants** (looper, #1): the host organization's job since #8 (README, What the
   host organization provides); nothing to do here.
-- **The in-cluster grant of cluster-admin-pipeline in dev** (looper, #1). What: its ClusterRoleBinding of
-  `cluster-admin` on the dev cluster, made by a pipeline (a kubernetes-provider stack here, or tacplus-dev/cluster's
-  bootstrap) rather than by the hub by hand. Why: today GCP grants it only `container.clusterViewer`; the binding is the
-  hand step tacplus-dev/cluster's README lists, which the move of the cluster to dev would repeat.
 - **Secret values out of plans and state** (looper, #1). What: the gitlab stack's variables and the runner tokens
   through write-only attributes or ephemeral resources, once both providers offer them for these resources. Why: today
   the values are in the saved plan (an artifact, members only) and the state (the bootstrap bucket).
@@ -56,6 +52,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   and a fetch from gitlab.com, and it is ours to keep current; upstream's signed release is the normal path. Upstream
   has not been asked yet: its issues are on gitlab.com (gitlab-org/terraform-provider-gitlab; the GitHub mirror takes
   none), and this run had no gitlab.com account; the request is drafted on #3 for the hub to file.
+- **Drop the kubernetes provider's build from source** (looper, #18, 2026-11-05). What: when
+  hashicorp/terraform-provider-kubernetes releases a version that compiles against github.com/getkin/kin-openapi
+  >= v0.144.0 and is built with a fixed Go (>= go1.27.3, x/net >= v0.62.0), pin it from the registry again: remove
+  `ci/kubernetes-provider.sh`, its calls (`ci/tools.sh`, `ci/lock.sh`), its entries in `ci/tofurc.sh` and
+  `tests/providers_test.sh`, and the four kin-openapi exceptions (GO-2025-3533, GO-2026-6095, GO-2026-6112,
+  GO-2026-6274, until 2026-12-05), and run `ci/lock.sh`. If only the kin-openapi bump comes first, keep the build and drop
+  the exceptions. Why: v3.4.0's kin-openapi v0.111.0 has those findings and the fixed releases change its API (v0.152.0
+  does not compile); the exceptions expire on 2026-12-05, and the build is ours to keep current.
 - **Enforce the exceptions' expiry** (looper, #3): done by #10 (the `security` job, not `ci/checks.sh`). What: the security job of the deterministic checks above fails on
   an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
   form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass
@@ -195,14 +199,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   fixture is built from the API's documented answers, not recorded (the looper cannot read the project's settings), so
   an attribute the hub set differently (`raw`, `masked`, the description, `unprotect_access_levels`) still shows only
   at the first `plan:gitlab`.
-- **The runners' token secrets and the cluster pipeline's cluster-admin on dev, by this pipeline** (looper, #18,
-  2026-11-05; supersedes **The in-cluster grant of cluster-admin-pipeline in dev**, above). What: in
-  `modules/projects/dev`, the secrets `gitlab-runner-build` and `gitlab-runner-control` (us-central1, empty), with
-  authoritative bindings: `secretAccessor` for `cluster-admin-pipeline`, `secretVersionAdder` for an input list
-  (`user:jody@seabeam.net`); and the ClusterRoleBinding of `cluster-admin` to the User
-  `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`, proposed in a new stack `dev-cluster` (the kubernetes
-  provider, against the cluster read by a data source, planned after `apply:dev`) rather than in the dev stack, whose
-  provider would be configured from a cluster made in the same apply; and a `ci/policy.sh` refusal of
-  `roles/container.admin` or `roles/owner` to any service account. Why: tacplus-dev/cluster's README leaves both to
-  the hub (its steps 4 and 7), and since 2026-11-04 no person holds admin on tacplus-dev. Open questions on #18: the
-  stack, the token in the plan and state, the adders' account, the policy's scope, the stage.
+- **tacplus-dev/cluster's README: steps 4 and 7 are the cloud pipeline's** (looper, #18, 2026-11-05). What: a pull
+  request there saying that the ClusterRoleBinding of `cluster-admin-pipeline` and the secrets `gitlab-runner-build` and
+  `gitlab-runner-control` are made by this pipeline's dev stack (README, The cluster pipeline), and that the hub only
+  adds the tokens' versions, as the account of `GCP_RUNNER_TOKEN_ADDERS` (README, hosting note). Why: its README still
+  lists both as the hub's, which since 2026-11-04 nobody can do by hand.
+- **Refuse every role that can delete the cluster** (looper, #18, 2026-11-05). What: `ci/policy.sh`'s refusal of
+  `roles/owner` and `roles/container.admin` to a service account widened to `roles/editor` and
+  `roles/container.clusterAdmin`, which hold `container.clusters.delete` too. Why: #18 named the two; the others break
+  the same rule, and no service account here holds them today.
+- **The runners' token adders' account** (looper, #18, 2026-11-05). What: confirm on the first `apply:dev` that the
+  host's `iam.allowedPolicyMemberDomains` admits the account of `GCP_RUNNER_TOKEN_ADDERS` (the dev stack's
+  `runner_token_adders`), and that it is the account of **Readers' accounts**, above. Why: a write grant to a person,
+  the one exception to only the pipelines changing things: narrow (add only, on two secrets) but unverified until the
+  apply.

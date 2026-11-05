@@ -16,9 +16,9 @@
 #                     from its pinned module version with the pinned Go (scanners_go), refused unless the module's
 #                     hash (h1:, a SHA-256 of its files) is the pinned one, its dependencies checked against the Go
 #                     checksum database (upstream's release is built with go1.24.11, without Go's fixes since)
-#   bin/providers     the gitlab provider, our own build from its source for this platform (ci/gitlab-provider.sh,
-#                     pinned by commit and by the SHA-256 of the build): OpenTofu installs it from there only
-#                     (ci/tofurc.sh)
+#   bin/providers     the gitlab and kubernetes providers, our own builds from their source for this platform
+#                     (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, pinned by commit and by the SHA-256 of the
+#                     build): OpenTofu installs them from there only (ci/tofurc.sh)
 #
 # And with `security`, the security job's (ci/security.sh), only that job's (they are large):
 #
@@ -133,5 +133,6 @@ install -m 0755 "$tmp/shellcheck-v$shellcheck_version/shellcheck" "$bin/shellche
 gobuild github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_sum" github.com/zricethezav/gitleaks/v8
 GOBIN=$bin GOFLAGS=-mod=mod go install "github.com/mikefarah/yq/v4@$yq_version"
 "$here/ci/gitlab-provider.sh" "$bin/providers" "linux_$arch"
+"$here/ci/kubernetes-provider.sh" "$bin/providers" "linux_$arch"
 chmod 0755 "$bin/tofu" "$bin/tflint" "$plugin/tflint-ruleset-google"
-echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab provider (providers/)"
+echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab and kubernetes providers (providers/)"

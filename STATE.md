@@ -1,13 +1,15 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#17).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#18).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
+  `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock
   files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0,
   govulncheck v1.1.4 (built from their modules with go1.27.3) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
-  #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes.
+  #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes; the `kubernetes` provider is
+  too, its v3.4.0 tag with go1.27.3 and x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18), its kin-openapi's four
+  findings accepted until 2026-12-05.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
@@ -93,6 +95,19 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   looper cannot read the project's settings): both adopted with no change, nothing replaced or deleted, the old form
   refused. Its plan: the two adoptions, and creates of the membership (#12), the four protected environments, the
   reader's two variables, and the three paused runners with their token versions.
+- **The cluster pipeline's rights on dev, by this pipeline (#18):** the dev stack makes the secrets `gitlab-runner-build`
+  and `gitlab-runner-control` (us-central1, empty; `secretAccessor` for `cluster-admin-pipeline` alone, `secretVersionAdder`
+  for `runner_token_adders` alone, Jody's account, from the protected GitLab variable `GCP_RUNNER_TOKEN_ADDERS` (`ci/lib.sh`:
+  no file names the host's directory, #8): authoritative bindings; output `runner_tokens`), and, through
+  the kubernetes provider as this pipeline, the ClusterRoleBinding `cluster-admin-pipeline` of `cluster-admin` to the User
+  `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com` (Jody: in the dev stack, as the issue says). The provider
+  is configured from the cluster resource (known only after apply on a build from nothing or a replacement, which the real
+  provider plans) with an ephemeral `google_client_config` token: none in the plan or the state, none expired at apply.
+  `ci/policy.sh plan` refuses `roles/owner` or `roles/container.admin` to any service account but the pipeline's own owner
+  of its folders. tacplus-dev/cluster's hand steps 4 and 7 are this pipeline's; its README is a follow-up there
+  (PROPOSALS.md). Tested with the dev stack's plan tests (mock providers), the policy's fixtures, and a plan of the binding
+  with the real kubernetes provider under an unknown configuration; not applied yet: `apply:dev` on main does it, and
+  whether the host admits the adder shows there; the hub sets `GCP_RUNNER_TOKEN_ADDERS` first.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

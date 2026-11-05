@@ -58,3 +58,16 @@ output "zone" {
     name_servers = google_dns_managed_zone.zone.name_servers
   }
 }
+
+output "runner_tokens" {
+  description = "The runners' token secrets, by runner (tacplus-dev/cluster's tacplus.token names their versions)."
+  value       = { for k, s in local.runner_tokens : k => "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.runner_token[s].secret_id}" }
+}
+
+output "cluster_api" {
+  description = "The dev cluster's API, for the stack's kubernetes provider (cluster-pipeline.tf): its endpoint, and its CA certificate in base64, as GKE gives it."
+  value = {
+    host                   = "https://${google_container_cluster.dev.endpoint}"
+    cluster_ca_certificate = one(google_container_cluster.dev.master_auth[*].cluster_ca_certificate)
+  }
+}

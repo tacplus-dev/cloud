@@ -9,8 +9,10 @@
 # certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6), and the
 # gateway's one global address, kept from destruction (ci/policy.sh checks prevent_destroy and that no other external
 # address is in a plan), and tacplus.dev's zone: its copied records, the deployment's hostnames to that address, the
-# delegations, and its name servers for the registrar (#13). (A test sees a module's resources only when it runs that
-# module itself.)
+# delegations, and its name servers for the registrar (#13), and the runners' token secrets, which the cluster pipeline
+# reads and only the listed people add versions to, and the cluster pipeline's cluster-admin, a ClusterRoleBinding
+# made in the cluster through the kubernetes provider, with no service account of dev holding container.admin or owner
+# in IAM (#18). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
   mock_data "google_active_folder" {
@@ -26,6 +28,9 @@ mock_provider "google" {
   mock_resource "google_iam_workload_identity_pool" {
     defaults = { name = "projects/555/locations/global/workloadIdentityPools/gitlab-com" }
   }
+  mock_resource "google_container_cluster" {
+    defaults = { endpoint = "203.0.113.20" }
+  }
   mock_resource "google_compute_global_address" {
     defaults = { address = "203.0.113.10" }
   }
@@ -34,9 +39,13 @@ mock_provider "google" {
   }
 }
 
+mock_provider "kubernetes" {}
+
 # The parent folder, as the pipeline gives it (GCP_PARENT_FOLDER).
 variables {
   parent_folder = "111111111111"
+  # As GCP_RUNNER_TOKEN_ADDERS gives it: an account of the host's directory, which no file here names.
+  runner_token_adders = ["user:jody@example.com"]
 }
 
 run "stack" {
@@ -60,6 +69,10 @@ run "stack" {
   assert {
     condition     = output.zone.name == "tacplus-dev" && output.zone.domain == "tacplus.dev." && length(output.zone.name_servers) == 4
     error_message = "The stack does not print tacplus.dev's zone and its name servers, the registrar's values."
+  }
+  assert {
+    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control" }
+    error_message = "The stack does not give the runners' token secrets, tacplus-dev/cluster's tacplus.token."
   }
 }
 
@@ -106,6 +119,7 @@ run "dev" {
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
     }
+    runner_token_adders = ["user:jody@example.com"]
   }
 
   assert {
@@ -208,6 +222,34 @@ run "dev" {
   assert {
     condition     = output.zone.name_servers == google_dns_managed_zone.zone.name_servers && output.gateway_address.address == google_compute_global_address.gateway.address
     error_message = "The module does not give the zone's name servers, the registrar's values, and the gateway's address."
+  }
+  assert {
+    condition     = toset(keys(google_secret_manager_secret.runner_token)) == toset(["gitlab-runner-build", "gitlab-runner-control"]) && alltrue([for s in google_secret_manager_secret.runner_token : s.replication[0].user_managed[0].replicas[0].location == "us-central1" && length(s.replication[0].user_managed[0].replicas) == 1])
+    error_message = "The runners' token secrets are not gitlab-runner-build and gitlab-runner-control, in us-central1 alone."
+  }
+  assert {
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.runner_token)) == toset(["gitlab-runner-build/roles/secretmanager.secretAccessor", "gitlab-runner-build/roles/secretmanager.secretVersionAdder", "gitlab-runner-control/roles/secretmanager.secretAccessor", "gitlab-runner-control/roles/secretmanager.secretVersionAdder"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.runner_token : b.secret_id == split("/", k)[0] && b.role == trimprefix(k, "${split("/", k)[0]}/")])
+    error_message = "Each runner token secret does not have exactly two bindings: reading its versions and adding them."
+  }
+  assert {
+    condition     = alltrue([for k, b in google_secret_manager_secret_iam_binding.runner_token : b.members == (endswith(k, "secretAccessor") ? toset([google_service_account.cluster_pipeline.member]) : toset(["user:jody@example.com"]))])
+    error_message = "Someone besides cluster-admin-pipeline reads the runners' tokens, or someone besides the listed adders adds their versions."
+  }
+  assert {
+    condition     = kubernetes_cluster_role_binding_v1.cluster_pipeline.metadata[0].name == "cluster-admin-pipeline" && kubernetes_cluster_role_binding_v1.cluster_pipeline.role_ref[0].api_group == "rbac.authorization.k8s.io" && kubernetes_cluster_role_binding_v1.cluster_pipeline.role_ref[0].kind == "ClusterRole" && kubernetes_cluster_role_binding_v1.cluster_pipeline.role_ref[0].name == "cluster-admin"
+    error_message = "The cluster pipeline's binding is not cluster-admin-pipeline, of the ClusterRole cluster-admin."
+  }
+  assert {
+    condition     = length(kubernetes_cluster_role_binding_v1.cluster_pipeline.subject) == 1 && kubernetes_cluster_role_binding_v1.cluster_pipeline.subject[0].kind == "User" && kubernetes_cluster_role_binding_v1.cluster_pipeline.subject[0].name == "cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com" && kubernetes_cluster_role_binding_v1.cluster_pipeline.subject[0].api_group == "rbac.authorization.k8s.io"
+    error_message = "The cluster-admin binding names more than the User cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com."
+  }
+  assert {
+    condition     = alltrue([for m in concat(values(google_project_iam_member.nodes), [google_project_iam_member.cluster_pipeline]) : !contains(["roles/container.admin", "roles/owner"], m.role)])
+    error_message = "A service account in dev holds container.admin or owner in IAM: cluster-admin is the binding's, in the cluster."
+  }
+  assert {
+    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
+    error_message = "The module does not give the runners' token secrets, or the cluster's API for the kubernetes provider."
   }
 }
 
@@ -496,4 +538,50 @@ run "copied_apex_ns_refused" {
     }
   }
   expect_failures = [var.zone]
+}
+
+
+run "runner_token_adder_refused" {
+  # An adder that is not a member: user:, group: or serviceAccount: and an address.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    runner_token_adders = ["jody@example.com"]
+  }
+  expect_failures = [var.runner_token_adders]
 }

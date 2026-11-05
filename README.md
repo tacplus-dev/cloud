@@ -23,7 +23,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
     below, The network rules), the DNS zone
-    `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, each
+    `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
+    cluster-admin in the cluster and the runners' token secrets it reads (below, The cluster pipeline), each
     deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
     and the one public IP, the global address `gateway` of the Gateway's load balancer, and `tacplus.dev`'s own zone,
     which only this pipeline writes (below, The tacplus.dev cutover);
@@ -43,7 +44,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -75,7 +76,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too. |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
@@ -88,8 +89,8 @@ that Jody plays, on a commit already applied to dev.
 - Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.65.0 and its google ruleset
   0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
-  `google` 8.9.0 and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab` one our own reproducible build (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, its packages from one Ubuntu
+  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
+  `-lockfile=readonly`), the `gitlab` and `kubernetes` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, its packages from one Ubuntu
   archive snapshot; the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its
   fleeting plugin by SHA-256; the runners' default image by digest.
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
@@ -144,6 +145,13 @@ moves to the first upstream release with the fix (#3):
   `ci/tools.sh` puts this platform's build in `bin/providers`; OpenTofu installs `gitlabhq/gitlab` from there and never
   from the registry (`ci/tofurc.sh`, which every script running tofu sources), and the lock file holds only this build's
   hashes, for the four platforms (`ci/lock.sh` builds them all). It goes when an upstream release is built on a fixed Go.
+- **The `kubernetes` provider is built from source too** (`ci/kubernetes-provider.sh`, #18), the same way: upstream's
+  3.4.0 is built with go1.26.3, and it holds the pipeline's token to dev's cluster. Its tag v3.4.0 at the pinned commit,
+  with go1.27.3 and x/net v0.62.0, installed and locked as the `gitlab` one is. Its kin-openapi v0.111.0 stays, the
+  fixed releases changing the API it compiles against: GO-2025-3533, GO-2026-6095, GO-2026-6112 and GO-2026-6274, all in
+  `openapi3filter` (an HTTP server's request validation), which the provider never imports, are accepted until
+  2026-12-05 (Jody's decision on #18). It goes when an upstream release is built on a fixed Go and against kin-openapi
+  v0.144.0 or later.
 - **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0,
   GitLab Runner v19.5.2 and the fleeting plugin v1.3.1: x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
@@ -241,7 +249,8 @@ The host organization's admin (its own pipeline, outside this repository) provid
 <!-- hosting note -->
 Today the host is seabeam.net's organization: the parent folder is its folder `tacplus-dev`, and its admin is the closed
 pipeline seabeam/cloud (GitLab), `tacplus-dev/roadmap:decisions/cloud-org-seabeam-2026-11-03.md`. Nothing here depends on
-it: another host is another folder ID.
+it: another host is another folder ID. The runners' token adders (`GCP_RUNNER_TOKEN_ADDERS`, below, The cluster
+pipeline) are `user:jody@seabeam.net` today (#18).
 <!-- /hosting note -->
 
 ### What Jody runs, in order
@@ -284,7 +293,8 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    shared runners off; pipeline variables allowed to the Owner role only.
 2. **The runner:** a project runner registered to `tacplus-dev/cloud` only, tag `cloud`, VMs used once, with no Google
    account (as tacplus-dev/cluster's, on `gitlab-runner-mgr`, until runners move).
-3. **Its variables** `GCP_PARENT_FOLDER` and `GCP_WIF_PROVIDER` (protected), the values the bootstrap printed. The gitlab stack adopts it and `main`'s
+3. **Its variables** `GCP_PARENT_FOLDER` and `GCP_WIF_PROVIDER` (protected), the values the bootstrap printed, and
+   `GCP_RUNNER_TOKEN_ADDERS` (protected): the account that adds the runners' token versions (below, The cluster pipeline). The gitlab stack adopts it and `main`'s
    protection (its import blocks), and sets the reader's two variables from Secret Manager.
 4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write, and this
    project's federated principal
@@ -405,6 +415,34 @@ cache only speeds a build up).
 **Not yet:** nothing is applied before Jody's bootstrap and the first pipeline, and the runners stay paused until they
 move off jody1-328023. Once twenty jobs have run here on fresh VMs, looper's `runner-image measure 20` should show no
 first-job image-pull failure (#4's acceptance).
+
+## The cluster pipeline
+
+`cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com` is tacplus-dev/cluster's pipeline identity, keyless,
+through Workload Identity Federation (pool `gitlab-com`, provider `tacplus-dev-cluster`), condition: tacplus-dev/cluster's
+protected `main`. The dev stack gives it, and nobody makes any of it by hand (#18; tacplus-dev/cluster's README, What
+the hub does, steps 4 and 7, are this pipeline's):
+
+- **In GCP:** `roles/container.clusterViewer` on `tacplus-dev`, to get the cluster's credentials. No service account
+  holds `roles/container.admin` or `roles/owner` (`ci/policy.sh` refuses either in any plan, the pipeline's own owner of
+  its folders alone excepted): either could delete the cluster.
+- **In the cluster:** the ClusterRoleBinding `cluster-admin-pipeline` of the ClusterRole `cluster-admin` to the User
+  `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`, made through the kubernetes provider as this pipeline
+  (its owner of the folder `dev` covers GKE's RBAC), against the cluster's public endpoint. The provider's token is
+  ephemeral (`ephemeral "google_client_config"`): the plan and the apply each open their own, and none is in the saved
+  plan or the state. On a plan before the cluster exists, or of its replacement, the provider's endpoint is known only
+  after apply, and the binding is made once the cluster is; a cluster rebuilt by hand loses it, and the drift plan
+  shows it to be made again. The drift job's plan of `dev` reads it from the cluster.
+- **The runners' token secrets:** `gitlab-runner-build` and `gitlab-runner-control`, us-central1, created empty. Only
+  `cluster-admin-pipeline` reads them (`secretAccessor`); only the dev stack's `runner_token_adders` add versions
+  (`secretVersionAdder`, which reads none): authoritative bindings, so a grant added by hand is drift. The adders are
+  the protected GitLab variable `GCP_RUNNER_TOKEN_ADDERS`, members comma-separated (`user:`, `group:`,
+  `serviceAccount:` and an email), which `ci/lib.sh` gives the stack and refuses unless each is a member; unset or
+  empty, nobody adds versions. Their accounts are the host's directory's, which no file here names (Jody's today: the
+  hosting note, above). The hub registers each runner through GitLab's API and pipes its token into a new version as
+  that account (`gcloud secrets versions add gitlab-runner-build --project=tacplus-dev --data-file=-`); a new token is
+  a new version, and a pull request in tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names both
+  secrets.
 
 ## Certificates
 
@@ -554,7 +592,7 @@ ci/security.sh                   # the security job: security/report.json (needs
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers
 bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run    # with your gcloud: changes nothing
-ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh: the lock files
+ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh or ci/kubernetes-provider.sh: the lock files
 ```
 
 ## Never

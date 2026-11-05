@@ -2,12 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
-# certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone. Its folder is the folder stack's; its billing account is the bootstrap
+# certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone, the runners' token secrets and
+# the cluster pipeline's cluster-admin in the cluster (#18). Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
 variable "parent_folder" {
   description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
   type        = string
+}
+
+variable "runner_token_adders" {
+  description = "Who adds the runners' token versions (#18): the protected GitLab variable GCP_RUNNER_TOKEN_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
+  type        = list(string)
+  default     = []
 }
 
 module "settings" {
@@ -17,6 +24,17 @@ module "settings" {
 
 provider "google" {
   region = module.settings.region
+}
+
+# In the dev cluster, as this pipeline (cloud-admin-pipeline: its owner of the folder dev covers GKE's RBAC): the
+# cluster pipeline's ClusterRoleBinding. Its token is ephemeral, opened afresh by the plan and again by the apply, so
+# that none is in the saved plan or the state, and none expires while the apply waits for its turn.
+ephemeral "google_client_config" "this" {}
+
+provider "kubernetes" {
+  host                   = module.dev.cluster_api.host
+  cluster_ca_certificate = base64decode(module.dev.cluster_api.cluster_ca_certificate)
+  token                  = ephemeral.google_client_config.this.access_token
 }
 
 data "google_active_folder" "dev" {
@@ -59,6 +77,8 @@ module "dev" {
     provider       = "tacplus-dev-cluster"
   }
   deployments = module.settings.deployments
+  # Jody adds the runners' token versions (#18): the hub registers each runner and pipes its token in, as Jody.
+  runner_token_adders = var.runner_token_adders
 }
 
 output "project_id" {
@@ -87,4 +107,8 @@ output "gateway_address" {
 
 output "zone" {
   value = module.dev.zone
+}
+
+output "runner_tokens" {
+  value = module.dev.runner_tokens
 }

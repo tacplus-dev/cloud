@@ -37,3 +37,14 @@ provider "registry.opentofu.org/hashicorp/google" {
     "zh:f4c7f54f29597788faa2cb53d5ea3b74ad79882e2d1a7267ef90fbb7f216c39a",
   ]
 }
+
+provider "registry.opentofu.org/hashicorp/kubernetes" {
+  version     = "3.4.0"
+  constraints = ">= 3.4.0, 3.4.0, < 4.0.0"
+  hashes = [
+    "h1:CkJVIRgGM8sjr2fs45phLdYzXOisv2e9kLz7Eh3XP1Y=",
+    "h1:KBcuBpk/KzpFpPsEHbR9ZjFCmI9TI+HbZ0T9CdbFlPo=",
+    "h1:t1PDnsxvYFsUYpRVoXrxaIRw1ZePcl6Ll7K46LyxYXg=",
+    "h1:yhfBU3+hljEBfVaTOdb8semDjOe4nHbP9ZOTwsX+YUw=",
+  ]
+}

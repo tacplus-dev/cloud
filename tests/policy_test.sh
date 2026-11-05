@@ -12,7 +12,9 @@
 # direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, a pool
 # with public nodes or not on COS, and passes a plan that keeps them; and the one public IP (#13): in the source, a
 # global address without prevent_destroy, and in a plan, an external address but the one global address `gateway`, or
-# an external forwarding rule (the Gateway's are GKE's, never a stack's). Needs bash and jq.
+# an external forwarding rule (the Gateway's are GKE's, never a stack's); and roles/owner or roles/container.admin to a
+# service account (#18), in a member, a member list or a policy document, or to a member known only after apply, the
+# pipeline's own owner alone excepted. Needs bash and jq.
 #
 #   tests/policy_test.sh
 set -uo pipefail
@@ -76,6 +78,12 @@ refuses "a plan with an external forwarding rule" "google_compute_global_forward
 passes "a plan with the gateway's address, internal ones and a deleted one" plan "$fx/plans/address-clean.json"
 passes "a plan keeping the network rules" plan "$fx/plans/network-clean.json"
 passes "a plan deleting an SSH rule" plan "$fx/plans/ssh-deleted.json"
+
+refuses "a plan granting a service account container.admin" "grants roles/container.admin to serviceAccount:cluster-admin-pipeline@tacplus-dev" plan "$fx/plans/admin-project-member.json"
+refuses "a plan with a service account in an owner binding" "grants roles/owner to serviceAccount:gke-nodes@tacplus-dev" plan "$fx/plans/admin-owner-binding.json"
+refuses "a plan with owner to a service account in a policy document" "grants roles/owner to serviceAccount:x@tacplus-dev" plan "$fx/plans/admin-policy.json"
+refuses "a plan granting owner to a member known only after apply" "known only after apply" plan "$fx/plans/admin-member-unknown.json"
+passes "a plan with the pipeline's own owner, a viewer, a person and a deleted grant" plan "$fx/plans/admin-clean.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

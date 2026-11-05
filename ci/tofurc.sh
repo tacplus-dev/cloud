@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Sourced by every script that runs tofu: TF_CLI_CONFIG_FILE, OpenTofu's CLI configuration, which installs
-# gitlabhq/gitlab from bin/providers (our build, ci/gitlab-provider.sh, which ci/tools.sh puts there) and never from
-# a registry, and every other provider from its registry as usual; either way only by the lock file's hashes. It is
+# gitlabhq/gitlab and hashicorp/kubernetes from bin/providers (our builds, ci/gitlab-provider.sh and
+# ci/kubernetes-provider.sh, which ci/tools.sh puts there) and never from a registry, and every other provider from
+# its registry as usual; either way only by the lock file's hashes. It is
 # written into bin/ for this checkout, as OpenTofu reads a mirror's relative path from the working directory.
 tofurc_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 mkdir -p "$tofurc_root/bin"
@@ -11,10 +12,10 @@ cat > "$tofurc_root/bin/tofurc.$$" <<EOF
 provider_installation {
   filesystem_mirror {
     path    = "$tofurc_root/bin/providers"
-    include = ["registry.opentofu.org/gitlabhq/gitlab"]
+    include = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes"]
   }
   direct {
-    exclude = ["registry.opentofu.org/gitlabhq/gitlab"]
+    exclude = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes"]
   }
 }
 EOF
