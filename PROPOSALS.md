@@ -195,3 +195,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   fixture is built from the API's documented answers, not recorded (the looper cannot read the project's settings), so
   an attribute the hub set differently (`raw`, `masked`, the description, `unprotect_access_levels`) still shows only
   at the first `plan:gitlab`.
+- **The runners' token secrets and the cluster pipeline's cluster-admin on dev, by this pipeline** (looper, #18,
+  2026-11-05; supersedes **The in-cluster grant of cluster-admin-pipeline in dev**, above). What: in
+  `modules/projects/dev`, the secrets `gitlab-runner-build` and `gitlab-runner-control` (us-central1, empty), with
+  authoritative bindings: `secretAccessor` for `cluster-admin-pipeline`, `secretVersionAdder` for an input list
+  (`user:jody@seabeam.net`); and the ClusterRoleBinding of `cluster-admin` to the User
+  `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`, proposed in a new stack `dev-cluster` (the kubernetes
+  provider, against the cluster read by a data source, planned after `apply:dev`) rather than in the dev stack, whose
+  provider would be configured from a cluster made in the same apply; and a `ci/policy.sh` refusal of
+  `roles/container.admin` or `roles/owner` to any service account. Why: tacplus-dev/cluster's README leaves both to
+  the hub (its steps 4 and 7), and since 2026-11-04 no person holds admin on tacplus-dev. Open questions on #18: the
+  stack, the token in the plan and state, the adders' account, the policy's scope, the stage.
