@@ -17,6 +17,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - gitlab stack: a read-only project token on tacplus-dev/build for the nightly recap, rotated, in Secret Manager (#12). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:suggestions/2026-11-04-let-the-recap-see-the-build-pipeline.md`).
 - dev: a reserved global static IP for the gateway's load balancer, the tacplus.dev zone written only by the pipeline in seabeam.net, and a TTL-first cutover with Jody's registrar name-server change (#13). Agent, at Jody's request, 2026-11-04 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 - dev: the in-cluster runners' token secrets (accessor for the cluster pipeline, version adder for Jody) and the cluster pipeline's cluster-admin binding on dev, made by this pipeline (#18). Agent, at Jody's request, 2026-11-05 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
+- ci: the looper Apps' import-only signing keys, their one-time import, and the looper project's federation and per-environment signer bindings, in seabeam.net (#19; tacplus-dev/looper#83). Agent, at Jody's request, 2026-11-05.
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
