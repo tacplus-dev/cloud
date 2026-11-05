@@ -44,7 +44,7 @@ output "bootstrap" {
     wif_provider = "tacplus-dev-cloud"
     # The GitLab token the gitlab stack's provider uses (a group access token of tacplus-dev, Owner, scope api),
     # by version: a new token is a new version and a commit here (README, Rotating the GitLab token).
-    gitlab_token_secret = "projects/tacplus-bootstrap/secrets/gitlab-token/versions/1"
+    gitlab_token_secret = "projects/tacplus-bootstrap/secrets/gitlab-token/versions/2"
   }
 }
 
