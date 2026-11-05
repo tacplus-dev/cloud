@@ -27,7 +27,7 @@ resource "google_storage_bucket" "cache" {
       type = "Delete"
     }
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 resource "google_artifact_registry_repository" "cache" {
@@ -48,14 +48,14 @@ resource "google_artifact_registry_repository" "cache" {
       older_than = "${var.build_cache.days * 86400}s"
     }
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 resource "google_service_account" "build_cache" {
   project      = google_project.ci.project_id
   account_id   = var.build_cache.account_id
   display_name = "Build cache: ${var.build_cache.gitlab_project}'s jobs (tacplus-dev/cloud)"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
 }
 
 # Authoritative for the role: nobody but the build identity holds it on the cache.
@@ -78,7 +78,7 @@ resource "google_iam_workload_identity_pool" "gitlab" {
   workload_identity_pool_id = var.build_cache.wif_pool
   display_name              = "gitlab.com"
   description               = "GitLab CI jobs of tacplus-dev (tacplus-dev/cloud)"
-  depends_on                = [google_project_service.service]
+  depends_on                = [terraform_data.iam_ready]
 }
 
 # Every job of the build project, on any ref: a merge request's build reads and fills the cache too, which its
@@ -108,7 +108,7 @@ resource "google_kms_key_ring" "reader" {
   project    = google_project.ci.project_id
   name       = var.reader_app_key.key_ring
   location   = var.region
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 # The GitHub App's key is GitHub's: it is imported, never generated here, so the key has no version until then

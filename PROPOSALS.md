@@ -179,3 +179,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   change has propagated, resolvers may ask either zone; today the hub keeps them alike by hand, and a difference shows
   only once a resolver answers from the old one. The drift job's identity has no read on jody1-328023, so this needs
   that grant, or the check run by the hub.
+- **The caller-counted APIs without a bootstrap run** (looper, #16, 2026-11-05). What: let the folder stack enable, in
+  `tacplus-bootstrap`, the APIs `tests/apis_test.sh` classes as the caller's (`google_project_service`, which
+  `cloud-admin-pipeline`'s owner role on the parent folder allows), or move to per-project quota: the google provider's
+  `user_project_override`. Why: today a new caller-counted API needs Jody to run the bootstrap again before the
+  pipeline can use it. `user_project_override` was not chosen for #16: with a provider-wide `billing_project` every call
+  carries it, the project's own creation included, so a build from nothing would name a quota project that does not
+  exist yet; without one, `google_project_service` sends the new project itself, whose Service Usage and IAM may not have
+  reached it, before any gate can run. Either way it goes with **The bootstrap's own resources under the pipeline**.

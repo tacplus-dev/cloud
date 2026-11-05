@@ -32,11 +32,38 @@ resource "google_project_service" "service" {
   disable_on_destroy = false
 }
 
+# IAM, the pipeline's role on the parent folder included, reaches a project created seconds before only after a
+# minute or two (#16): everything else in the project comes after this gate, which waits, bounded, until the
+# pipeline holds there the permissions of its first creates (ci/iam-ready.sh). An existing project passes at once.
+resource "terraform_data" "iam_ready" {
+  triggers_replace = google_project.ci.number
+  input            = { project = google_project.ci.project_id, permissions = local.iam_ready_permissions }
+  provisioner "local-exec" {
+    command = "${path.module}/../../../ci/iam-ready.sh ${self.input.project} ${join(" ", self.input.permissions)}"
+  }
+  depends_on = [google_project_service.service]
+}
+
+locals {
+  # What the gate waits for: the first create of each kind in the project,
+  # the workload identity pool and the key ring among them.
+  iam_ready_permissions = [
+    "artifactregistry.repositories.create",
+    "cloudkms.keyRings.create",
+    "compute.networks.create",
+    "iam.serviceAccounts.create",
+    "iam.workloadIdentityPools.create",
+    "resourcemanager.projects.setIamPolicy",
+    "secretmanager.secrets.create",
+    "storage.buckets.create",
+  ]
+}
+
 resource "google_compute_network" "runners" {
   project                 = google_project.ci.project_id
   name                    = "runners"
   auto_create_subnetworks = false
-  depends_on              = [google_project_service.service]
+  depends_on              = [terraform_data.iam_ready]
 }
 
 resource "google_compute_subnetwork" "runners" {

@@ -43,7 +43,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` (the gitlab provider, built from source), `tofurc` (OpenTofu installs that build only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -63,6 +63,11 @@ repository it plans and applies. Every job fetches this repository at that commi
   stacks as their variable `parent_folder`, and refuses a job without one. No file here holds it.
 - **Order:** the checks, then `folder` (the folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
   tokens go to the `ci` project's secrets). Each stage's plan is made after the stage before it is applied.
+- **A new project's IAM:** the pipeline's rights in `tacplus-ci` and `tacplus-dev` are its role on the parent folder,
+  which reaches a project created seconds before only after a minute or two. In each project module everything after
+  the project and its APIs waits for `terraform_data.iam_ready`, which runs `ci/iam-ready.sh`: Resource Manager's
+  `testIamPermissions` until the pipeline holds the permissions of the project's first creates on three checks in a
+  row, ten seconds apart, bounded to ten minutes. An existing project passes at once.
 
 | Job | When | What |
 |---|---|---|
@@ -190,7 +195,9 @@ To review a plan: the `plan:<stack>` job's log, or its artifact `src/plans/<stac
 organization handed over (`--folder`, its numeric ID). It:
 
 1. creates the folder `bootstrap` under the parent folder, the project `tacplus-bootstrap` in it (billing linked, the APIs
-   the pipeline calls) and the state bucket `gs://tacplus-bootstrap-tofu-state` (us-central1, versioned, uniform access,
+   the pipeline calls: its own, and those of the stacks' APIs that count against the caller's project, the pipeline's
+   own, rather than the project they change, Cloud KMS for one; `tests/apis_test.sh` audits every API the stacks call)
+   and the state bucket `gs://tacplus-bootstrap-tofu-state` (us-central1, versioned, uniform access,
    public access prevented);
 2. creates `cloud-admin-pipeline`, gives it its rights (billing.user on the billing account; storage.objectAdmin on the
    state bucket; secretAccessor on the bootstrap project), and its WIF pool `gitlab-com` and provider `tacplus-dev-cloud`
@@ -266,6 +273,8 @@ folder's ID and the billing account's (`gcloud billing accounts list` shows it).
    `TACPLUS_READER_INSTALLATION_ID`.
 4. `bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID>` once more: "nothing to do", and the host's
    grants in place.
+
+Run it again whenever its APIs change (#16 added Cloud KMS and Artifact Registry): it enables only those missing.
 
 Then the hub's steps below, then the first pipeline. The first real apply is that pipeline's, after Jody's bootstrap.
 

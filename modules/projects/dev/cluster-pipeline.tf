@@ -10,7 +10,7 @@ resource "google_iam_workload_identity_pool" "gitlab" {
   workload_identity_pool_id = var.cluster_pipeline.pool
   display_name              = "gitlab.com"
   description               = "GitLab CI jobs of tacplus-dev (tacplus-dev/cloud)"
-  depends_on                = [google_project_service.service]
+  depends_on                = [terraform_data.iam_ready]
 }
 
 resource "google_iam_workload_identity_pool_provider" "cluster" {
@@ -35,7 +35,7 @@ resource "google_service_account" "cluster_pipeline" {
   project      = google_project.dev.project_id
   account_id   = var.cluster_pipeline.account_id
   display_name = "${var.cluster_pipeline.gitlab_project} pipeline, protected main (tacplus-dev/cloud)"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
 }
 
 resource "google_service_account_iam_member" "cluster_pipeline_wif" {

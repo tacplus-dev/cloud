@@ -112,6 +112,11 @@ run "dev" {
     condition     = google_project.dev.folder_id == "folders/444" && !google_project.dev.auto_create_network && google_project.dev.deletion_policy == "PREVENT"
     error_message = "The project is not in its folder, without a default network and protected from deletion."
   }
+  # The IAM gate waits for the pipeline's permissions in the new project before its first creates (#16).
+  assert {
+    condition     = terraform_data.iam_ready.input.project == "tacplus-dev" && alltrue([for x in ["iam.workloadIdentityPools.create", "container.clusters.create"] : contains(terraform_data.iam_ready.input.permissions, x)])
+    error_message = "The IAM gate does not wait for the pipeline's permissions in tacplus-dev."
+  }
   assert {
     condition     = toset(keys(google_container_node_pool.pool)) == toset(["normal", "spot"]) && google_container_cluster.dev.deletion_protection
     error_message = "The cluster's pools are not normal and spot, or the cluster is not deletion-protected."

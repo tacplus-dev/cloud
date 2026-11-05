@@ -16,7 +16,7 @@ resource "google_compute_global_address" "gateway" {
   description  = "The dev cluster's Gateway load balancer: the one public IP (tacplus-dev/cloud)"
   address_type = "EXTERNAL"
   ip_version   = "IPV4"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
   lifecycle {
     prevent_destroy = true
   }
@@ -44,7 +44,7 @@ resource "google_dns_managed_zone" "zone" {
   dnssec_config {
     state = "on"
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
   lifecycle {
     precondition {
       condition     = alltrue([for h in local.hostnames : endswith(h, ".${var.zone.domain}")])

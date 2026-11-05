@@ -41,7 +41,7 @@ resource "google_service_account" "deploy" {
   project      = google_project.dev.project_id
   account_id   = each.value.account_id
   display_name = "${each.value.gitlab_project} pipeline, protected main: deployment ${each.key} (tacplus-dev/cloud)"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
 }
 
 resource "google_service_account_iam_member" "deploy_wif" {
@@ -65,7 +65,7 @@ resource "google_secret_manager_secret" "certificate" {
       }
     }
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 resource "google_secret_manager_secret_iam_binding" "certificate" {
@@ -88,7 +88,7 @@ resource "google_dns_managed_zone" "acme_challenge" {
   dnssec_config {
     state = "on"
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 resource "google_dns_managed_zone_iam_binding" "acme_challenge" {

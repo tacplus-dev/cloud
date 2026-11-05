@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by the looper (#12).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#16).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -73,6 +73,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   project access tokens). The module's `members` take Guest or Reporter only, each with an expiry from the commit; the
   drift job's expiry check (`ci/expiry.sh`) reports one past or within 30 days, and a commit renews it. Tested with the
   stack's plan tests against mock providers and a fixture; not applied yet: `apply:gitlab` on main does it.
+- **The first apply's two refusals (#16):** pipeline 3030204494 stopped in `apply:ci` (Cloud KMS counted against
+  `tacplus-bootstrap`, the caller's project, where it was off) and `apply:dev` (`iam.workloadIdentityPools.create` denied
+  in `tacplus-dev`, created seconds before), each a partial apply. The bootstrap now also enables Cloud KMS and Artifact
+  Registry in `tacplus-bootstrap`, and `tests/apis_test.sh` names every google type the stacks use with its API and
+  where its calls count (the caller's: bootstrap's `SERVICES`; the resource's: the module's APIs), failing on a type it
+  does not name. Each project module's `terraform_data.iam_ready` (`ci/iam-ready.sh`: `testIamPermissions` until the
+  pipeline holds its first creates' permissions on three checks in a row, bounded to ten minutes) comes after the
+  project and its APIs, and everything else after it (`tests/iam_ready_test.sh`). Tested against stubs and mock
+  providers; not yet against GCP: recovery is Jody's bootstrap run again (it enables the two APIs), then a pipeline on
+  main from the partial state.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -85,7 +95,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-04 by th
   standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
-- **Released / deployed:** nothing applied. No pipeline has run.
+- **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's

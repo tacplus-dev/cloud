@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/iam_ready_test.sh: it prints an access token, the one command ci/iam-ready.sh runs; any other
+# fails loudly. Every call is logged (STUB_LOG, one line each).
+set -euo pipefail
+echo "gcloud $*" >> "$STUB_LOG"
+[ "$*" = "auth print-access-token" ] || { echo "stub gcloud: a command ci/iam-ready.sh does not run: $*" >&2; exit 99; }
+echo stub-token

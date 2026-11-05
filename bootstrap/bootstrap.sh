@@ -45,8 +45,11 @@ GITLAB_PROJECT=tacplus-dev/cloud
 ISSUER=https://gitlab.com
 CONDITION="assertion.project_path == '$GITLAB_PROJECT' && assertion.ref_type == 'branch' && assertion.ref == 'main' && assertion.ref_protected == 'true'"
 MAPPING=google.subject=assertion.sub,attribute.project_path=assertion.project_path,attribute.ref=assertion.ref,attribute.ref_type=assertion.ref_type,attribute.ref_protected=assertion.ref_protected
-SERVICES=(cloudbilling.googleapis.com cloudresourcemanager.googleapis.com iam.googleapis.com iamcredentials.googleapis.com
-  secretmanager.googleapis.com serviceusage.googleapis.com storage.googleapis.com sts.googleapis.com)
+# The APIs the bootstrap calls, and those the stacks call that count against the caller's project, tacplus-bootstrap,
+# rather than the project they change (#16: Cloud KMS; tests/apis_test.sh audits every API the stacks call).
+SERVICES=(artifactregistry.googleapis.com cloudbilling.googleapis.com cloudkms.googleapis.com cloudresourcemanager.googleapis.com
+  iam.googleapis.com iamcredentials.googleapis.com secretmanager.googleapis.com serviceusage.googleapis.com
+  storage.googleapis.com sts.googleapis.com)
 SECRETS=(gitlab-token tacplus-reader-app-id tacplus-reader-installation-id)
 # What the host organization grants cloud-admin-pipeline on the parent folder (README, What the host organization
 # provides): its folders and their IAM, projects, and what is in them. This script grants none of them.

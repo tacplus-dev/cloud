@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# A stub curl for tests/iam_ready_test.sh: Resource Manager's testIamPermissions, in the form ci/iam-ready.sh calls it.
+# Its Nth call answers STUB_IAM/N (the last file once past it): a first line, the HTTP code, then the body. Every call
+# is logged (STUB_LOG): its URL, then its body. A call of another form fails loudly.
+set -euo pipefail
+out='' format='' data='' url='' auth=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    -sS) shift ;;
+    -X) [ "$2" = POST ] || exit 99; shift 2 ;;
+    -o) out=$2; shift 2 ;;
+    -w) format=$2; shift 2 ;;
+    -d) data=$2; shift 2 ;;
+    -H) case $2 in @*) auth=$(cat "${2#@}") ;; 'Content-Type: application/json') ;; *) exit 99 ;; esac; shift 2 ;;
+    -*) echo "stub curl: a flag ci/iam-ready.sh does not pass: $1" >&2; exit 99 ;;
+    *) url=$1; shift ;;
+  esac
+done
+[ "$auth" = "Authorization: Bearer stub-token" ] && [ "$format" = '%{http_code}' ] && [ -n "$out" ] ||
+  { echo "stub curl: no token, -o or -w: $auth $format $out" >&2; exit 99; }
+n=$(( $(grep -c '^curl ' "$STUB_LOG" || true) + 1 ))
+printf 'curl %s\n%s\n' "$url" "$data" >> "$STUB_LOG"
+answer=$STUB_IAM/$n
+[ -f "$answer" ] || answer=$STUB_IAM/$(find "$STUB_IAM" -type f -printf '%f\n' | sort -n | tail -1)
+tail -n +2 "$answer" > "$out"
+head -1 "$answer" | tr -d '\n'

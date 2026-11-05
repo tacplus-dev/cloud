@@ -18,14 +18,14 @@ resource "google_service_account" "worker" {
   project      = google_project.ci.project_id
   account_id   = "runner-${each.key}"
   display_name = "Runner pool ${each.key}: no roles (tacplus-dev/cloud)"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
 }
 
 resource "google_service_account" "manager" {
   project      = google_project.ci.project_id
   account_id   = "runner-manager"
   display_name = "GitLab runner manager (tacplus-dev/cloud)"
-  depends_on   = [google_project_service.service]
+  depends_on   = [terraform_data.iam_ready]
 }
 
 # The manager creates and deletes its pools' VMs, and sets their SSH keys.
@@ -54,7 +54,7 @@ resource "google_secret_manager_secret" "runner_token" {
       }
     }
   }
-  depends_on = [google_project_service.service]
+  depends_on = [terraform_data.iam_ready]
 }
 
 resource "google_secret_manager_secret_iam_member" "manager_reads_token" {
