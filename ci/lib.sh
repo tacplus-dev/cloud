@@ -17,7 +17,9 @@ ci_here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # which this repository never writes (README, What the host organization provides); and the dev stack its
 # runner_token_adders (#18), from the protected variable GCP_RUNNER_TOKEN_ADDERS: who adds the runners' token versions,
 # members comma-separated (user:, group:, serviceAccount: and an email), accounts of the host's directory, which this
-# repository never names either; unset or empty, nobody (README, The cluster pipeline).
+# repository never names either; unset or empty, nobody (README, The cluster pipeline); and the ci stack its
+# kms_key_importers (#19), from the protected variable GCP_KMS_KEY_IMPORTERS, alike: who imports the GitHub Apps' keys,
+# for the one run that imports them (README, The GitHub Apps' keys).
 ci_gcp() {
   : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
   : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (README, Before the first pipeline)}"
@@ -26,18 +28,9 @@ ci_gcp() {
     { echo "gcp: the GitLab project variable GCP_PARENT_FOLDER is not the parent folder's numeric ID: [${GCP_PARENT_FOLDER:-}] (README, Before the first pipeline)" >&2
       return 1; }
   export TF_VAR_parent_folder=$GCP_PARENT_FOLDER
-  local m entries adders=()
-  IFS=, read -ra entries <<< "${GCP_RUNNER_TOKEN_ADDERS:-}"
-  for m in "${entries[@]}"; do
-    m=${m//[[:space:]]/}
-    [ -n "$m" ] || continue
-    [[ $m =~ ^(user|group|serviceAccount):[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] ||
-      { echo "gcp: the GitLab project variable GCP_RUNNER_TOKEN_ADDERS holds [$m], not a member (user:, group: or serviceAccount: and an email) (README, The cluster pipeline)" >&2
-        return 1; }
-    adders+=("\"$m\"")
-  done
-  TF_VAR_runner_token_adders="[$(IFS=,; echo "${adders[*]}")]"
-  export TF_VAR_runner_token_adders
+  TF_VAR_runner_token_adders=$(ci_members GCP_RUNNER_TOKEN_ADDERS "The cluster pipeline") || return 1
+  TF_VAR_kms_key_importers=$(ci_members GCP_KMS_KEY_IMPORTERS "The GitHub Apps' keys") || return 1
+  export TF_VAR_runner_token_adders TF_VAR_kms_key_importers
   export CLOUDSDK_CONFIG=$ci_tmp/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
   ( umask 077
     printf '%s' "$GCP_ID_TOKEN" > "$ci_tmp/oidc-token"
@@ -49,6 +42,23 @@ ci_gcp() {
       return 1; }
   export GOOGLE_APPLICATION_CREDENTIALS=$ci_tmp/gcp-federation.json
   echo "gcp: $(gcloud config get account 2>/dev/null) through workload identity federation"
+}
+
+# ci_members VARIABLE SECTION: the members a protected GitLab variable lists, comma-separated (user:, group:,
+# serviceAccount: and an email), as an HCL list, [] when it is unset or empty; refused, naming the README's SECTION,
+# unless each is a member.
+ci_members() {
+  local m entries members=()
+  IFS=, read -ra entries <<< "${!1:-}"
+  for m in "${entries[@]}"; do
+    m=${m//[[:space:]]/}
+    [ -n "$m" ] || continue
+    [[ $m =~ ^(user|group|serviceAccount):[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] ||
+      { echo "gcp: the GitLab project variable $1 holds [$m], not a member (user:, group: or serviceAccount: and an email) (README, $2)" >&2
+        return 1; }
+    members+=("\"$m\"")
+  done
+  echo "[$(IFS=,; echo "${members[*]}")]"
 }
 
 # ci_gitlab: GITLAB_TOKEN for the gitlab stack's provider, read as the pipeline's account from Secret Manager, the

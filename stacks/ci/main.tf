@@ -1,12 +1,18 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: runners, the build cache, the reader app's key. Its folder is the folder stack's; its billing
-# account is the bootstrap project's.
+# The ci project: runners, the build cache, the GitHub Apps' keys and their federation. Its folder is the folder
+# stack's; its billing account is the bootstrap project's.
 
 variable "parent_folder" {
   description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
   type        = string
+}
+
+variable "kms_key_importers" {
+  description = "Who imports the apps' keys (#19): the protected GitLab variable GCP_KMS_KEY_IMPORTERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account for the import, then cleared."
+  type        = list(string)
+  default     = []
 }
 
 module "settings" {
@@ -48,9 +54,16 @@ module "ci" {
     plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
     default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
   }
-  pools          = { for k, p in module.settings.runner_pools : k => { for a, v in p : a => v if a != "runner" } }
-  build_cache    = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-  reader_app_key = { key_ring = "looper", key = "tacplus-reader" }
+  pools       = { for k, p in module.settings.runner_pools : k => { for a, v in p : a => v if a != "runner" } }
+  build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+  github_apps = {
+    key_ring  = module.settings.github_apps.key_ring
+    wif_pool  = module.settings.github_apps.pool
+    namespace = { id = module.settings.github_apps.namespace.id, wif_provider = module.settings.github_apps.namespace.wif_provider }
+    looper    = { for a, v in module.settings.github_apps.looper : a => v if a != "project" }
+    keys      = { for k, a in module.settings.github_apps.apps : k => { import = a.import, namespace = a.namespace, environments = a.environments } }
+  }
+  kms_key_importers = var.kms_key_importers
 }
 
 output "project_id" {
@@ -61,6 +74,23 @@ output "runner_token_secrets" {
   value = module.ci.runner_token_secrets
 }
 
-output "reader_app_key" {
-  value = module.ci.reader_app_key
+output "app_keys" {
+  value = module.ci.app_keys
+}
+
+output "app_import_jobs" {
+  value = module.ci.app_import_jobs
+}
+
+# The looper project's variables (tacplus-dev/looper README, Only the manager writes main, Setting it up), which the
+# hub sets: none is secret.
+output "looper_variables" {
+  value = {
+    GCP_WIF_PROVIDER               = module.ci.looper_wif_provider
+    LOOPER_KMS_KEYRING             = module.ci.app_key_ring
+    LOOPER_MANAGER_APP_ID          = module.settings.github_apps.apps["tacplus-manager"].app_id
+    LOOPER_MANAGER_INSTALLATION_ID = module.settings.github_apps.apps["tacplus-manager"].installation_id
+    LOOPER_REPORT_APP_ID           = module.settings.github_apps.apps["tacplus-looper"].app_id
+    LOOPER_REPORT_INSTALLATION_ID  = module.settings.github_apps.apps["tacplus-looper"].installation_id
+  }
 }

@@ -113,10 +113,35 @@ variable "build_cache" {
   })
 }
 
-variable "reader_app_key" {
-  description = "The tacplus-reader GitHub App's key in Cloud KMS: key ring and key name. Created empty, import-only: the app's key is imported into it when the reader moves off jody1-328023."
+variable "github_apps" {
+  description = "The GitHub Apps' keys (modules/settings github_apps): the key ring key_ring, the workload identity pool wif_pool, the namespace's provider (namespace: its GitLab ID and provider ID) and the looper project's (looper: its GitLab project ID, the ref its signers run on and its provider ID); per key, import (an import job, and the importers' bindings), namespace (the namespace's protected refs sign) and environments (the looper project's environments that sign)."
   type = object({
-    key_ring = string
-    key      = string
+    key_ring  = string
+    wif_pool  = string
+    namespace = object({ id = string, wif_provider = string })
+    looper    = object({ project_id = string, ref = string, wif_provider = string })
+    keys = map(object({
+      import       = bool
+      namespace    = bool
+      environments = list(string)
+    }))
   })
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_apps.namespace.id)) && can(regex("^[0-9]+$", var.github_apps.looper.project_id)) && alltrue([for k in values(var.github_apps.keys) : alltrue([for e in k.environments : can(regex("^[a-z0-9][a-z0-9-]*$", e))])])
+    error_message = "The namespace and the looper project are GitLab's numeric IDs, and an environment is a GitLab environment's name."
+  }
+  validation {
+    condition     = !contains(try(var.github_apps.keys["tacplus-manager"].environments, []), "looper-report")
+    error_message = "tacplus-manager never signs for looper-report: a report's code runs in its job, and would mint the bypass of main's ruleset (tacplus-dev/looper#90)."
+  }
+}
+
+variable "kms_key_importers" {
+  description = "Who imports the apps' keys (github-apps.tf): roles/cloudkms.importer on each import job and the versions-create permission on each key with one. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for m in var.kms_key_importers : can(regex("^(user|group|serviceAccount):[^@]+@[^@]+$", m))])
+    error_message = "An importer is user:, group: or serviceAccount: and an email."
+  }
 }

@@ -1,8 +1,6 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The build cache and the tacplus-reader app's key.
-#
 # The build cache (decisions/builds-in-containers-2026-11-03.md, #5): a bucket for the compilers' remote caches and a
 # Docker registry for BuildKit's layer cache, both keyed by content (a cache only speeds a build up). The build jobs
 # are tacplus-dev/build's: they alone become the build identity, through Workload Identity Federation from gitlab.com,
@@ -102,28 +100,4 @@ resource "google_service_account_iam_member" "build_cache_wif" {
   service_account_id = google_service_account.build_cache.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.gitlab.name}/attribute.project_path/${var.build_cache.gitlab_project}"
-}
-
-resource "google_kms_key_ring" "reader" {
-  project    = google_project.ci.project_id
-  name       = var.reader_app_key.key_ring
-  location   = var.region
-  depends_on = [terraform_data.iam_ready]
-}
-
-# The GitHub App's key is GitHub's: it is imported, never generated here, so the key has no version until then
-# (RS256, which a GitHub App's JWT is signed with).
-resource "google_kms_crypto_key" "reader" {
-  name                          = var.reader_app_key.key
-  key_ring                      = google_kms_key_ring.reader.id
-  purpose                       = "ASYMMETRIC_SIGN"
-  import_only                   = true
-  skip_initial_version_creation = true
-  version_template {
-    algorithm        = "RSA_SIGN_PKCS1_2048_SHA256"
-    protection_level = "SOFTWARE"
-  }
-  lifecycle {
-    prevent_destroy = true
-  }
 }

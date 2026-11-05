@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#18).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#19).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock
@@ -13,7 +13,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
-  cache, import-only KMS key for the reader app), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below), `dev.tacplus.dev` zone,
+  cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
@@ -108,6 +108,19 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   (PROPOSALS.md). Tested with the dev stack's plan tests (mock providers), the policy's fixtures, and a plan of the binding
   with the real kubernetes provider under an unknown configuration; not applied yet: `apply:dev` on main does it, and
   whether the host admits the adder shows there; the hub sets `GCP_RUNNER_TOKEN_ADDERS` first.
+- **The GitHub Apps' keys in tacplus-ci (#19; looper#83):** the key ring `looper` holds `tacplus-manager`,
+  `tacplus-looper` and `tacplus-reader` (`modules/settings` `github_apps`, with the apps' IDs), import-only RS256
+  software keys with no version, `prevent_destroy`; the reader's key and key ring moved to the map's addresses
+  (`moved`). `tacplus-manager` and `tacplus-looper` each have an import job; the members of the protected GitLab
+  variable `GCP_KMS_KEY_IMPORTERS` (`ci/lib.sh`, as the adders) alone import: `cloudkms.importer` by a key-ring binding
+  conditioned on the import jobs' names (the provider has no import job IAM, PROPOSALS.md) and the custom role
+  `kmsKeyVersionImporter` (versions create only) on each key. The pool `gitlab-loopers`, its provider `gitlab-looper`
+  (tacplus-dev/looper's protected refs, `attribute.role` = `project_id:ref:ref_protected:environment`) and `gitlab-com`
+  (tacplus-dev's protected refs, namespace 145863835); each key's own signers: `tacplus-looper` for looper's main in
+  `looper-report`, `looper-scan`, `looper-plan` and `kicker`, `tacplus-manager` in `looper-manager` and `looper-scan`
+  (the module refuses `looper-report`), `tacplus-reader` for the namespace. The ci stack's output `looper_variables`
+  gives the looper project's variables. Tested with the stack's plan tests (mock providers) and `tests/ci_test.sh`; not
+  applied yet: `apply:ci` on main does it, then Jody's import (README, The GitHub Apps' keys) and the looper's setup.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

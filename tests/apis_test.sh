@@ -21,6 +21,7 @@ declare -A api_of=(
   [google_active_folder]=cloudresourcemanager
   [google_folder]=cloudresourcemanager
   [google_project_iam]=cloudresourcemanager
+  [google_project_iam_custom_role]=iam
   [google_project_service]=serviceusage
   [google_service_account]=iam
   [google_iam_workload_identity_pool]=iam

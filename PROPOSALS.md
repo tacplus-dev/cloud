@@ -213,3 +213,24 @@ the looper then marks it `promoted` or `declined` here with the date.
   `runner_token_adders`), and that it is the account of **Readers' accounts**, above. Why: a write grant to a person,
   the one exception to only the pipelines changing things: narrow (add only, on two secrets) but unverified until the
   apply.
+- **The importer role on each import job itself** (looper, #19, 2026-11-05). What: `roles/cloudkms.importer` bound on
+  each import job once the google provider has import job IAM resources, instead of the key ring's binding conditioned
+  on the import jobs' names (README, The GitHub Apps' keys). Why: #19 asks for it on each import job; google 8.9.0 has
+  no `google_kms_key_ring_import_job_iam_*`, and a condition on `resource.name` grants the same, but only an apply shows
+  that KMS evaluates it as expected (Jody's import is the test).
+- **The reader's key imported, and its signers moved** (looper, #19, 2026-11-05). What: when the reader moves off
+  jody1-328023, `import = true` for `tacplus-reader` in `modules/settings` (its import job and importers follow), and
+  each project that signs with it there (kernel's prepare; the `github_app_token` of tacplus-dev/cloud, cluster and
+  fleet-seatrials) exchanging an id_token for the provider `gitlab-com` of `gitlab-loopers` in `tacplus-ci`. This
+  repository's own drift job federates through tacplus-bootstrap's pool, which the new key does not admit: it needs a
+  second `id_tokens` entry for that provider, or the key a binding of its own principal. Why: #19 builds the reader's
+  bindings only as they are in jody1-328023, and nothing signs with the new key until then.
+- **tacplus-dev/looper's README: its keys and federation are in tacplus-ci** (looper, #19, 2026-11-05). What: a pull
+  request there replacing "Only the manager writes main, Setting it up" steps 2 and 3 (the keys, the import jobs, the
+  provider and the bindings in jody1-328023) with this repository's README, The GitHub Apps' keys, and the variables
+  from the ci stack's `looper_variables` (location `us-central1`, not `us`). Why: jody1-328023 is closing (#15); its
+  steps would build them there by hand.
+- **A looper job without an environment cannot federate** (looper, #19, 2026-11-05). What: confirm with the probe
+  that every looper job that exchanges its id_token has a GitLab environment, or map `attribute.role` with a default
+  (`assertion.environment` may be absent). Why: the provider's mapping is the looper README's, and a mapping that
+  reads a missing claim fails the exchange; the jobs that sign all name one today, by the README.

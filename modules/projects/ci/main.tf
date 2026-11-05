@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, shared by job containers), the build
-# cache, and the tacplus-reader app's key in Cloud KMS.
+# cache, and the GitHub Apps' keys in Cloud KMS (github-apps.tf).
 
 resource "google_project" "ci" {
   project_id          = var.project_id
@@ -46,11 +46,12 @@ resource "terraform_data" "iam_ready" {
 
 locals {
   # What the gate waits for: the first create of each kind in the project,
-  # the workload identity pool and the key ring among them.
+  # the workload identity pools, the key ring and the importers' custom role among them.
   iam_ready_permissions = [
     "artifactregistry.repositories.create",
     "cloudkms.keyRings.create",
     "compute.networks.create",
+    "iam.roles.create",
     "iam.serviceAccounts.create",
     "iam.workloadIdentityPools.create",
     "resourcemanager.projects.setIamPolicy",

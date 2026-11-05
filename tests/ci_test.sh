@@ -191,4 +191,24 @@ adders() { # adders [GCP_RUNNER_TOKEN_ADDERS]: ci_gcp's TF_VAR_runner_token_adde
 [ "$(adders)" = '[]' ] && [ "$(adders '')" = '[]' ] && ok "ci_gcp gives no adder without GCP_RUNNER_TOKEN_ADDERS" || fail "ci_gcp without GCP_RUNNER_TOKEN_ADDERS: [$(adders)]"
 [ -z "$(adders a@example.com)" ] && grep -q GCP_RUNNER_TOKEN_ADDERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   [ -z "$(adders 'user:a@example.com"]')" ] && ok "ci_gcp refuses a GCP_RUNNER_TOKEN_ADDERS entry that is not a member" || fail "ci_gcp with a bad adder: $(cat "$work/gcp-err")"
+
+# ci_gcp gives the ci stack the apps' key importers (#19) from the protected variable GCP_KMS_KEY_IMPORTERS alone, as
+# the adders: an HCL list, none when it is unset or empty, a refusal of one that is not a member before any gcloud.
+importers() { # importers [GCP_KMS_KEY_IMPORTERS]: ci_gcp's TF_VAR_kms_key_importers, or its refusal
+  (
+    unset GCP_KMS_KEY_IMPORTERS TF_VAR_kms_key_importers GCP_RUNNER_TOKEN_ADDERS
+    [ $# = 0 ] || export GCP_KMS_KEY_IMPORTERS=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=y GCP_DEPLOY_SA=z GCP_PARENT_FOLDER=111111111111 ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud ran" >&2; }
+    ci_gcp >/dev/null 2>"$work/gcp-err" && echo "${TF_VAR_kms_key_importers-unset} ${TF_VAR_runner_token_adders-unset}"
+  )
+}
+[ "$(importers user:a@example.com)" = '["user:a@example.com"] []' ] && [ "$(importers 'user:a@example.com, group:b@example.com')" = '["user:a@example.com","group:b@example.com"] []' ] &&
+  ok "ci_gcp gives the ci stack GCP_KMS_KEY_IMPORTERS as kms_key_importers, and nobody else" || fail "ci_gcp's kms_key_importers: [$(importers 'user:a@example.com, group:b@example.com')] $(cat "$work/gcp-err")"
+[ "$(importers)" = '[] []' ] && [ "$(importers '')" = '[] []' ] && ok "ci_gcp gives no importer without GCP_KMS_KEY_IMPORTERS" || fail "ci_gcp without GCP_KMS_KEY_IMPORTERS: [$(importers)]"
+[ -z "$(importers a@example.com)" ] && grep -q GCP_KMS_KEY_IMPORTERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  ok "ci_gcp refuses a GCP_KMS_KEY_IMPORTERS entry that is not a member" || fail "ci_gcp with a bad importer: $(cat "$work/gcp-err")"
 exit "$failed"

@@ -61,6 +61,39 @@ output "projects" {
   }
 }
 
+output "github_apps" {
+  description = <<-EOT
+    The GitHub Apps whose private keys are Cloud KMS signing keys in the ci project's key ring key_ring (#19;
+    tacplus-dev/looper README, Only the manager writes main), and who signs with each, through Workload Identity
+    Federation from gitlab.com, the ci project's workload identity pool, pool. Each key is import-only: the app's key, generated on
+    GitHub, is imported once (import: through an import job of its own, by the protected GitLab variable
+    GCP_KMS_KEY_IMPORTERS's members) and never leaves KMS. A key's signers are its own bindings, never the key
+    ring's: environments, the jobs of looper's ref in those GitLab environments (its provider's attribute role,
+    project_id:ref:ref_protected:environment); namespace, every protected ref of the namespace (its provider's
+    attribute namespace_id). The IDs are GitHub's and GitLab's, none of them secret.
+  EOT
+  value = {
+    key_ring = "looper"
+    pool     = "gitlab-loopers"
+    # tacplus-dev's GitLab group: namespace_id in a job's id_token (CI_PROJECT_NAMESPACE_ID), which a renamed or
+    # re-created path does not take over.
+    namespace = { path = "tacplus-dev", id = "145863835", wif_provider = "gitlab-com" }
+    looper    = { project = "tacplus-dev/looper", project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }
+    apps = {
+      # The bypass actor of main's ruleset: the managers, and the scans for their commits to main, never a report,
+      # whose code runs in its job (looper#90).
+      tacplus-manager = { app_id = "5632100", installation_id = "179024536", import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }
+      # Pushes branches, comments and labels, nothing to main.
+      tacplus-looper = { app_id = "5632122", installation_id = "179024135", import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }
+      # Read-only. The projects that sign with it in jody1-328023 today: tacplus-dev/kernel (looper-identity's
+      # prepare) and the github_app_token of tacplus-dev/cloud (its drift issue), tacplus-dev/cluster and
+      # tacplus-dev/fleet-seatrials; tacplus-dev/build holds the key as a file variable. Its key is imported here when
+      # the reader moves off jody1-328023.
+      tacplus-reader = { app_id = "5531358", installation_id = "176655068", import = false, namespace = true, environments = [] }
+    }
+  }
+}
+
 output "deployments" {
   description = <<-EOT
     The deployments whose pipelines own their TLS certificates (decisions/certificates-by-pipeline-2026-11-03.md,
