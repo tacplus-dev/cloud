@@ -59,13 +59,16 @@ data "gitlab_group" "namespace" {
   full_path = each.key
 }
 
+# Maintainers push and merge, nobody force-pushes. gitlab.com is an Enterprise instance, on Free too: the provider
+# refuses push_access_level and merge_access_level there (#17), and takes the same levels as allowed_to_push and
+# allowed_to_merge, by role only (a user, group or deploy key is Premium).
 resource "gitlab_branch_protection" "branch" {
-  for_each           = local.branches
-  project            = local.project_id[each.value.project]
-  branch             = each.value.branch
-  push_access_level  = "maintainer"
-  merge_access_level = "maintainer"
-  allow_force_push   = false
+  for_each         = local.branches
+  project          = local.project_id[each.value.project]
+  branch           = each.value.branch
+  allowed_to_push  = [{ access_level = "maintainer" }]
+  allowed_to_merge = [{ access_level = "maintainer" }]
+  allow_force_push = false
 }
 
 resource "gitlab_project_protected_environment" "environment" {

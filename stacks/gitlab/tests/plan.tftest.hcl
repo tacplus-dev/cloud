@@ -84,7 +84,7 @@ run "gitlab" {
   }
 
   assert {
-    condition     = gitlab_branch_protection.branch["tacplus-dev/cloud:main"].push_access_level == "maintainer" && gitlab_branch_protection.branch["tacplus-dev/cloud:main"].merge_access_level == "maintainer" && !gitlab_branch_protection.branch["tacplus-dev/cloud:main"].allow_force_push
+    condition     = [for a in gitlab_branch_protection.branch["tacplus-dev/cloud:main"].allowed_to_push : a.access_level] == ["maintainer"] && [for a in gitlab_branch_protection.branch["tacplus-dev/cloud:main"].allowed_to_merge : a.access_level] == ["maintainer"] && !gitlab_branch_protection.branch["tacplus-dev/cloud:main"].allow_force_push
     error_message = "main is not protected: Maintainers push and merge, nobody force-pushes."
   }
   assert {

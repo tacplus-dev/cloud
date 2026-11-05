@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#16).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#17).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0 and `gitlab` 19.5.0 (lock
@@ -83,6 +83,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   project and its APIs, and everything else after it (`tests/iam_ready_test.sh`). Tested against stubs and mock
   providers; not yet against GCP: recovery is Jody's bootstrap run again (it enables the two APIs), then a pipeline on
   main from the partial state.
+- **`plan:gitlab` on gitlab.com (#17):** pipeline 3030507386's `plan:gitlab` failed: gitlab.com says it is an Enterprise
+  instance (`/metadata`), on Free too, and there provider 19.5.0 refuses a branch protection's `push_access_level` and
+  `merge_access_level`. main's protection is now `allowed_to_push` and `allowed_to_merge`, by role (Maintainers; no
+  force push), and the stack imports main's protection and `GCP_WIF_PROVIDER` by the project's numeric ID: by its path,
+  the state's `project` differed from the config's and the first apply would have replaced both. `tests/gitlab_plan_test.sh`
+  plans the stack with its real providers against a stub API (`tests/stubapi`) over a fixture of gitlab.com's and
+  Google's answers (`tests/fixtures/gitlab/api.json`, built from the APIs' documented responses, not recorded: the
+  looper cannot read the project's settings): both adopted with no change, nothing replaced or deleted, the old form
+  refused. Its plan: the two adoptions, and creates of the membership (#12), the four protected environments, the
+  reader's two variables, and the three paused runners with their token versions.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -96,7 +106,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
-- **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers only, so an API's
+- **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
+  stack's also against a stub of gitlab.com's API, #17), so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
   (README, Before the first pipeline); until Jody's registrar change, tacplus.dev resolves through the zone in

@@ -56,7 +56,9 @@ module "gitlab" {
   }
 }
 
-# What the hub set before the pipeline's first run (README, Before the first pipeline): adopted, not created.
+# What the hub set before the pipeline's first run (README, Before the first pipeline): adopted, not created. Imported by
+# the project's numeric ID, the module's: imported by its path, the state's project would differ from the config's, and
+# the first apply would replace what it adopts (#17; tests/gitlab_plan_test.sh).
 variable "import_existing" {
   description = "Adopt the settings the hub made by hand (the import blocks below). False only in the tests: a mock provider cannot import."
   type        = bool
@@ -66,13 +68,13 @@ variable "import_existing" {
 import {
   for_each = var.import_existing ? toset(["main"]) : toset([])
   to       = module.gitlab.gitlab_branch_protection.branch["${local.cloud}:${each.key}"]
-  id       = "${local.cloud}:${each.key}"
+  id       = "${module.gitlab.project_ids[local.cloud]}:${each.key}"
 }
 
 import {
   for_each = var.import_existing ? toset(["GCP_WIF_PROVIDER"]) : toset([])
   to       = module.gitlab.gitlab_project_variable.variable["${local.cloud}:${each.key}"]
-  id       = "${local.cloud}:${each.key}:*"
+  id       = "${module.gitlab.project_ids[local.cloud]}:${each.key}:*"
 }
 
 output "project_ids" {
