@@ -65,3 +65,31 @@ exceptions:
     reason: "github.com/ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (the security job's secrets scan): memory leaks decoding corrupted LZMA archives. gitleaks decodes no archive here (--max-archive-depth is not set: archives are not scanned), and what it reads is this repository's tree and history. Fixed in xz v0.5.15; no gitleaks release with it yet."
     decided_by: "jodydadescott (tacplus-dev/cloud#10, 2026-11-04: accept what has no fixed release, 30 days)"
     expires: 2026-12-04
+  - id: CVE-2026-109258
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-109260
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-109262
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-109263
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-109268
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-116149
+    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
+  - id: CVE-2026-109518
+    reason: "apt in the CI image (build:2.5, Debian 13.7): an on-path attack on package installs; no cloud job runs apt (tools come by pinned SHA-256 or module hash); fixed by the line's image rebuild (tacplus-dev/tacplus#283)."
+    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
+    expires: 2026-11-19
