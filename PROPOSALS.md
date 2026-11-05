@@ -187,3 +187,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   carries it, the project's own creation included, so a build from nothing would name a quota project that does not
   exist yet; without one, `google_project_service` sends the new project itself, whose Service Usage and IAM may not have
   reached it, before any gate can run. Either way it goes with **The bootstrap's own resources under the pipeline**.
+- **Record the gitlab stack's fixture from gitlab.com** (looper, #17, 2026-11-05). What: a read-only script (the
+  routes `tests/stubapi` logs, GETs only, with the gitlab stack's token, in a job with it) that rewrites
+  `tests/fixtures/gitlab/api.json` from the real answers for tacplus-dev/cloud, its protected main and
+  `GCP_WIF_PROVIDER`, keeping the IDs; and the same stub for the drift's plan of the stack's other first-apply
+  surprises (a protected environment or a variable the hub made by hand, which a create would collide with). Why: #17's
+  fixture is built from the API's documented answers, not recorded (the looper cannot read the project's settings), so
+  an attribute the hub set differently (`raw`, `masked`, the description, `unprotect_access_levels`) still shows only
+  at the first `plan:gitlab`.
