@@ -83,31 +83,3 @@ exceptions:
     reason: "kin-openapi openapi3filter error conversion and encoding (hashicorp/kubernetes 3.4.0, our build, ci/kubernetes-provider.sh): openapi3filter, an HTTP server's request validation, is never imported (not in the provider's go list -deps); kin-openapi is used only by kubernetes_manifest, to read the cluster's OpenAPI document, and nothing here uses it. The fixed releases (v0.144.0) change the API the provider compiles against; no provider release with them yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#18, 2026-11-05)"
     expires: 2026-12-05
-  - id: CVE-2026-109258
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-109260
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-109262
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-109263
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-109268
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-116149
-    reason: "ImageMagick in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.5, Debian 13.7): no cloud job runs ImageMagick or processes an image; the fix is in Debian and arrives with the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19
-  - id: CVE-2026-109518
-    reason: "apt in the CI image (build:2.5, Debian 13.7): an on-path attack on package installs; no cloud job runs apt (tools come by pinned SHA-256 or module hash); fixed by the line's image rebuild (tacplus-dev/tacplus#283)."
-    decided_by: "jodydadescott (hub, cloud first pipeline 3030046555, 2026-11-05)"
-    expires: 2026-11-19

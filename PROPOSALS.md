@@ -150,6 +150,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   runner's platform only (Trivy's default); scan each platform the index holds (`--platform linux/arm64`, then
   `linux/amd64`). Why: the jobs run on one platform today (arm64), but the image is multi-platform, and a job moved to
   the other would run in an image never scanned.
+- **A Trivy timeout to fit the CI image** (looper, #22). What: `ci/security.sh` runs `trivy image` with Trivy's default
+  `--timeout` of 5m; give it one sized for the image (`--timeout 15m`, say), and `tests/security_test.sh`'s stub the flag.
+  Why: the build image is large (Swift's embedded libraries among its layers): a scan of build:2.6.1 took 235 s in a
+  4 GiB container, and on 2026-11-06 two of four runs (build:2.5 and 2.6.1) stopped at the deadline ("semaphore acquire:
+  context deadline exceeded"), which the job counts as a tool that cannot run, so it fails.
 - **One security job for the three apply pipelines** (looper, #10). What: cloud, cluster and fleet-seatrials each run the
   same floor (tacplus-dev/cluster#5, tacplus-dev/fleet-seatrials#36); one shared job file (a GitLab `include` of a
   pinned commit) or looper-scan itself pinned into each `ci/tools.sh`, instead of three copies of the policy. Why: the
