@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by the looper (#19).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-06 by the looper (#21).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.5` by digest (v2.5.11's, #10); OpenTofu 1.13.2, providers `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock
@@ -61,7 +61,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   reported for port 22. Tested with plan and live fixtures and the stacks' plan tests, against mocks and a stub gcloud
   only; the runner VMs are not spot (moot: they go with #11).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
-  (`prevent_destroy`) for the Gateway's load balancer, and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
+  (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
   hostnames (`seatrials.tacplus.dev`, `idp.test.tacplus.dev`) A to the address, and the delegations of
   `dev.tacplus.dev` and `_acme-challenge.tacplus.dev`; `apply:dev` prints the zone's name servers for the registrar.
@@ -121,6 +121,20 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   (the module refuses `looper-report`), `tacplus-reader` for the namespace. The ci stack's output `looper_variables`
   gives the looper project's variables. Tested with the stack's plan tests (mock providers) and `tests/ci_test.sh`; not
   applied yet: `apply:ci` on main does it, then Jody's import (README, The GitHub Apps' keys) and the looper's setup.
+- **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
+  external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
+  terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
+  (`EXTERNAL_MANAGED`, TCP), a target TCP proxy (no PROXY header), a backend service (TCP, idle timeout a day) and a TCP
+  health check on the endpoints' port; `gateway` on 443 to the NEG `seatrials-gateway` (endpoints 8443, tacplus-dev/operator#22
+  renders its Service), `test-idp` on 8443 to `seatrials-test-idp` (the test IdP's own port: a TCP proxy does not route
+  by SNI; fleet-seatrials renders it). Both start `ready = false`, with no backend, until GKE has made the NEGs. The
+  firewall rule `allow-google-proxies`, the dev module's only one, admits tcp:8443 to the nodes from `35.191.0.0/16` and
+  `130.211.0.0/22` alone. `ci/policy.sh plan` admits only that forwarding rule (global, `EXTERNAL_MANAGED`, TCP, on
+  `gateway`, to a TCP proxy), refuses any certificate, Certificate Manager resource, SSL policy, HTTP(S) or SSL proxy or
+  URL map, and any ingress allow rule from a public range but Google's (the live audit reports those too). The NEGs'
+  names are in the README (The public entry). Tested with the dev stack's plan tests (mock providers), plan fixtures,
+  `tests/load_balancer_test.sh` and the audit's fixtures; not applied yet, and not against GCP: `apply:dev` on main does
+  it.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
@@ -140,7 +154,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-05 by th
   runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
   (README, Before the first pipeline); until Jody's registrar change, tacplus.dev resolves through the zone in
 jody1-328023, which the hub keeps alike (README, The tacplus.dev cutover). The test IdP's own load balancer and address
-in jody1-328023 do not carry over: in the new cluster it is behind the Gateway (PROPOSALS.md). The runners are
+in jody1-328023 do not carry over: in the new cluster it is on port 8443 of the address `gateway` (#21, PROPOSALS.md). The runners are
   registered paused and the cluster is empty until the later move off jody1-328023; with no host Docker socket, the
   jobs that use one (looper-docker, the host-socket gates) must move to build jobs first (looper#71). The build jobs
   do not use the cache yet: tacplus-dev/build's jobs need its `id_tokens` and BuildKit and compiler cache

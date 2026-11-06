@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The public entry point and the domain's own zone (#13; decisions/only-vms-are-k8s-nodes-2026-11-04.md, its addendum on
-# the new cluster; decisions/network-exposure-2026-11-03.md). The gateway's load balancer has the one public
-# IP, a reserved global address the Gateway names (NamedAddress), which outlives any rebuild of the load balancer. The
+# the new cluster; decisions/network-exposure-2026-11-03.md). The load balancer has the one public IP, a reserved
+# global address its forwarding rules name (load-balancer.tf, #21), which outlives any rebuild of the load balancer. The
 # zone of the domain (tacplus.dev) is written only by this pipeline: the records copied from the zone it replaces, each
 # deployment's hostnames to the gateway's address, and the delegations of the dev zone and the challenge zones. Its
 # name servers are what the registrar is given (README, The tacplus.dev cutover).
 
-# IPv4 only: GKE documents one static global address (NamedAddress) for its global external Gateway class, nothing of a
-# second, IPv6 one beside it (PROPOSALS.md, IPv6 on the Gateway).
+# IPv4 only: an IPv6 address beside it would be a second public IP (PROPOSALS.md, IPv6 on the address).
 resource "google_compute_global_address" "gateway" {
   project      = google_project.dev.project_id
   name         = "gateway"

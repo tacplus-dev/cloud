@@ -128,3 +128,22 @@ variable "runner_token_adders" {
     error_message = "An adder is user:, group: or serviceAccount: and an email."
   }
 }
+
+variable "load_balancer" {
+  description = "The global external proxy Network Load Balancer (TCP proxy) on the address gateway (load-balancer.tf, #21): by listener name, its port on the address, the name of the standalone zonal NEG its connections go to (in the cluster's zone), the port of that NEG's endpoints (the pods'), and whether the NEG exists yet (false: no backend)."
+  type = map(object({
+    port          = number
+    neg           = string
+    endpoint_port = number
+    ready         = bool
+  }))
+  default = {}
+  validation {
+    condition     = alltrue([for k, l in var.load_balancer : can(regex("^[a-z]([-a-z0-9]{0,40}[a-z0-9])?$", k)) && can(regex("^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$", l.neg)) && l.port >= 1 && l.port <= 65535 && l.endpoint_port >= 1 && l.endpoint_port <= 65535])
+    error_message = "A listener's name or its NEG's is not a GCE name, or a port is not 1 to 65535."
+  }
+  validation {
+    condition     = length(distinct([for l in values(var.load_balancer) : l.port])) == length(var.load_balancer) && length(distinct([for l in values(var.load_balancer) : l.neg])) == length(var.load_balancer)
+    error_message = "Two listeners share a port of the address or a NEG: a TCP proxy does not route by SNI, so each port goes to one NEG."
+  }
+}

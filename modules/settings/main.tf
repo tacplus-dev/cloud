@@ -107,9 +107,34 @@ output "deployments" {
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
     # Certificates); it becomes this identity when seatrials moves off jody1-328023.
-    # idp.test.tacplus.dev is its test IdP's (tacplus-dev/fleet-seatrials, test-idp/), behind the same Gateway: the
-    # gateway's address is the one public IP, so the test IdP has no load balancer of its own (#13).
+    # idp.test.tacplus.dev is its test IdP's (tacplus-dev/fleet-seatrials, test-idp/), on the same address: the
+    # gateway's address is the one public IP (#13), and the test IdP has a port of its own on it (load_balancer, #21).
     seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+  }
+}
+
+output "load_balancer" {
+  description = <<-EOT
+    The public entry (decisions/network-exposure-2026-11-03.md, its addendum "we terminate TLS, not the cloud", #21):
+    Google's global external proxy Network Load Balancer (TCP proxy) on the global address gateway (#13), the one
+    public IP, passing each connection, TLS unopened, to the pods behind a standalone zonal network endpoint group (NEG)
+    in the dev cluster. One listener per port of the address (a TCP proxy does not route by SNI): port, its forwarding
+    rule's; neg, the NEG's name, which this pipeline names and the Service's cloud.google.com/neg annotation gives it
+    ({"exposed_ports": {"<service port>": {"name": "<neg>"}}}), a contract with whoever renders that Service;
+    endpoint_port, the port of the NEG's endpoints, the pods' (the Service's targetPort), which the health check probes
+    and the nodes admit from Google's ranges only; ready, true once GKE has made the NEG in the cluster's zone: until
+    then the backend service has no backend (the API refuses one that names a NEG that does not exist), and the
+    commit that sets it adds it.
+  EOT
+  value = {
+    # tacplus.dev's gateway: tacplus-dev/operator renders seatrials' gateway Service (port 443, targetPort 8443, every
+    # gateway replica) with this NEG (tacplus-dev/operator#22). Its NEG's name is <deployment>-gateway.
+    gateway = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = false }
+    # The test IdP (idp.test.tacplus.dev, tacplus-dev/fleet-seatrials#27), on a port of its own of the same address:
+    # https://idp.test.tacplus.dev:8443, Keycloak's own TLS on its default HTTPS port, rendered by fleet-seatrials'
+    # test-idp/ with this NEG. Test only: a second address would be a second public IP, and SNI routing in the
+    # gateway is a gateway change (#21).
+    test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
   }
 }
 

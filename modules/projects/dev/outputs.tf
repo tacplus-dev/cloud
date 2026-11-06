@@ -43,7 +43,7 @@ output "deployments" {
 }
 
 output "gateway_address" {
-  description = "The Gateway's address: its name, which the Gateway names (spec.addresses, type NamedAddress), and its IP."
+  description = "The public address: its name, which the load balancer's forwarding rules name, and its IP, which the hostnames get."
   value = {
     name    = google_compute_global_address.gateway.name
     address = google_compute_global_address.gateway.address
@@ -69,5 +69,14 @@ output "cluster_api" {
   value = {
     host                   = "https://${google_container_cluster.dev.endpoint}"
     cluster_ca_certificate = one(google_container_cluster.dev.master_auth[*].cluster_ca_certificate)
+  }
+}
+
+output "load_balancer" {
+  description = "The public entry (#21): the address's IP, and by listener its NEG's name and zone, its port on the address and its endpoints' port (the contract with the Services that expose the NEGs), and the ranges the nodes admit their connections from."
+  value = {
+    address       = google_compute_global_address.gateway.address
+    negs          = { for k, l in var.load_balancer : k => { neg = l.neg, zone = var.cluster.zone, port = l.port, endpoint_port = l.endpoint_port } }
+    source_ranges = sort(local.google_proxy_ranges)
   }
 }

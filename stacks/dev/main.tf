@@ -3,7 +3,8 @@
 #
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
 # certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone, the runners' token secrets and
-# the cluster pipeline's cluster-admin in the cluster (#18). Its folder is the folder stack's; its billing account is the bootstrap
+# the cluster pipeline's cluster-admin in the cluster (#18), and the TCP proxy load balancer on the gateway's address
+# (#21). Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
 variable "parent_folder" {
@@ -79,6 +80,8 @@ module "dev" {
   deployments = module.settings.deployments
   # Jody adds the runners' token versions (#18): the hub registers each runner and pipes its token in, as Jody.
   runner_token_adders = var.runner_token_adders
+  # The TCP proxy on the address gateway, to the NEGs the settings name (#21).
+  load_balancer = module.settings.load_balancer
 }
 
 output "project_id" {
@@ -111,4 +114,8 @@ output "zone" {
 
 output "runner_tokens" {
   value = module.dev.runner_tokens
+}
+
+output "load_balancer" {
+  value = module.dev.load_balancer
 }

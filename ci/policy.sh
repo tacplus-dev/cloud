@@ -15,9 +15,15 @@
 #     rule, exactly as it is, until the runner VMs go (#11); a cluster without private nodes, a node pool with public
 #     ones (one that does not say inherits the cluster's), or a node pool whose image is not COS_CONTAINERD;
 #   - the one public IP (decisions/network-exposure-2026-11-03.md, #13): in a plan, an external address but the one
-#     global address `gateway` (the Gateway's load balancer's, the dev stack's), a regional external address, or an
-#     external forwarding rule (the Gateway's are GKE's, never a stack's); in the source, a global address without
-#     prevent_destroy, so that no apply destroys it and its IP with it;
+#     global address `gateway` (the dev stack's), a regional external address, or an external forwarding rule but the
+#     TCP proxy's on it; in the source, a global address without prevent_destroy, so that no apply destroys it and its
+#     IP with it;
+#   - we terminate TLS, not the cloud (the decision's addendum, #21): in a plan, the one external forwarding rule is
+#     global, EXTERNAL_MANAGED and TCP, on the address gateway, to a target TCP proxy (the global external proxy Network
+#     Load Balancer, passing TLS through unopened); a certificate (Compute's or Certificate Manager's), an SSL policy,
+#     an HTTP, HTTPS or SSL proxy or a URL map, global or regional, is refused; and an ingress allow rule from a public
+#     range is refused unless it is within Google's proxies' and health checkers' (35.191.0.0/16, 130.211.0.0/22): the
+#     nodes admit nothing else from outside the private ranges;
 #   - in a plan, roles/owner or roles/container.admin to a service account (#18), in a member, a member list or a
 #     policy document, or to a member known only after apply, but the pipeline's own owner of its folders: either could
 #     delete the cluster, and cluster-admin inside it is a ClusterRoleBinding, not IAM;
@@ -75,9 +81,32 @@ plan_check() {
       def runner_ssh: .name == "runner-manager-to-workers-ssh" and (.direction // "INGRESS") == "INGRESS"
         and (.source_ranges // []) == [] and .source_tags == ["runner-manager"] and .target_tags == ["runner-worker"]
         and .allow == [{protocol: "tcp", ports: ["22"]}];
+      # A public range: not within the private ranges, nor within Google'"'"'s proxies'"'"' and health checkers'"'"', the only
+      # sources outside the network a node admits (#21). Any IPv6 range is public here.
+      def ip4: capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)\\.(?<d>[0-9]+)(/(?<n>[0-9]+))?$")
+        | {ip: ((.a | tonumber) * 16777216 + (.b | tonumber) * 65536 + (.c | tonumber) * 256 + (.d | tonumber)), n: ((.n // "32") | tonumber)};
+      def within($net): (ip4 // null) as $r | ($net | ip4) as $m
+        | $r != null and $r.n >= $m.n and (($r.ip / pow(2; 32 - $m.n)) | floor) == (($m.ip / pow(2; 32 - $m.n)) | floor);
+      def public: . as $s | all("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "35.191.0.0/16", "130.211.0.0/22"; . as $net | $s | within($net) | not);
+      . as $plan
+      # What an attribute known only after apply refers to, in the configuration of the resource'"'"'s module.
+      | def refs($rc; $attr): [$rc.module_address // "" | scan("module\\.([^.\\[]+)") | .[0]] as $mods
+          | (reduce $mods[] as $m ($plan.configuration.root_module // {}; .module_calls[$m].module // {}))
+          | [.resources[]? | select(.type == $rc.type and .name == $rc.name) | .expressions[$attr].references[]?];
+      # The IP of the address gateway, where the plan knows it (a forwarding rule in the state holds the IP, not the name).
+      [.resource_changes[] | select(.type == "google_compute_global_address" and .change.after.name? == "gateway")
+       | .change.after.address // empty] as $gateway_ips
+      # The one external forwarding rule: the global external proxy Network Load Balancer'"'"'s, a TCP proxy on gateway.
+      | def tcp_proxy_on_gateway($rc; $after; $unknown):
+          $rc.type == "google_compute_global_forwarding_rule" and $after.load_balancing_scheme == "EXTERNAL_MANAGED"
+          and $after.ip_protocol == "TCP"
+          and (if any($unknown[]; . == "target") then any(refs($rc; "target")[]; startswith("google_compute_target_tcp_proxy."))
+               else ($after.target // "" | test("/targetTcpProxies/[^/]+$")) end)
+          and (if any($unknown[]; . == "ip_address") then any(refs($rc; "ip_address")[]; startswith("google_compute_global_address.gateway"))
+               else ($after.ip_address // "") as $ip | ($ip | test("(^|/)global/addresses/gateway$")) or any($gateway_ips[]; . == $ip) end);
       .resource_changes[]
       | select(.change.actions | any(. == "create" or . == "update"))
-      | .address as $a | (.change.after // {}) as $after
+      | . as $rc | .address as $a | (.change.after // {}) as $after
       | [.change.after_unknown // {} | paths(. == true) | map(tostring) | join(".")] as $unknown
       | (select(.type == "google_service_account_key") | "\($a) creates a service-account key"),
         ($after | paths(strings) as $p | getpath($p) as $v
@@ -97,6 +126,9 @@ plan_check() {
               | select(any($after.source_ranges[]?; IN("0.0.0.0/0", "::/0"))
                   or ([$after.source_ranges, $after.source_tags, $after.source_service_accounts] | map(. // [] | length) | add == 0))
               | "\($a) allows ingress from the internet (0.0.0.0/0 or ::/0, or no source, which is 0.0.0.0/0): every load balancer is proxy-based"),
+             (select(($after.direction // "INGRESS") == "INGRESS" and ($after.allow // [] | length > 0))
+              | $after.source_ranges[]? | select(IN("0.0.0.0/0", "::/0") | not) | select(public)
+              | "\($a) allows ingress from \(.), a public range: the nodes admit only Google'"'"'s proxies and health checkers (35.191.0.0/16, 130.211.0.0/22) from outside the network"),
              (select(any($after.allow[]?; ssh) and ($after | runner_ssh | not))
               | "\($a) allows port 22 (SSH): no SSH anywhere, not even IAP")
            end),
@@ -106,7 +138,10 @@ plan_check() {
          | "\($a) is an external address: the only public IP is the global address gateway"),
         (select(.type | IN("google_compute_forwarding_rule", "google_compute_global_forwarding_rule"))
          | select(($after.load_balancing_scheme // "EXTERNAL") | IN("EXTERNAL", "EXTERNAL_MANAGED"))
-         | "\($a) is an external forwarding rule: the Gateway load balancer is GKE-made, on the global address gateway"),
+         | select(tcp_proxy_on_gateway($rc; $after; $unknown) | not)
+         | "\($a) is an external forwarding rule but a TCP proxy'"'"'s (global, EXTERNAL_MANAGED, TCP) on the global address gateway: the one way in"),
+        (select(.type | test("^google_certificate_manager_|^google_compute_(region_)?(ssl_certificate|managed_ssl_certificate|ssl_policy|target_https?_proxy|target_ssl_proxy|url_map)$"))
+         | "\($a) is a \(.type): we terminate TLS, not the cloud (no certificate, SSL policy, HTTP(S) or SSL proxy or URL map on Google'"'"'s side)"),
         (select(.type | test("^google_[a-z0-9_]+_iam_(member|binding|policy)$"))
          | (if .type | endswith("_iam_policy") then
               ($after.policy_data // "{}" | fromjson? // {} | .bindings[]? | {role, members: (.members // [])})

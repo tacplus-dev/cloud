@@ -12,7 +12,10 @@
 # delegations, and its name servers for the registrar (#13), and the runners' token secrets, which the cluster pipeline
 # reads and only the listed people add versions to, and the cluster pipeline's cluster-admin, a ClusterRoleBinding
 # made in the cluster through the kubernetes provider, with no service account of dev holding container.admin or owner
-# in IAM (#18). (A test sees a module's resources only when it runs that module itself.)
+# in IAM (#18), and the public entry (#21): a global external proxy Network Load Balancer (TCP proxy) on the address
+# gateway, one forwarding rule per listener, to the NEGs the settings name, a TCP health check on their endpoints'
+# port, no TLS on Google's side, and the nodes open to Google's proxies and health checkers only, on that port. (A
+# test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
   mock_data "google_active_folder" {
@@ -74,6 +77,16 @@ run "stack" {
     condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control" }
     error_message = "The stack does not give the runners' token secrets, tacplus-dev/cluster's tacplus.token."
   }
+  # The NEGs' names are a contract with tacplus-dev/operator (the gateway's) and tacplus-dev/fleet-seatrials (the test
+  # IdP's): the stack gives them, with the ports, as the settings name them.
+  assert {
+    condition     = output.load_balancer.negs == { gateway = { neg = "seatrials-gateway", zone = "us-central1-a", port = 443, endpoint_port = 8443 }, test-idp = { neg = "seatrials-test-idp", zone = "us-central1-a", port = 8443, endpoint_port = 8443 } }
+    error_message = "The stack does not give the NEGs' names, zone and ports: seatrials-gateway on 443 and seatrials-test-idp on 8443, endpoints on 8443."
+  }
+  assert {
+    condition     = output.load_balancer.address == "203.0.113.10" && output.load_balancer.source_ranges == tolist(["130.211.0.0/22", "35.191.0.0/16"])
+    error_message = "The stack does not give the load balancer's address and the ranges the nodes admit it from."
+  }
 }
 
 run "dev" {
@@ -120,6 +133,11 @@ run "dev" {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
     }
     runner_token_adders = ["user:jody@example.com"]
+    # The gateway's NEG made, the test IdP's not yet.
+    load_balancer = {
+      gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
+      test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
+    }
   }
 
   assert {
@@ -251,6 +269,96 @@ run "dev" {
     condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
     error_message = "The module does not give the runners' token secrets, or the cluster's API for the kubernetes provider."
   }
+  # The public entry (#21): a TCP proxy per listener, on the address gateway, to the NEG its listener names.
+  assert {
+    condition     = toset(keys(google_compute_global_forwarding_rule.lb)) == toset(["gateway", "test-idp"]) && alltrue([for k, r in google_compute_global_forwarding_rule.lb : r.load_balancing_scheme == "EXTERNAL_MANAGED" && r.ip_protocol == "TCP" && r.ip_address == google_compute_global_address.gateway.id && r.target == google_compute_target_tcp_proxy.lb[k].id])
+    error_message = "The forwarding rules are not the gateway's and the test IdP's, global external proxy (EXTERNAL_MANAGED, TCP) on the address gateway, each to its TCP proxy."
+  }
+  assert {
+    condition     = google_compute_global_forwarding_rule.lb["gateway"].port_range == "443" && google_compute_global_forwarding_rule.lb["test-idp"].port_range == "8443"
+    error_message = "The gateway is not on 443 and the test IdP on 8443 of the address."
+  }
+  assert {
+    condition     = alltrue([for k, p in google_compute_target_tcp_proxy.lb : p.backend_service == google_compute_backend_service.lb[k].id && p.proxy_header == "NONE"])
+    error_message = "A TCP proxy does not pass its connections, as they are, to its listener's backend service."
+  }
+  assert {
+    condition     = alltrue([for k, b in google_compute_backend_service.lb : b.protocol == "TCP" && b.load_balancing_scheme == "EXTERNAL_MANAGED" && b.health_checks == toset([google_compute_health_check.lb[k].id])])
+    error_message = "A backend service is not TCP, EXTERNAL_MANAGED, with its listener's health check."
+  }
+  assert {
+    condition     = length(google_compute_backend_service.lb["gateway"].backend) == 1 && one(google_compute_backend_service.lb["gateway"].backend[*].group) == "projects/tacplus-dev/zones/us-central1-a/networkEndpointGroups/seatrials-gateway" && one(google_compute_backend_service.lb["gateway"].backend[*].balancing_mode) == "CONNECTION"
+    error_message = "The gateway's backend is not the zonal NEG seatrials-gateway in the cluster's zone, balanced by connection."
+  }
+  assert {
+    condition     = length(google_compute_backend_service.lb["test-idp"].backend) == 0
+    error_message = "The test IdP's backend service names a NEG that does not exist yet (ready = false)."
+  }
+  assert {
+    condition     = alltrue([for h in google_compute_health_check.lb : h.tcp_health_check[0].port == 8443 && length(h.http_health_check) == 0 && length(h.https_health_check) == 0 && length(h.ssl_health_check) == 0])
+    error_message = "The health checks are not TCP on the endpoints' port, 8443."
+  }
+  # The nodes' one ingress allow rule: Google's proxies and health checkers, on the endpoints' port, nothing else.
+  assert {
+    condition     = google_compute_firewall.lb[0].direction == "INGRESS" && google_compute_firewall.lb[0].source_ranges == toset(["35.191.0.0/16", "130.211.0.0/22"]) && length(coalesce(google_compute_firewall.lb[0].source_tags, [])) == 0 && length(coalesce(google_compute_firewall.lb[0].source_service_accounts, [])) == 0
+    error_message = "The load balancer's firewall rule admits more than Google's proxy and health-check ranges (35.191.0.0/16, 130.211.0.0/22)."
+  }
+  assert {
+    condition     = length(google_compute_firewall.lb[0].allow) == 1 && one(google_compute_firewall.lb[0].allow[*].protocol) == "tcp" && one(google_compute_firewall.lb[0].allow[*].ports) == tolist(["8443"]) && length(google_compute_firewall.lb[0].deny) == 0
+    error_message = "The load balancer's firewall rule allows more than tcp:8443, the endpoints' port."
+  }
+  assert {
+    condition     = google_compute_firewall.lb[0].target_service_accounts == toset([google_service_account.nodes.email]) && google_compute_firewall.lb[0].network == google_compute_network.dev.id
+    error_message = "The load balancer's firewall rule is not the dev network's, to the nodes."
+  }
+}
+
+run "shared_port_refused" {
+  # Two listeners on one port of the address: a TCP proxy does not route by SNI.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    load_balancer = {
+      gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = false }
+      test-idp = { port = 443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
+    }
+  }
+  expect_failures = [var.load_balancer]
 }
 
 run "x86_nodes_refused" {

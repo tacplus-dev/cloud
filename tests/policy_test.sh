@@ -12,7 +12,10 @@
 # direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, a pool
 # with public nodes or not on COS, and passes a plan that keeps them; and the one public IP (#13): in the source, a
 # global address without prevent_destroy, and in a plan, an external address but the one global address `gateway`, or
-# an external forwarding rule (the Gateway's are GKE's, never a stack's); and roles/owner or roles/container.admin to a
+# an external forwarding rule but the TCP proxy's on it; we terminate TLS, not the cloud (#21): the forwarding rule on
+# gateway is global, EXTERNAL_MANAGED and TCP, to a target TCP proxy (known, or a reference when known only after
+# apply), and a certificate, Certificate Manager, an SSL policy, an HTTP(S) or SSL proxy or a URL map is refused, as is
+# ingress from a public range but Google's proxies' and health checkers'; and roles/owner or roles/container.admin to a
 # service account (#18), in a member, a member list or a policy document, or to a member known only after apply, the
 # pipeline's own owner alone excepted. Needs bash and jq.
 #
@@ -76,6 +79,22 @@ refuses "a plan with a regional external address" "google_compute_address.lb is 
 refuses "a plan with a second global address" "module.dev.google_compute_global_address.other is an external address" plan "$fx/plans/address-second.json"
 refuses "a plan with an external forwarding rule" "google_compute_global_forwarding_rule.lb is an external forwarding rule" plan "$fx/plans/forwarding-rule.json"
 passes "a plan with the gateway's address, internal ones and a deleted one" plan "$fx/plans/address-clean.json"
+
+refuses "a plan with an external forwarding rule on its own IP" "lb[\"test-idp\"] is an external forwarding rule but a TCP proxy's" plan "$fx/plans/lb-other-ip.json"
+refuses "a plan with a forwarding rule on another address" "lb[\"gateway\"] is an external forwarding rule but a TCP proxy's" plan "$fx/plans/lb-other-address.json"
+refuses "a plan with the classic TCP proxy (EXTERNAL)" "lb[\"test-idp\"] is an external forwarding rule but a TCP proxy's" plan "$fx/plans/lb-classic.json"
+refuses "a plan with a forwarding rule to an HTTPS proxy" "lb[\"test-idp\"] is an external forwarding rule but a TCP proxy's" plan "$fx/plans/lb-https-target.json"
+refuses "a plan with a forwarding rule to an SSL proxy, known after apply" "lb[\"gateway\"] is an external forwarding rule but a TCP proxy's" plan "$fx/plans/lb-ssl-target.json"
+for t in google_compute_ssl_certificate google_compute_managed_ssl_certificate google_certificate_manager_certificate \
+  google_certificate_manager_certificate_map google_compute_target_https_proxy google_compute_region_target_https_proxy \
+  google_compute_target_ssl_proxy google_compute_target_http_proxy google_compute_url_map google_compute_ssl_policy; do
+  refuses "a plan with a $t" "$t.gateway is a $t: we terminate TLS, not the cloud" plan "$fx/plans/lb-tls.json"
+done
+for r in 34.9.9.9/32 35.190.0.0/15 35.235.240.0/20 2600:1900::/28; do
+  refuses "a plan admitting ingress from $r" "allows ingress from $r, a public range" plan "$fx/plans/ingress-public.json"
+done
+passes "a plan with the TCP proxy on gateway, Google's ranges and private ones" plan "$fx/plans/lb-clean.json"
+passes "a plan building the TCP proxy and the address together" plan "$fx/plans/lb-first-build.json"
 passes "a plan keeping the network rules" plan "$fx/plans/network-clean.json"
 passes "a plan deleting an SSH rule" plan "$fx/plans/ssh-deleted.json"
 

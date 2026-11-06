@@ -164,20 +164,35 @@ the looper then marks it `promoted` or `declined` here with the date.
   `ds_record`), given by the dev stack as an output, at the registrar: Jody's step, like the name servers. Why: the zone
   signs (DNSSEC on), but the registry has no DS for tacplus.dev (the old zone had none), so resolvers do not validate
   it; adding one during the cutover would break resolution through the old, unsigned zone.
-- **IPv6 on the Gateway** (looper, #13, 2026-11-04). What: a second global address `gateway-v6` (`ip_version = "IPV6"`,
-  `prevent_destroy`), admitted by `ci/policy.sh` beside `gateway`, and the hostnames' AAAA records to it, once a Gateway
-  of class `gke-l7-global-external-managed` on the dev cluster is shown to take both addresses (two `NamedAddress`
-  entries in `spec.addresses`), or the IPv6 one on a Gateway of its own. Why: the issue asks for IPv6 if the Gateway
-  takes it; GKE's GatewayClass capabilities list one static global address for that class and say nothing of IPv6, so it
-  is unverified until the cluster runs, and an address reserved for a Gateway that cannot use it would be a public IP
-  serving nothing.
-- **The test IdP behind the Gateway** (looper, #13, 2026-11-04). What: tacplus-dev/fleet-seatrials' test IdP (its
-  `test-idp/`, today a GKE Ingress with a load balancer of its own on the global address `test-idp`, whose A record its
-  pipeline writes into the zone `tacplus-dev`) served as an HTTPRoute for `idp.test.tacplus.dev` on the Gateway, with a
-  certificate the Gateway serves; `test-idp-deploy` loses its write on the zone. Why: in the new cluster the gateway's address
-  is the one public IP and only this pipeline writes tacplus.dev's zone (#13), which already points
-  `idp.test.tacplus.dev` at the gateway; the policy refuses a second global address and the audit reports one. A
+- **IPv6 on the address** (looper, #13, 2026-11-04; revised by #21, 2026-11-06). What: a second global address
+  `gateway-v6` (`ip_version = "IPV6"`, `prevent_destroy`), admitted by `ci/policy.sh` beside `gateway`, a forwarding rule
+  per listener on it to the same TCP proxies (a global external proxy Network Load Balancer takes an IPv6 address), and
+  the hostnames' AAAA records to it. Why: clients on IPv6 only reach tacplus.dev today through NAT64 or not at all. It is
+  a second public IP, so it is Jody's call (the decision names one per load balancer).
+- **The test IdP on its own port** (looper, #13, 2026-11-04; replaced by #21, 2026-11-06). What: tacplus-dev/fleet-seatrials'
+  test IdP (its `test-idp/`, today a GKE Ingress with a load balancer of its own on the global address `test-idp`, whose
+  A record its pipeline writes into the zone `tacplus-dev`) served by Keycloak's own TLS on 8443, its Service a
+  `ClusterIP` with the NEG `seatrials-test-idp` (README, The public entry), its issuers
+  `https://idp.test.tacplus.dev:8443/realms/<realm>`; `test-idp-deploy` loses its write on the zone; then `ready = true`
+  for `test-idp` here. Why: the TCP proxy does not route by SNI, so the IdP cannot share 443 with the gateway; a second
+  address is a second public IP, SNI routing would be the gateway's, and no L7 path is allowed (#21). A
   fleet-seatrials change, with its retarget to the new cluster.
+- **`ready` when the NEGs exist** (looper, #21, 2026-11-06). What: a commit setting `ready = true` for `gateway` once
+  tacplus-dev/operator#22 renders seatrials' gateway Service in the dev cluster and GKE has made `seatrials-gateway`, and
+  for `test-idp` once fleet-seatrials does. Why: the API refuses a backend naming a missing NEG, so the backends wait for
+  the Services; until then the address answers nothing on those ports.
+- **The client's address through the TCP proxy** (looper, #21, 2026-11-06). What: `proxy_header = "PROXY_V1"` on the
+  gateway's target TCP proxy once the tacplus gateway reads the PROXY protocol (a tacplus-dev/gateway change first: with
+  the header on and the gateway not reading it, every TLS handshake fails). Why: the gateway sees Google's proxies'
+  addresses, not the client's, so per-client limits and logs see one of a few Google addresses.
+- **A regional cluster's NEGs** (looper, #21, 2026-11-06). What: one backend per zone of the cluster, each the NEG of the
+  same name in that zone, if the dev cluster becomes regional. Why: today it is zonal (`us-central1-a`), and the backend
+  is that zone's NEG only.
+- **The live audit of the load balancers** (looper, #21, 2026-11-06). What: `ci/audit.sh` also lists the projects'
+  forwarding rules (global and regional), target proxies, URL maps, SSL policies and certificates (Compute's and
+  Certificate Manager's) and runs the plan checks on them. Why: the plan checks refuse an L7 load balancer, a certificate
+  or a forwarding rule off the address `gateway` from the pipeline, but one made by hand is in no state, and the audit
+  lists only firewall rules, instances, templates, addresses and clusters today.
 - **The DNS check against both zones during the cutover** (looper, #13, 2026-11-04). What: `ci/dns.sh` also lists the
   zone in jody1-328023, while it exists, and reports a record the two zones do not share. Why: until the registrar's
   change has propagated, resolvers may ask either zone; today the hub keeps them alike by hand, and a difference shows

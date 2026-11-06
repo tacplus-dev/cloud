@@ -27,8 +27,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
     cluster-admin in the cluster and the runners' token secrets it reads (below, The cluster pipeline), each
     deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
-    and the one public IP, the global address `gateway` of the Gateway's load balancer, and `tacplus.dev`'s own zone,
-    which only this pipeline writes (below, The tacplus.dev cutover);
+    the one public IP, the global address `gateway`, its TCP proxy load balancer passing TLS through to the NEGs of the
+    gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
+    The tacplus.dev cutover);
   - `prod` is designed but **not built**: see PRODUCTION.md.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
   Secret Manager by version, never in this repository), the runner registrations of the `ci` pools (registered
@@ -105,16 +106,23 @@ that Jody plays, on a commit already applied to dev.
 answers on #7 (2026-11-04), are in the stacks, and `ci/policy.sh plan` refuses every saved plan that breaks one, before it
 is applied:
 
-- **One public IP:** the dev stack's global address `gateway` (#13), which the Gateway names (`spec.addresses`,
-  `NamedAddress`), so that its load balancer is the only way in. In a plan, any other external address (global or
-  regional) and any external forwarding rule is refused: the Gateway's forwarding rules are GKE's, never a stack's. In the
+- **One public IP:** the dev stack's global address `gateway` (#13), whose TCP proxy load balancer is the only way in
+  (below, The public entry). In a plan, any other external address (global or regional) is refused, and so is any
+  external forwarding rule but a global external proxy Network Load Balancer's: global, `EXTERNAL_MANAGED`, TCP, on the
+  address `gateway` (its name, its IP, or a reference to it when known only after apply), to a target TCP proxy. In the
   source, a global address without `prevent_destroy` is refused, so that no apply takes the IP with it.
+- **We terminate TLS, not the cloud** (the decision's addendum, Jody, 2026-11-05; #21): a certificate (Compute's,
+  Google-managed, or any Certificate Manager resource), an SSL policy, an HTTP, HTTPS or SSL proxy or a URL map, global or
+  regional, is refused in a plan: no L7 load balancer, no TLS on Google's side.
 - **Only load balancers are public, and every one is proxy-based.** No instance or instance template has an external
   address: an `access_config` or `ipv6_access_config`, or one known only after apply, is refused. The host organization's
   `compute.vmExternalIpAccess` (below) makes the API refuse one too. Egress is through Cloud NAT, in both projects.
 - **No ingress from the internet:** a firewall rule allowing ingress from `0.0.0.0/0` or `::/0`, or from no source at all
-  (which is `0.0.0.0/0`), is refused, with no exception list: a proxy-based load balancer needs only Google's ranges
-  (`130.211.0.0/22`, `35.191.0.0/16`), whose rules GKE makes itself. A deny rule is not refused.
+  (which is `0.0.0.0/0`), is refused, with no exception list; so is one allowing ingress from any other public range,
+  that is, outside the private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and Google's proxy and
+  health-check ranges (`35.191.0.0/16`, `130.211.0.0/22`), any IPv6 range included (#21): a proxy-based load balancer
+  needs only Google's. The dev stack's one such rule is the load balancer's (below, The public entry). A deny rule is not
+  refused.
 - **No SSH anywhere, not even IAP:** a firewall rule allowing port 22 in either direction (`tcp` or `all` with no ports,
   `22`, or a range covering it) is refused. The one exception, exactly as it is, is the runners' internal rule
   `runner-manager-to-workers-ssh` (the manager to its workers, by network tag), which goes with the runner VMs (#11).
@@ -130,7 +138,8 @@ A drift plan sees only what a stack has in its state, so a rule, a VM or a node 
 **live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, address, cluster and node
 pool in `tacplus-ci` and `tacplus-dev` and runs the same checks on them; each finding is a `live <project>: ...` line of
 the drift issue. GKE's own internal rules (`gke-*` from the network's private ranges, which open every port, 22 among
-them, between nodes, pods and the control plane) are not reported for port 22; the address `gateway` is not reported. Folder firewall policies, which would
+them, between nodes, pods and the control plane) are not reported for port 22; the address `gateway` is not reported. It
+lists no forwarding rule, proxy or certificate yet (PROPOSALS.md). Folder firewall policies, which would
 enforce these rules rather than report them, come later (#7).
 
 ### Known vulnerabilities
@@ -580,18 +589,18 @@ seatrials' certificates).
 
 **The design.** The dev stack (`modules/projects/dev/dns.tf`) holds, in `tacplus-dev`:
 
-- **The global address `gateway`,** external, IPv4, with `prevent_destroy`: the Gateway's load balancer's, and the only
-  public IP. The Gateway names it (`spec.addresses: [{type: NamedAddress, value: gateway}]`, GatewayClass
-  `gke-l7-global-external-managed`); a rebuilt load balancer keeps it. IPv4 only: GKE documents one static global address
-  for that class, nothing of an IPv6 one beside it (PROPOSALS.md, IPv6 on the Gateway).
+- **The global address `gateway`,** external, IPv4, with `prevent_destroy`: the TCP proxy load balancer's (below, The
+  public entry), and the only public IP; a rebuilt load balancer keeps it. IPv4 only (PROPOSALS.md, IPv6 on the
+  address).
 - **The zone `tacplus-dev` for `tacplus.dev.`,** DNSSEC on, written only by this pipeline. It is in the dev project, beside
   the dev zone and the challenge zones it delegates to, rather than in a `dns` project of its own: one project, one
   stack, so the delegations are references, not values copied between stacks. It holds:
   - the records copied from the zone in jody1-328023 (`modules/settings`, `zone`: the site, its verification, DMARC);
   - each deployment's hostnames (`modules/settings`, `deployments`), A to the gateway's address, TTL 300: today
-    `seatrials.tacplus.dev` and `idp.test.tacplus.dev`. The test IdP is behind the same Gateway, not on a load balancer and
-    address of its own as in jody1-328023 (tacplus-dev/fleet-seatrials test-idp/README.md): one public IP, and nobody
-    but this pipeline writes the zone (PROPOSALS.md);
+    `seatrials.tacplus.dev` and `idp.test.tacplus.dev`. The test IdP is on a port of its own of the same address
+    (below, The public entry), not on a load balancer and address of its own as in jody1-328023
+    (tacplus-dev/fleet-seatrials test-idp/README.md): one public IP, and nobody but this pipeline writes the zone
+    (PROPOSALS.md);
   - the delegations, NS, TTL 300: `dev.tacplus.dev` to the dev zone, `_acme-challenge.tacplus.dev` to the challenge
     zone (#6).
 
@@ -631,6 +640,52 @@ and after it. Until the registrar names the new zone, that is its NS, and any re
    DNS check reports nothing once every resolver has the new name servers.
 5. **Then the old zone is retired** with the rest of jody1-328023 (`gcloud dns managed-zones delete tacplus-dev
    --project=jody1-328023`, its records deleted first). From then on a record of `tacplus.dev` is a commit here.
+
+## The public entry
+
+#21; `decisions/network-exposure-2026-11-03.md` (tacplus-dev/roadmap), its addendum "we terminate TLS, not the cloud"
+(Jody, 2026-11-05). The dev stack (`modules/projects/dev/load-balancer.tf`) makes Google's **global external proxy
+Network Load Balancer (TCP proxy)** on the address `gateway`, passing each TCP connection, TLS unopened, to the pods
+behind a standalone zonal NEG in the dev cluster. TLS ends there: in the tacplus gateway, with the pipeline's
+certificate (Certificates; tacplus-dev/gateway#25). No certificate, no Certificate Manager, no SSL policy, no HTTP(S)
+proxy, no L7 Gateway: `ci/policy.sh` refuses them in any plan (above, The network rules).
+
+Each **listener** is a port of the address (`modules/settings`, `load_balancer`): its global forwarding rule
+(`EXTERNAL_MANAGED`, TCP, that port), its target TCP proxy (no PROXY header), and its backend service (TCP, idle timeout a
+day), whose backend is the listener's NEG in the cluster's zone (`us-central1-a`), balanced by connection, with a TCP
+health check on the endpoints' port. Each is named `lb-<listener>`.
+
+**The NEGs' names are a contract** with the Services that expose them, named here: each Service carries
+`cloud.google.com/neg: '{"exposed_ports": {"<service port>": {"name": "<NEG>"}}}'`, its targetPort the endpoints'
+port; GKE makes the NEG in each zone with the Service's endpoints. A NEG's name is unique in its zone and project, so it
+carries the deployment's name (`<deployment>-<what>`).
+
+| Listener | Port on `gateway` | NEG | Endpoints' port | Its Service, rendered by |
+|---|---|---|---|---|
+| `gateway` | 443 | `seatrials-gateway` | 8443 | tacplus-dev/operator |
+| `test-idp` | 8443 | `seatrials-test-idp` | 8443 | tacplus-dev/fleet-seatrials |
+
+- `gateway`: tacplus.dev's gateway, `seatrials.tacplus.dev`. One Service for every gateway replica (port 443, targetPort
+  8443), `type: ClusterIP` with the annotation, rendered by tacplus-dev/operator (tacplus-dev/operator#22), so that scaling
+  the gateway never changes the backends.
+- `test-idp`: the test IdP (tacplus-dev/fleet-seatrials#27), `https://idp.test.tacplus.dev:8443`, Keycloak serving its
+  own certificate on its default HTTPS port, its Service rendered by fleet-seatrials' `test-idp/`. A TCP proxy does not
+  route by SNI, so the test IdP cannot share 443 with the gateway; of the three ways (#21), a second port of the same
+  address keeps one public IP (a second address would be another), needs no change in the gateway (routing by SNI there
+  would), and adds no L7 path. Its issuers are `https://idp.test.tacplus.dev:8443/realms/<realm>`.
+
+**`ready`.** A backend service whose backend names a NEG that does not exist is refused by the API, and the NEG exists
+only once its Service is rendered in the dev cluster. So a listener starts with `ready = false`: its forwarding rule,
+proxy and backend service exist, with no backend (a connection to its port is closed). Once GKE has made the NEG
+(`gcloud compute network-endpoint-groups list --project=tacplus-dev`), a commit sets `ready = true` and `apply:dev` adds it.
+
+**The nodes' firewall.** GKE makes no firewall rule for a standalone NEG. The rule `allow-google-proxies` admits the
+endpoints' ports (tcp:8443) to the nodes (by their service account, `gke-nodes`) from Google's proxy and health-check
+ranges, `35.191.0.0/16` and `130.211.0.0/22`, and from nowhere else; it is the dev module's one firewall rule
+(`tests/load_balancer_test.sh`). The connections reach the pods from Google's proxies: the client's address is not
+passed (no PROXY header; PROPOSALS.md).
+
+`apply:dev`'s output `load_balancer` gives the address's IP, each listener's NEG, zone and ports, and the source ranges.
 
 ## People
 
