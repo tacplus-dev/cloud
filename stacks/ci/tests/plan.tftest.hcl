@@ -84,8 +84,8 @@ run "settings" {
     error_message = "The pools are not shared, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 2 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
-    error_message = "The shared pool is not one always-on t2a-standard-8 running two jobs."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 2 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 4
+    error_message = "The shared pool is not one always-on t2a-standard-8 running two jobs, up to four VMs (temporary, Jody 2026-11-07)."
   }
   assert {
     condition     = output.runner_pools.shared.job.cpus == "4" && output.runner_pools.shared.job.memory == "14g" && output.runner_pools.shared.job.memory_swap == "14g"
