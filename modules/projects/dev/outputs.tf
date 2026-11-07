@@ -30,14 +30,17 @@ output "cluster_pipeline" {
 }
 
 output "deployments" {
-  description = "Each deployment's GCP_WIF_PROVIDER and service account, its certificate secrets, and its challenge zone with the name servers its delegation needs."
+  description = "Each deployment's GCP_WIF_PROVIDER and service account, its certificate secrets, its challenge zone with the name servers its delegation needs, its deploy registry and its Cloud Build bucket and account (null without images), and its environment accounts' service accounts, by GitLab environment."
   value = {
     for k, d in var.deployments : k => {
-      wif_provider   = google_iam_workload_identity_pool_provider.deploy[k].name
-      sa             = google_service_account.deploy[k].email
-      secrets        = { tls = "projects/${google_project.dev.project_id}/secrets/tls-${k}", acme_account = "projects/${google_project.dev.project_id}/secrets/acme-account-${d.environment}" }
-      challenge_zone = google_dns_managed_zone.acme_challenge[k].name
-      name_servers   = google_dns_managed_zone.acme_challenge[k].name_servers
+      wif_provider         = google_iam_workload_identity_pool_provider.deploy[k].name
+      sa                   = google_service_account.deploy[k].email
+      secrets              = { tls = "projects/${google_project.dev.project_id}/secrets/tls-${k}", acme_account = "projects/${google_project.dev.project_id}/secrets/acme-account-${d.environment}" }
+      challenge_zone       = google_dns_managed_zone.acme_challenge[k].name
+      name_servers         = google_dns_managed_zone.acme_challenge[k].name_servers
+      registry             = d.images == null ? null : "${google_artifact_registry_repository.deploy[k].location}-docker.pkg.dev/${google_project.dev.project_id}/${google_artifact_registry_repository.deploy[k].repository_id}"
+      build                = d.images == null ? null : { bucket = "gs://${google_storage_bucket.build[k].name}", sa = google_service_account.build[k].email }
+      environment_accounts = { for e in keys(d.environment_accounts) : e => google_service_account.environment["${k}/${e}"].email }
     }
   }
 }

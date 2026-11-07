@@ -27,6 +27,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
     cluster-admin in the cluster and the runners' token secrets it reads (below, The cluster pipeline), each
     deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
+    its `get-credentials` on the cluster, Cloud Build roles, deploy registry, build bucket and environment accounts
+    (below, Deployments: images, the cluster and environment accounts),
     the one public IP, the global address `gateway`, its TCP proxy load balancer passing TLS through to the NEGs of the
     gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
     The tacplus.dev cutover);
@@ -519,7 +521,7 @@ secret version, which the uni-config references. Nothing in a cluster holds it, 
 
 - **Its identity:** the service account `<account_id>@tacplus-dev.iam.gserviceaccount.com`, keyless, through Workload
   Identity Federation (pool `gitlab-com`, provider `<wif_provider>`), condition: its GitLab project's protected `main`.
-  It holds no role on the project.
+  Its roles on the project are its deployment's (below, Deployments: images, the cluster and environment accounts).
 - **Its secrets:** `tls-<deployment>` (the certificate chain and its key) and `acme-account-<environment>` (its ACME
   account's key; the environment is the deployment's GitLab environment), us-central1. Only its identity holds a role on
   them, `secretVersionAdder` and `secretAccessor` (authoritative bindings): it adds versions and reads them. Their values
@@ -535,6 +537,41 @@ secret version, which the uni-config references. Nothing in a cluster holds it, 
 
 The dev stack's output `deployments` names each one's `GCP_WIF_PROVIDER`, service account, secrets, and the name servers
 of its zone.
+
+### Deployments: images, the cluster and environment accounts
+
+#20 (fleet-seatrials#39): what a deployment's pipeline needs on `dev` besides its certificate (`modules/projects/dev/deploy.tf`),
+from the same `deployments` entry:
+
+- **The cluster's credentials:** its identity, and each of its environment accounts, holds `roles/container.clusterViewer`
+  conditioned on `resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`: `get-credentials` on
+  `dev` and nothing else of GKE. Its rights inside the cluster are tacplus-dev/cluster's (`deployments.yaml`).
+- **Its images** (`images`), on Cloud Build, for now (Jody, 2026-11-06: once builds move to the cluster's build pool,
+  tacplus-dev/looper#84, these roles and the bucket come out). Its identity holds `roles/cloudbuild.builds.editor` and
+  `roles/serviceusage.serviceUsageConsumer` on the project and `roles/iam.serviceAccountUser` on the builds' own account
+  `<images.account_id>`, which they run as (`gcloud builds submit --service-account`), and which holds only
+  `roles/logging.logWriter` on the project. The **deploy registry** `<region>-docker.pkg.dev/tacplus-dev/<images.registry>`
+  (Docker): the builds' account writes it, its identity (the `fp-` tags) and the nodes' `gke-nodes` (to pull) read it
+  (authoritative bindings). It has no cleanup policy, so a deployed image is never deleted; it is not tacplus-ci's
+  `build-cache`, which only tacplus-dev/build reads and which deletes by age. The **build bucket**
+  `gs://tacplus-dev-<images.bucket>` (us-central1, uniform access, public access prevented, objects deleted after
+  `images.days`): each submit stages its source and writes its logs there, so gcloud needs no right on the project's
+  buckets (fleet-seatrials#32); its identity holds `roles/storage.admin` on it, the builds' account
+  `roles/storage.objectAdmin`, nobody else a role.
+- **Its environment accounts** (`environment_accounts`): by GitLab environment, a service account only its project's
+  jobs in that environment, on protected `main`, may become, with the cluster's credentials and no other role. Its
+  provider maps `attribute.project_environment` to the job's project and environment joined by `:` (a GitLab project
+  path has no `:`; a job without an environment maps to `<project>:`), and the account's `workloadIdentityUser`
+  binding names `attribute.project_environment/<project>:<environment>`: the pool `gitlab-com` is shared by
+  tacplus-dev's projects, so the environment alone would admit another project's job in an environment of that name.
+  An environment account is never the deployment's identity or its builds' account (the module refuses it).
+
+| Deployment | Registry | Build bucket, builds' account | Environment accounts |
+|---|---|---|---|
+| `seatrials` | `us-central1-docker.pkg.dev/tacplus-dev/seatrials` | `gs://tacplus-dev-seatrials-build` (7 days), `seatrials-build` | `test-idp`: `test-idp-deploy` (the test IdP, a pod in the cluster) |
+
+The output `deployments` names each one's `registry`, `build` (`bucket`, `sa`) and `environment_accounts` (by
+environment, the service account's email).
 
 ### Interim: by hand in jody1-328023, until the cloud pipeline runs
 

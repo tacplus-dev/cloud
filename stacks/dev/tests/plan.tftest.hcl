@@ -14,8 +14,11 @@
 # made in the cluster through the kubernetes provider, with no service account of dev holding container.admin or owner
 # in IAM (#18), and the public entry (#21): a global external proxy Network Load Balancer (TCP proxy) on the address
 # gateway, one forwarding rule per listener, to the NEGs the settings name, a TCP health check on their endpoints'
-# port, no TLS on Google's side, and the nodes open to Google's proxies and health checkers only, on that port. (A
-# test sees a module's resources only when it runs that module itself.)
+# port, no TLS on Google's side, and the nodes open to Google's proxies and health checkers only, on that port, and
+# (#20) the deployment's get-credentials on the cluster dev alone, its Cloud Build roles, the builds' own account, its
+# deploy registry (the builds write it, the deployment and the nodes read it) and build bucket (7 days), and its test
+# IdP's account, which only its project's jobs in the environment test-idp become, with no role but get-credentials.
+# (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
   mock_data "google_active_folder" {
@@ -64,6 +67,11 @@ run "stack" {
   assert {
     condition     = output.deployments["seatrials"].secrets.tls == "projects/tacplus-dev/secrets/tls-seatrials" && output.deployments["seatrials"].secrets.acme_account == "projects/tacplus-dev/secrets/acme-account-seatrials" && output.deployments["seatrials"].challenge_zone == "acme-challenge-tacplus-dev"
     error_message = "The stack does not give seatrials its certificate secrets and tacplus.dev's challenge zone."
+  }
+  # fleet-seatrials#39's names (#20).
+  assert {
+    condition     = output.deployments["seatrials"].registry == "us-central1-docker.pkg.dev/tacplus-dev/seatrials" && output.deployments["seatrials"].build.bucket == "gs://tacplus-dev-seatrials-build" && keys(output.deployments["seatrials"].environment_accounts) == ["test-idp"]
+    error_message = "The stack does not give seatrials its registry, its build bucket and the test IdP's account."
   }
   assert {
     condition     = output.gateway_address == { name = "gateway", address = "203.0.113.10" }
@@ -130,7 +138,11 @@ run "dev" {
       provider       = "tacplus-dev-cluster"
     }
     deployments = {
-      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+      seatrials = {
+        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        images               = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
+        environment_accounts = { test-idp = "test-idp-deploy" }
+      }
     }
     runner_token_adders = ["user:jody@example.com"]
     # The gateway's NEG made, the test IdP's not yet.
@@ -138,6 +150,28 @@ run "dev" {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
       test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
     }
+  }
+
+  # Each account its own member, so that a binding's members show whose they are.
+  override_resource {
+    target = google_service_account.deploy["seatrials"]
+    values = { email = "seatrials-deploy@tacplus-dev.iam.gserviceaccount.com", member = "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com", name = "projects/tacplus-dev/serviceAccounts/seatrials-deploy@tacplus-dev.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = google_service_account.build["seatrials"]
+    values = { email = "seatrials-build@tacplus-dev.iam.gserviceaccount.com", member = "serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com", name = "projects/tacplus-dev/serviceAccounts/seatrials-build@tacplus-dev.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = google_service_account.environment["seatrials/test-idp"]
+    values = { email = "test-idp-deploy@tacplus-dev.iam.gserviceaccount.com", member = "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com", name = "projects/tacplus-dev/serviceAccounts/test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = google_service_account.nodes
+    values = { email = "gke-nodes@tacplus-dev.iam.gserviceaccount.com", member = "serviceAccount:gke-nodes@tacplus-dev.iam.gserviceaccount.com", name = "projects/tacplus-dev/serviceAccounts/gke-nodes@tacplus-dev.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = google_service_account.cluster_pipeline
+    values = { email = "cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com", member = "serviceAccount:cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com", name = "projects/tacplus-dev/serviceAccounts/cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com" }
   }
 
   assert {
@@ -262,12 +296,79 @@ run "dev" {
     error_message = "The cluster-admin binding names more than the User cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com."
   }
   assert {
-    condition     = alltrue([for m in concat(values(google_project_iam_member.nodes), [google_project_iam_member.cluster_pipeline]) : !contains(["roles/container.admin", "roles/owner"], m.role)])
+    condition     = alltrue([for m in concat(values(google_project_iam_member.nodes), [google_project_iam_member.cluster_pipeline], values(google_project_iam_member.deploy), values(google_project_iam_member.build), values(google_project_iam_member.cluster_viewer)) : !contains(["roles/container.admin", "roles/owner"], m.role)])
     error_message = "A service account in dev holds container.admin or owner in IAM: cluster-admin is the binding's, in the cluster."
   }
   assert {
     condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
     error_message = "The module does not give the runners' token secrets, or the cluster's API for the kubernetes provider."
+  }
+  # get-credentials on dev (#20): the deployment's identity and its environment accounts view the cluster dev alone.
+  assert {
+    condition     = toset(keys(google_project_iam_member.cluster_viewer)) == toset(["deploy/seatrials", "environment/seatrials/test-idp"]) && alltrue([for m in google_project_iam_member.cluster_viewer : m.role == "roles/container.clusterViewer" && m.condition[0].expression == "resource.name == \"projects/tacplus-dev/locations/us-central1-a/clusters/dev\""])
+    error_message = "The deployment's identity and its environment accounts do not view the cluster dev, and it alone (container.clusterViewer, conditioned on its name)."
+  }
+  assert {
+    condition     = google_project_iam_member.cluster_viewer["deploy/seatrials"].member == "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com" && google_project_iam_member.cluster_viewer["environment/seatrials/test-idp"].member == "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"
+    error_message = "get-credentials on dev is not seatrials-deploy's and test-idp-deploy's."
+  }
+  # The test IdP's account (#20): its own, only fleet-seatrials' jobs in the environment test-idp on protected main
+  # become it, and it holds no role but get-credentials.
+  assert {
+    condition     = google_service_account.environment["seatrials/test-idp"].account_id == "test-idp-deploy" && google_service_account_iam_member.environment_wif["seatrials/test-idp"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.environment_wif["seatrials/test-idp"].member == "principalSet://iam.googleapis.com/projects/555/locations/global/workloadIdentityPools/gitlab-com/attribute.project_environment/tacplus-dev/fleet-seatrials:test-idp"
+    error_message = "test-idp-deploy is not only tacplus-dev/fleet-seatrials' jobs in the environment test-idp."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.deploy["seatrials"].attribute_mapping["attribute.project_environment"] == "assertion.project_path + ':' + (has(assertion.environment) ? assertion.environment : '')" && google_iam_workload_identity_pool_provider.deploy["seatrials"].attribute_mapping["attribute.project_path"] == "assertion.project_path"
+    error_message = "The seatrials provider does not map the job's project and environment together (a job without an environment maps to none)."
+  }
+  assert {
+    condition     = alltrue(flatten([for r in [google_project_iam_member.deploy, google_project_iam_member.build, google_project_iam_member.cluster_viewer] : [for m in values(r) : m.member != "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" || m.role == "roles/container.clusterViewer"]])) && alltrue([for b in concat(values(google_artifact_registry_repository_iam_binding.deploy), values(google_storage_bucket_iam_binding.build), values(google_service_account_iam_binding.build_user)) : !contains(b.members, "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com")])
+    error_message = "test-idp-deploy holds a role besides get-credentials on dev."
+  }
+  # The deploy registry (#20): Docker, us-central1, seatrials; the builds' account writes it, the deployment's
+  # identity and the nodes read it; no cleanup policy, so nothing deployed is deleted.
+  assert {
+    condition     = google_artifact_registry_repository.deploy["seatrials"].repository_id == "seatrials" && google_artifact_registry_repository.deploy["seatrials"].format == "DOCKER" && google_artifact_registry_repository.deploy["seatrials"].location == "us-central1" && length(google_artifact_registry_repository.deploy["seatrials"].cleanup_policies) == 0
+    error_message = "The deploy registry is not the Docker registry seatrials in us-central1, without a cleanup policy."
+  }
+  assert {
+    condition     = toset(keys(google_artifact_registry_repository_iam_binding.deploy)) == toset(["seatrials/roles/artifactregistry.writer", "seatrials/roles/artifactregistry.reader"]) && google_artifact_registry_repository_iam_binding.deploy["seatrials/roles/artifactregistry.writer"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.deploy["seatrials/roles/artifactregistry.reader"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com", "serviceAccount:gke-nodes@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "The deploy registry is not written by the builds' account alone, and read by seatrials-deploy and the nodes alone."
+  }
+  # Cloud Build (#20): seatrials-deploy submits builds, as the builds' account, which pushes to the registry.
+  assert {
+    condition     = toset([for m in values(google_project_iam_member.deploy) : "${m.member} ${m.role}"]) == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com roles/cloudbuild.builds.editor", "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com roles/serviceusage.serviceUsageConsumer"])
+    error_message = "seatrials-deploy does not hold exactly cloudbuild.builds.editor and serviceusage.serviceUsageConsumer on the project."
+  }
+  assert {
+    condition     = google_service_account.build["seatrials"].account_id == "seatrials-build" && google_service_account_iam_binding.build_user["seatrials"].role == "roles/iam.serviceAccountUser" && google_service_account_iam_binding.build_user["seatrials"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_service_account_iam_binding.build_user["seatrials"].service_account_id == "projects/tacplus-dev/serviceAccounts/seatrials-build@tacplus-dev.iam.gserviceaccount.com"
+    error_message = "The builds do not run as seatrials-build, which seatrials-deploy alone may act as."
+  }
+  assert {
+    condition     = toset([for m in values(google_project_iam_member.build) : "${m.member} ${m.role}"]) == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com roles/logging.logWriter"])
+    error_message = "The builds' account holds more on the project than writing its logs."
+  }
+  assert {
+    condition     = contains(keys(google_project_service.service), "cloudbuild.googleapis.com") && contains(keys(google_project_service.service), "artifactregistry.googleapis.com") && contains(keys(google_project_service.service), "storage.googleapis.com")
+    error_message = "Cloud Build, Artifact Registry or Cloud Storage is not enabled in the project."
+  }
+  # The build bucket (#20): each submit's source and logs, deleted after 7 days.
+  assert {
+    condition     = google_storage_bucket.build["seatrials"].name == "tacplus-dev-seatrials-build" && google_storage_bucket.build["seatrials"].location == "US-CENTRAL1" && google_storage_bucket.build["seatrials"].uniform_bucket_level_access && google_storage_bucket.build["seatrials"].public_access_prevention == "enforced"
+    error_message = "The build bucket is not tacplus-dev-seatrials-build, in us-central1, uniform access, public access prevented."
+  }
+  assert {
+    condition     = length(google_storage_bucket.build["seatrials"].lifecycle_rule) == 1 && one(google_storage_bucket.build["seatrials"].lifecycle_rule[0].condition).age == 7 && one(google_storage_bucket.build["seatrials"].lifecycle_rule[0].action).type == "Delete"
+    error_message = "The build bucket's objects are not deleted after 7 days."
+  }
+  assert {
+    condition     = toset(keys(google_storage_bucket_iam_binding.build)) == toset(["seatrials/roles/storage.admin", "seatrials/roles/storage.objectAdmin"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.admin"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.objectAdmin"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "The build bucket is not seatrials-deploy's (storage.admin) and the builds' account's (storage.objectAdmin) alone."
+  }
+  assert {
+    condition     = output.deployments["seatrials"].registry == "us-central1-docker.pkg.dev/tacplus-dev/seatrials" && output.deployments["seatrials"].build == { bucket = "gs://tacplus-dev-seatrials-build", sa = "seatrials-build@tacplus-dev.iam.gserviceaccount.com" } && output.deployments["seatrials"].environment_accounts == { test-idp = "test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" }
+    error_message = "The module does not give the deployment's registry, build bucket and builds' account, and its environment accounts."
   }
   # The public entry (#21): a TCP proxy per listener, on the address gateway, to the NEG its listener names.
   assert {
@@ -499,6 +600,57 @@ run "shared_environment_refused" {
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
       other     = { gitlab_project = "tacplus-dev/fleet-dev", environment = "seatrials", domain = "tacplus.dev", hostnames = [], account_id = "other-deploy", wif_provider = "tacplus-dev-fleet-dev" }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_account_as_deploy_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    # The test IdP's jobs would run as the deploy account (#20: it must not be).
+    deployments = {
+      seatrials = {
+        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_accounts = { test-idp = "seatrials-deploy" }
+      }
     }
   }
   expect_failures = [var.deployments]

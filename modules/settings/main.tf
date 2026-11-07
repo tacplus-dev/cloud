@@ -102,14 +102,28 @@ output "deployments" {
     tls-<deployment> (the certificate and its key) and acme-account-<environment> (its ACME account key; environment
     is the deployment's GitLab environment), and it alone administers the zone for _acme-challenge.<domain> (the
     certificate is <domain> and *.<domain>, so DNS-01 writes there only), delegated from <domain>'s zone. Its
-    hostnames are A records of the zone (zone, below) to the gateway's address, the one public IP (#13).
+    hostnames are A records of the zone (zone, below) to the gateway's address, the one public IP (#13). It gets the
+    dev cluster's credentials (container.clusterViewer on that cluster alone; its rights inside are
+    tacplus-dev/cluster's). Optionally (#20): images, its Cloud Build builds (registry, the Docker registry its
+    images go to, which the builds' account writes and it and the nodes read; bucket, after the project ID, where
+    its submits stage their source and write their logs, kept for days; account_id, the account the builds run as);
+    and environment_accounts, by GitLab environment, an account only its project's jobs in that environment, on
+    protected main, may become, with the cluster's credentials and no other role.
   EOT
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
     # Certificates); it becomes this identity when seatrials moves off jody1-328023.
     # idp.test.tacplus.dev is its test IdP's (tacplus-dev/fleet-seatrials, test-idp/), on the same address: the
     # gateway's address is the one public IP (#13), and the test IdP has a port of its own on it (load_balancer, #21).
-    seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    # Its images (#20, fleet-seatrials#39): built on Cloud Build as seatrials-build, from source staged in the bucket
+    # tacplus-dev-seatrials-build, into the deploy registry us-central1-docker.pkg.dev/tacplus-dev/seatrials. Cloud
+    # Build is for now (Jody, 2026-11-06): its roles and the bucket come out once builds move to the cluster's build
+    # pool (tacplus-dev/looper#84). Its test IdP's jobs, in the GitLab environment test-idp, run as test-idp-deploy.
+    seatrials = {
+      gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+      images               = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
+      environment_accounts = { test-idp = "test-idp-deploy" }
+    }
   }
 }
 

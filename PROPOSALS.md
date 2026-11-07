@@ -254,3 +254,20 @@ the looper then marks it `promoted` or `declined` here with the date.
   that every looper job that exchanges its id_token has a GitLab environment, or map `attribute.role` with a default
   (`assertion.environment` may be absent). Why: the provider's mapping is the looper README's, and a mapping that
   reads a missing claim fails the exchange; the jobs that sign all name one today, by the README.
+- **A cleanup policy for the deploy registry that keeps what is deployed** (looper, #20, 2026-11-07). What: delete the
+  `seatrials` registry's versions that no deployed tag (`local`, say, or the `fp-` tags `fleet.lock` names) references,
+  once fleet-seatrials says which tags mark what runs. Why: #20 gave it no cleanup policy, so nothing deployed is ever
+  deleted (#20: a policy by age alone would delete a running fleet's images); every build's images stay until then.
+- **Drop Cloud Build when builds move to the cluster** (looper, #20, 2026-11-07; Jody, 2026-11-06). What: once
+  tacplus-dev/looper#84 lands, remove `images`' Cloud Build roles, the builds' account and the bucket (the bucket's
+  `force_destroy` set first, or emptied), and the `cloudbuild` API; the registry stays, written by the build pool's
+  identity. Why: Cloud Build is for now, by Jody's decision on #20.
+- **cluster-admin-pipeline's clusterViewer conditioned on the cluster** (looper, #20, 2026-11-07). What: the same
+  condition the deployments' get-credentials has (`resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`).
+  Why: #20 says "as cluster-admin-pipeline has it", but its grant has no condition; with one cluster in the project it
+  changes nothing today, and it would keep a second cluster out of its reach.
+- **The test IdP's environment protected, in the federation** (looper, #20, 2026-11-07). What: join
+  `assertion.environment_protected` into `attribute.project_environment`, so only a protected `test-idp` admits its jobs.
+  Why: fleet-seatrials' docs make `test-idp` protected (deployable by Maintainers), but the federation trusts any job
+  of protected main in an environment of that name; protected main already limits who pushes, the environment's
+  protection would also limit who runs its manual job.

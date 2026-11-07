@@ -4,9 +4,9 @@
 # Each deployment's certificate, owned by its pipeline (decisions/certificates-by-pipeline-2026-11-03.md, #6): the
 # pipeline checks its certificate on every run and, when it is missing or due, obtains one by ACME DNS-01 and adds it
 # as a new secret version, which the uni-config references. Its identity, keyless and federated from its GitLab
-# project's protected main alone, holds no role on the project: it adds and reads the versions of its two secrets,
-# and administers its _acme-challenge zone, delegated from the domain's zone, so it never writes the domain's own
-# records. Nobody else holds a role on either (authoritative bindings).
+# project's protected main alone, adds and reads the versions of its two secrets, and administers its _acme-challenge
+# zone, delegated from the domain's zone, so it never writes the domain's own records. Nobody else holds a role on
+# either (authoritative bindings). Its other roles, get-credentials and its images' builds, are deploy.tf's (#20).
 
 locals {
   # Every certificate secret, by its ID: the deployment it belongs to.
@@ -29,6 +29,9 @@ resource "google_iam_workload_identity_pool_provider" "deploy" {
     "attribute.ref"           = "assertion.ref"
     "attribute.ref_type"      = "assertion.ref_type"
     "attribute.ref_protected" = "assertion.ref_protected"
+    # The project and the job's environment together (deploy.tf's environment accounts, #20): the pool is shared by
+    # tacplus-dev's projects. A job without an environment maps to none.
+    "attribute.project_environment" = "assertion.project_path + ':' + (has(assertion.environment) ? assertion.environment : '')"
   }
   attribute_condition = "assertion.project_path == '${each.value.gitlab_project}' && assertion.ref_type == 'branch' && assertion.ref == 'main' && assertion.ref_protected == 'true'"
   oidc {

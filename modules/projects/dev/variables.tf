@@ -103,7 +103,7 @@ variable "cluster_pipeline" {
 }
 
 variable "deployments" {
-  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name."
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become."
   type = map(object({
     gitlab_project = string
     environment    = string
@@ -111,11 +111,22 @@ variable "deployments" {
     hostnames      = list(string)
     account_id     = string
     wif_provider   = string
+    images = optional(object({
+      registry   = string
+      bucket     = string
+      account_id = string
+      days       = number
+    }))
+    environment_accounts = optional(map(string), {})
   }))
   default = {}
   validation {
     condition     = length(distinct([for d in values(var.deployments) : d.environment])) == length(var.deployments) && length(distinct([for d in values(var.deployments) : d.domain])) == length(var.deployments)
     error_message = "Each deployment has an environment and a domain of its own: its ACME account and its challenge zone are its pipeline's alone."
+  }
+  validation {
+    condition     = length(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts))])) == length(distinct(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts))])))
+    error_message = "A deployment's identity, its builds' account and its environment accounts are each an account of its own."
   }
 }
 

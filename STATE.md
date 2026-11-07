@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-06 by the looper (#22).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#20).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; no HIGH or CRITICAL
@@ -136,6 +136,18 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-06 by th
   names are in the README (The public entry). Tested with the dev stack's plan tests (mock providers), plan fixtures,
   `tests/load_balancer_test.sh` and the audit's fixtures; not applied yet, and not against GCP: `apply:dev` on main does
   it.
+- **seatrials on dev (#20; fleet-seatrials#39):** the dev stack's `deploy.tf`, from each `deployments` entry: its identity
+  and each environment account get `container.clusterViewer` conditioned on the cluster `dev` (get-credentials); with
+  `images`, Cloud Build (APIs `cloudbuild`, `artifactregistry`, `storage` enabled; the identity holds
+  `cloudbuild.builds.editor` and `serviceusage.serviceUsageConsumer` on the project, `serviceAccountUser` on the builds'
+  account), the builds' account (`seatrials-build`, only `logging.logWriter` on the project), the deploy registry
+  `us-central1-docker.pkg.dev/tacplus-dev/seatrials` (no cleanup policy; the builds write, the identity and `gke-nodes`
+  read) and the bucket `gs://tacplus-dev-seatrials-build` (7 days; `storage.admin` the identity's, `storage.objectAdmin`
+  the builds'); `environment_accounts`: `test-idp-deploy`, which only fleet-seatrials' jobs in the environment `test-idp`
+  on protected main become (the provider maps `attribute.project_environment`, project and environment joined), with no
+  other role. Cloud Build is for now (Jody): it goes once looper#84 moves builds to the cluster. fleet-seatrials' builds
+  must name the builds' account (`gcloud builds submit --service-account`). Tested with the dev stack's plan tests (mock
+  providers); not applied yet, and the mapping's `has()` not yet seen by GCP: `apply:dev` on main does it.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

@@ -5,7 +5,9 @@
 # identity, cluster-admin-pipeline, federated from tacplus-dev/cluster's protected main, with its cluster-admin in the
 # cluster (cluster-pipeline.tf) and the runners' token secrets it reads (runner-tokens.tf), each deployment's
 # certificate secrets and challenge zone (certificates.tf), the gateway's address and the domain's zone (dns.tf), and
-# the TCP proxy load balancer on that address, TLS passed through to the NEGs in the cluster (load-balancer.tf).
+# the TCP proxy load balancer on that address, TLS passed through to the NEGs in the cluster (load-balancer.tf), and
+# each deployment's get-credentials on the cluster, Cloud Build, deploy registry and build bucket, and environment
+# accounts (deploy.tf).
 
 resource "google_project" "dev" {
   project_id          = var.project_id
@@ -19,6 +21,8 @@ resource "google_project" "dev" {
 
 resource "google_project_service" "service" {
   for_each = toset([
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
     "dns.googleapis.com",
@@ -27,6 +31,7 @@ resource "google_project_service" "service" {
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
+    "storage.googleapis.com",
     "sts.googleapis.com",
   ])
   project            = google_project.dev.project_id
@@ -50,6 +55,7 @@ locals {
   # What the gate waits for: the first create of each kind in the project,
   # the workload identity pool and the cluster among them.
   iam_ready_permissions = [
+    "artifactregistry.repositories.create",
     "compute.networks.create",
     "container.clusters.create",
     "dns.managedZones.create",
@@ -57,6 +63,7 @@ locals {
     "iam.workloadIdentityPools.create",
     "resourcemanager.projects.setIamPolicy",
     "secretmanager.secrets.create",
+    "storage.buckets.create",
   ]
 }
 
