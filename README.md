@@ -178,6 +178,10 @@ moves to the first upstream release with the fix (#3):
   streams), checked against the Go checksum database, until their releases require them. **Accepted until
   2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2, Trivy 0.76.1 and GitLab Runner
   v19.5.2, which decode only pinned, trusted inputs; each pin moves when its upstream ships the fix.
+- **Accepted until 2026-12-06** (the hub's decision on #27, Jody's delegation): CVE-2026-78661 (x/net/html, a denial of
+  service on crafted HTML; Trivy) in the CI image's `gh` (build:2.6, v2.6.1's digest), built with x/net v0.60.0. `gh`
+  parses only GitHub API responses over TLS, never untrusted HTML. tacplus-dev/tacplus#350 rebuilds it with x/net
+  >= v0.62.0 in the build images; when that ships, the CI image's digest moves to it and the exception goes.
 
 The `security` job enforces it (below), on every pipeline.
 

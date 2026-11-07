@@ -9,8 +9,9 @@
 # ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are the
 # scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
-# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest. Track and bump: move each pin to the first
-# upstream release with the fix and remove its entries (PROPOSALS.md). The binaries, by pin:
+# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest but for its gh's x/net (CVE-2026-78661, #27).
+# Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
+# binaries, by pin:
 #
 #   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866
 #   hashicorp/google 8.9.0 (stacks/*/.terraform.lock.hcl) GO-2026-5932 6860 6866
@@ -19,6 +20,7 @@
 #   fleeting-plugin-googlecloud v1.3.1 (stacks/ci)        GO-2026-6603 6610 6611 6612 6617
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-6865
+#   the CI image build:2.6, v2.6.1's digest: its gh       CVE-2026-78661 (Trivy; tacplus-dev/tacplus#350 rebuilds it)
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
@@ -72,3 +74,7 @@ exceptions:
     reason: "github.com/ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (the security job's secrets scan): memory leaks decoding corrupted LZMA archives. gitleaks decodes no archive here (--max-archive-depth is not set: archives are not scanned), and what it reads is this repository's tree and history. Fixed in xz v0.5.15; no gitleaks release with it yet."
     decided_by: "jodydadescott (tacplus-dev/cloud#10, 2026-11-04: accept what has no fixed release, 30 days)"
     expires: 2026-12-04
+  - id: CVE-2026-78661
+    reason: "golang.org/x/net/html DoS via crafted HTML input, x/net v0.60.0 in the CI image's usr/local/bin/gh (ghcr.io/tacplus-dev/tacplus/build:2.6, v2.6.1's digest): gh parses only GitHub API responses over TLS, never untrusted HTML. Fixed in x/net v0.62.0; no build image with a gh built on it yet (tacplus-dev/tacplus#350): move the CI image's digest when one ships, and drop this entry."
+    decided_by: "hub (Jody's delegation, 2026-11-07; tacplus-dev/cloud#27)"
+    expires: 2026-12-06
