@@ -42,6 +42,12 @@ for j in "${jobs[@]}"; do
 done
 [ "$(q '.default.tags | join(",")')" = cloud ] && ok "every job runs on the runner tagged cloud" || fail "default tags: $(q '.default.tags')"
 [[ $(q '.default.image') =~ ^[^@]+:[0-9.]+@sha256:[0-9a-f]{64}$ ]] && ok "the image is pinned by digest" || fail "the image: $(q '.default.image')"
+# build.lock pins tacplus-dev/build's builds to that same image (#25), read as its plan reads it, and gates.yaml
+# gives them the gates to run in it: its full set, the local gate's command.
+lock=$(sed -n 's/^build_image:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$here/build.lock" 2>/dev/null | head -1)
+[ "$lock" = "$(q '.default.image')" ] && ok "build.lock pins the CI image" || fail "build.lock's build_image [$lock] is not the CI image $(q '.default.image')"
+[ "$(yq -r '.full.run // ""' "$here/gates.yaml" 2>/dev/null)" = "ci/tools.sh && ci/lint.sh all && ci/checks.sh" ] &&
+  ok "gates.yaml's full runs the tools, the lint and the checks" || fail "gates.yaml's full: [$(yq -r '.full.run' "$here/gates.yaml" 2>&1)]"
 
 # cond EXPR: whether the rules:if expression EXPR holds under the variables set: clauses joined by &&, each $VAR
 # (set and not empty), $VAR == "string", $VAR == $VAR or $VAR =~ /regex/, the forms the file uses. Any other

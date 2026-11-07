@@ -49,6 +49,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
 | `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
+| `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
@@ -201,7 +202,10 @@ the scanners that need a database.
 
 ### How a change flows
 
-1. A pull request here; the tests run as its gates (the looper's land, or `ci/lint.sh all && ci/checks.sh`).
+1. A pull request here; the tests run as its gates (the looper's land, or `ci/tools.sh && ci/lint.sh all && ci/checks.sh`,
+   `gates.yaml`'s `full`). They run in the image `build.lock` pins by digest, the CI image, with no Docker: tacplus-dev/build
+   builds a commit only from that pin (looper#71). To move it, change `build.lock` and the CI file's `default.image`
+   together (`tests/ci_test.sh` refuses them apart): a new digest is a change like any other, landed on the full gates.
 2. Merged, a merge request in the GitLab project setting `.gitlab-ci.yml` to `ci/pin.sh <commit>`'s output, for that commit
    of main: the checks run on it.
 3. Merged there, the pipeline on main: checks → `plan:folder` → `apply:folder` → `plan:ci`, `plan:dev` → `apply:ci`, `apply:dev` →

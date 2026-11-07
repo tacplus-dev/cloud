@@ -162,6 +162,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by th
   awaiting decisions; #23's (kin-openapi) are fixed by the kubernetes provider's build.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
+- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6, v2.6.1's)
+  and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
+  this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
+  `build.lock` that is not the CI file's `default.image`.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

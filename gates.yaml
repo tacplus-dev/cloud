@@ -1,0 +1,6 @@
+# The gate map of tacplus-dev/cloud (#25; tacplus-dev/looper README: Gates scaled to the diff): the gates a land
+# and the build pipeline run, in the image build.lock pins, with no Docker and no credential. One set, full: the
+# pinned tools into bin/ (ci/tools.sh), every lint (ci/lint.sh all) and the tests (ci/checks.sh), as CI runs them.
+full:
+  run: ci/tools.sh && ci/lint.sh all && ci/checks.sh
+  minutes: 30
