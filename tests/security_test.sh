@@ -158,4 +158,22 @@ r=$(repo)
 scan "$r" STUB_TRIVY_RC=1 && fail "trivy failing passes" ||
   { grep -q 'PROBLEM trivy image' "$r/log" && ok "a tool that cannot run fails" || fail "trivy failing: $(tail -3 "$r/log")"; }
 
+# The scanners built here (ci/tools.sh, gobuild), as built: with the fixed klauspost/compress (GO-2026-6865) and brotli
+# (GO-2026-6888), not their upstreams' (#24). bin/osv-scanner only after ci/tools.sh security.
+fixed() { # BINARY MODULE VERSION: BINARY has no MODULE older than VERSION
+  local v
+  v=$(go version -m "$1" | awk -v m="$2" '$1 == "dep" && $2 == m { print $3 }')
+  [ -z "$v" ] || [ "$(printf '%s\n%s\n' "${v#v}" "${3#v}" | sort -V | head -1)" = "${3#v}" ]
+}
+if ! command -v go >/dev/null; then fail "no go: the scanners' modules cannot be read"
+else
+  for b in gitleaks osv-scanner; do
+    p=$here/bin/$b
+    [ -f "$p" ] || { [ "$b" = osv-scanner ] && continue; fail "no bin/$b (ci/tools.sh)"; continue; }
+    fixed "$p" github.com/klauspost/compress v1.20.2 && fixed "$p" github.com/andybalholm/brotli v1.2.7 &&
+      ok "bin/$b is built with klauspost/compress >= v1.20.2 and brotli >= v1.2.7" ||
+      fail "bin/$b: $(go version -m "$p" | grep -E 'klauspost/compress|andybalholm/brotli' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
+  done
+fi
+
 [ "$failed" = 0 ] && echo "security: all passed" || { echo "security: FAILED"; exit 1; }

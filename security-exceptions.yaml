@@ -7,16 +7,18 @@
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
 # ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are the
-# scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor the CI image's,
-# fixed by its digest. Track and bump: move each pin to the first upstream release with the fix and remove its
-# entries (PROPOSALS.md). The binaries, by pin:
+# scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor gitleaks' and
+# OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
+# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest. Track and bump: move each pin to the first
+# upstream release with the fix and remove its entries (PROPOSALS.md). The binaries, by pin:
 #
-#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6866
+#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866
 #   hashicorp/google 8.9.0 (stacks/*/.terraform.lock.hcl) GO-2026-5932 6860 6866
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
-#   GitLab Runner v19.5.2 (stacks/ci/main.tf)             GO-2026-6603 6610 6611 6612 6617
+#   GitLab Runner v19.5.2 (stacks/ci/main.tf)             GO-2026-6603 6610 6611 6612 6617 6865
 #   fleeting-plugin-googlecloud v1.3.1 (stacks/ci)        GO-2026-6603 6610 6611 6612 6617
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
+#   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-6865
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
@@ -62,6 +64,10 @@ exceptions:
     reason: "x/net html raw-text rendering namespaces (OpenTofu, the google provider, tflint and its ruleset): no untrusted HTML is rendered. Fixed in x/net v0.62.0; no release of them with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
+  - id: GO-2026-6865
+    reason: "klauspost/compress panic on two-block frames, fse/huff0 (OpenTofu 1.13.2, Trivy 0.76.1, GitLab Runner v19.5.2, upstream's downloads): they decode only pinned, trusted inputs (lock-file hashes, this repository, the CI image by digest), no untrusted compressed stream. Fixed in v1.20.2; no release of them with it yet (OpenTofu 1.13.9 and Trivy 0.76.2 still lack it). gitleaks and OSV-Scanner are built here with v1.20.2 (ci/tools.sh)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#24, 2026-11-06)"
+    expires: 2026-12-06
   - id: GO-2025-3922
     reason: "github.com/ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (the security job's secrets scan): memory leaks decoding corrupted LZMA archives. gitleaks decodes no archive here (--max-archive-depth is not set: archives are not scanned), and what it reads is this repository's tree and history. Fixed in xz v0.5.15; no gitleaks release with it yet."
     decided_by: "jodydadescott (tacplus-dev/cloud#10, 2026-11-04: accept what has no fixed release, 30 days)"

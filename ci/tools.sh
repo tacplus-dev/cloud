@@ -15,7 +15,8 @@
 #   bin/gitleaks      secrets, in the tree and its history (ci/security.sh, and tests/security_test.sh): built
 #                     from its pinned module version with the pinned Go (scanners_go), refused unless the module's
 #                     hash (h1:, a SHA-256 of its files) is the pinned one, its dependencies checked against the Go
-#                     checksum database (upstream's release is built with go1.24.11, without Go's fixes since)
+#                     checksum database (upstream's release is built with go1.24.11, without Go's fixes since), and
+#                     with the fixed klauspost/compress and brotli its release lacks (#24)
 #   bin/providers     the gitlab and kubernetes providers, our own builds from their source for this platform
 #                     (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, pinned by commit and by the SHA-256 of the
 #                     build): OpenTofu installs them from there only (ci/tofurc.sh)
@@ -23,7 +24,7 @@
 # And with `security`, the security job's (ci/security.sh), only that job's (they are large):
 #
 #   bin/osv-scanner   the tree's dependency manifests and lock files: built as gitleaks is (upstream's release is
-#                     built with go1.27.0)
+#                     built with go1.27.0), with the fixed klauspost/compress (#24)
 #   bin/trivy         the CI image: upstream's release, by SHA-256
 #   bin/govulncheck   the pinned binaries (-mode=binary): built as gitleaks is
 #   bin/scan/         the pinned binaries that are not tools here, to scan: the google provider (OpenTofu's plugin
@@ -49,6 +50,10 @@ gitleaks_version=v8.30.1
 gitleaks_sum=h1:PmEvCfVI7ti9dV3s5aMZUY7sS2GxRvG3yzih7E+cS3w=
 osv_scanner_version=v2.7.0
 osv_scanner_sum=h1:7aOrJ9vB7qbzxC3R+QCXs03SHQiRuM80RJdqZhUEl2g=
+# What gitleaks and OSV-Scanner are built with in place of their releases' (#24): the first fixed versions, which no
+# release of them requires yet (GO-2026-6865 in both, GO-2026-6888 in gitleaks).
+klauspost_compress=github.com/klauspost/compress@v1.20.2
+brotli=github.com/andybalholm/brotli@v1.2.7
 govulncheck_version=v1.1.4
 govulncheck_sum=h1:Ju8QsuyhX3Hk8ma3CesTbO8vfJD9EvUBgHvkxHBzj0I=
 trivy_version=0.76.1
@@ -79,19 +84,29 @@ fetch() {
   echo "$2  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || die "$1: SHA-256 $(sha256sum "$f" | cut -c1-64), not the pinned $2"
   echo "$f"
 }
-# gobuild MODULE VERSION SUM PACKAGE: PACKAGE of MODULE@VERSION into bin/, built with Go scanners_go; refused unless
-# the module's hash is SUM.
+# gobuild MODULE VERSION SUM PACKAGE [DEPENDENCY@VERSION...]: PACKAGE of MODULE@VERSION into bin/, built with Go
+# scanners_go; refused unless the module's hash is SUM. With dependencies, built in a copy of the module's source
+# that requires them (go get, checked against the Go checksum database), for fixes its release lacks.
 gobuild() {
-  local s
-  s=$(cd "$tmp" && GOTOOLCHAIN=$scanners_go GOFLAGS=-mod=mod go mod download -json "$1@$2" | jq -r .Sum)
-  [ "$s" = "$3" ] || die "$1@$2: $s, not the pinned $3"
-  (cd "$tmp" && GOBIN=$bin GOTOOLCHAIN=$scanners_go GOFLAGS=-mod=mod go install "$4@$2") || die "cannot build $4@$2"
+  local m=$1 v=$2 sum=$3 pkg=$4 j src; shift 4
+  j=$(cd "$tmp" && GOTOOLCHAIN=$scanners_go GOFLAGS=-mod=mod go mod download -json "$m@$v") || die "cannot download $m@$v"
+  [ "$(jq -r .Sum <<<"$j")" = "$sum" ] || die "$m@$v: $(jq -r .Sum <<<"$j"), not the pinned $sum"
+  if [ $# -eq 0 ]; then
+    (cd "$tmp" && GOBIN=$bin GOTOOLCHAIN=$scanners_go GOFLAGS=-mod=mod go install "$pkg@$v") || die "cannot build $pkg@$v"
+    return
+  fi
+  src=$tmp/src/$m
+  mkdir -p "$src" && cp -R "$(jq -r .Dir <<<"$j")/." "$src" && chmod -R u+w "$src"
+  (cd "$src" && export GOTOOLCHAIN=$scanners_go GOFLAGS=-mod=mod &&
+    go get "$@" > "$tmp/get.log" 2>&1 && go build -o "$bin/" ".${pkg#"$m"}") ||
+    { cat "$tmp/get.log" >&2; die "cannot build $pkg@$v with $*"; }
 }
 
 # The security job's tools and the binaries it scans (above).
 security() {
   local f main runner plugin s
-  gobuild github.com/google/osv-scanner/v2 "$osv_scanner_version" "$osv_scanner_sum" github.com/google/osv-scanner/v2/cmd/osv-scanner
+  gobuild github.com/google/osv-scanner/v2 "$osv_scanner_version" "$osv_scanner_sum" github.com/google/osv-scanner/v2/cmd/osv-scanner \
+    "$klauspost_compress"
   f=$(fetch "https://github.com/aquasecurity/trivy/releases/download/v$trivy_version/trivy_${trivy_version}_Linux-$trivy_arch.tar.gz" "$trivy_sha")
   tar -xzf "$f" -C "$tmp" trivy
   install -m 0755 "$tmp/trivy" "$bin/trivy"
@@ -130,7 +145,8 @@ unzip -qo "$z" tflint-ruleset-google -d "$plugin"
 t=$(fetch "https://github.com/koalaman/shellcheck/releases/download/v$shellcheck_version/shellcheck-v$shellcheck_version.linux.$sc_arch.tar.xz" "$shellcheck_sha")
 tar -xJf "$t" -C "$tmp" "shellcheck-v$shellcheck_version/shellcheck"
 install -m 0755 "$tmp/shellcheck-v$shellcheck_version/shellcheck" "$bin/shellcheck"
-gobuild github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_sum" github.com/zricethezav/gitleaks/v8
+gobuild github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_sum" github.com/zricethezav/gitleaks/v8 \
+  "$klauspost_compress" "$brotli"
 GOBIN=$bin GOFLAGS=-mod=mod go install "github.com/mikefarah/yq/v4@$yq_version"
 "$here/ci/gitlab-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/kubernetes-provider.sh" "$bin/providers" "linux_$arch"

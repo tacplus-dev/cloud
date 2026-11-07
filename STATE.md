@@ -1,12 +1,13 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#23).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#24).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; no HIGH or CRITICAL
   finding with a fix, so no CI-image entry in `security-exceptions.yaml`); OpenTofu 1.13.2, providers `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock
   files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0,
-  govulncheck v1.1.4 (built from their modules with go1.27.3) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
+  govulncheck v1.1.4 (built from their modules with go1.27.3; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and
+  gitleaks brotli v1.2.7, #24) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes; the `kubernetes` provider is
   too, its v3.4.0 tag with go1.27.3, x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18) and kin-openapi v0.152.0, its
@@ -158,8 +159,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by th
   `security-exceptions.yaml` enforced (an expired entry fails); its report `security/report.json`, the artifact. Its
   first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
   standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had none either; the job fails today
-  only on the new govulncheck advisories of #24 (klauspost/compress, brotli) and the image's `gh` CVE-2026-78661 (#27),
-  awaiting decisions; #23's (kin-openapi) are fixed by the kubernetes provider's build.
+  only on the image's `gh` CVE-2026-78661 (#27), awaiting a decision; #23's (kin-openapi) are fixed by the kubernetes
+  provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
+  brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu, Trivy and GitLab Runner accepted until **2026-12-06**.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6, v2.6.1's)

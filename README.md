@@ -172,6 +172,12 @@ moves to the first upstream release with the fix (#3):
   TLS), and none of them has a fixed release yet.
 
 - **Accepted until 2026-12-04** (#10): gitleaks v8.30.1's xz (GO-2025-3922), with no gitleaks release past it yet.
+- **gitleaks and OSV-Scanner are built with the fixed klauspost/compress and brotli** (#24): `ci/tools.sh` builds each
+  from its pinned module in a copy of its source that requires klauspost/compress v1.20.2 (GO-2026-6865, a panic on
+  two-block frames) and, for gitleaks, brotli v1.2.7 (GO-2026-6888, excessive allocation decompressing crafted
+  streams), checked against the Go checksum database, until their releases require them. **Accepted until
+  2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2, Trivy 0.76.1 and GitLab Runner
+  v19.5.2, which decode only pinned, trusted inputs; each pin moves when its upstream ships the fix.
 
 The `security` job enforces it (below), on every pipeline.
 

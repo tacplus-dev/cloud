@@ -42,9 +42,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), the `google` provider past 8.9.0 and tflint past
   0.65.0 with its ruleset past 0.41.0 (x/net >= v0.62.0, x/crypto), GitLab Runner past v19.5.2 and
   fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
-  GO-2025-3922, accepted until 2026-12-04, #10); `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`.
+  GO-2025-3922, accepted until 2026-12-04, #10), and OpenTofu, Trivy past 0.76.2 and GitLab Runner to a release with
+  klauspost/compress >= v1.20.2 (GO-2026-6865, accepted until 2026-12-06, #24); `ci/tools.sh` shas and sums,
+  `ci/lock.sh`, `stacks/ci/main.tf`.
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
+- **gitleaks and OSV-Scanner on their releases' dependencies again** (looper, #24, 2026-11-07). What: drop the
+  `klauspost_compress` and `brotli` requirements of their `gobuild` in `ci/tools.sh` when a gitleaks release past
+  v8.30.1 requires klauspost/compress >= v1.20.2 and brotli >= v1.2.7, and an OSV-Scanner release past v2.7.0
+  klauspost/compress >= v1.20.2. Meanwhile the same requirement could take gitleaks' xz to v0.5.15 and so drop
+  GO-2025-3922's exception (#10) before it expires on 2026-12-04. Why: a build with other dependencies than the
+  release's is ours to keep current.
 - **Drop the gitlab provider's build from source** (looper, #3). What: when gitlabhq/terraform-provider-gitlab
   releases a version built with go >= 1.26.10 and x/net >= v0.62.0, pin it from the registry again: remove
   `ci/gitlab-provider.sh` and `ci/tofurc.sh`, their calls (`ci/tools.sh`, `ci/lock.sh`, the scripts sourcing tofurc) and
