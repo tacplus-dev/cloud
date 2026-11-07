@@ -1,0 +1,346 @@
+The kubernetes provider's v3.4.0 (ci/kubernetes-provider.sh) ported to github.com/getkin/kin-openapi v0.149.0 and later
+(#23), applied to its source before the build: openapi2 has its own Schema type, a schema's type is a list
+(openapi3.Types), additionalProperties a struct, and extensions are decoded values, no longer json.RawMessage. The
+OpenAPI v2 definitions are read as the v3 schemas getTypeFromSchema reads, with the fields it reads, nil where they
+are nil (openapi2conv makes every properties map non-nil, which turns maps into unknown types). The v2 fixture's 251
+types and hints are the same as v0.111.0's; TestGetTypeByGVKV3Extensions holds a CRD's extensions' hints. The
+provider's code, so MPL-2.0. Goes with the build (PROPOSALS.md).
+
+diff --git a/manifest/openapi/foundry_v2.go b/manifest/openapi/foundry_v2.go
+index a2f7b53..014d871 100644
+--- a/manifest/openapi/foundry_v2.go
++++ b/manifest/openapi/foundry_v2.go
+@@ -10,6 +10,7 @@ import (
+ 	"sync"
+ 
+ 	"github.com/getkin/kin-openapi/openapi2"
++	"github.com/getkin/kin-openapi/openapi3"
+ 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+ 	"k8s.io/apimachinery/pkg/runtime/schema"
+ )
+@@ -36,6 +37,7 @@ func NewFoundryFromSpecV2(spec []byte) (Foundry, error) {
+ 
+ 	f := foapiv2{
+ 		swagger:        &swg,
++		definitions:    v3Schemas(d),
+ 		typeCache:      sync.Map{},
+ 		gkvIndex:       sync.Map{}, //reverse lookup index from GVK to OpenAPI definition IDs
+ 		recursionDepth: 50,         // arbitrarily large number - a type this deep will likely kill Terraform anyway
+@@ -57,6 +59,7 @@ type Foundry interface {
+ 
+ type foapiv2 struct {
+ 	swagger        *openapi2.T
++	definitions    map[string]*openapi3.SchemaRef // swagger.Definitions, as the OpenAPI v3 schemas getTypeFromSchema reads
+ 	typeCache      sync.Map
+ 	gkvIndex       sync.Map
+ 	recursionDepth uint64 // a last resort circuit-breaker for run-away recursion - hitting this will make for a bad day
+@@ -90,7 +93,7 @@ func (f *foapiv2) GetTypeByGVK(gvk schema.GroupVersionKind) (tftypes.Type, map[s
+ }
+ 
+ func (f *foapiv2) getTypeByID(id string, h map[string]string, ap tftypes.AttributePath) (tftypes.Type, error) {
+-	swd, ok := f.swagger.Definitions[id]
++	swd, ok := f.definitions[id]
+ 
+ 	if !ok {
+ 		return nil, errors.New("invalid type identifier")
+@@ -100,19 +103,19 @@ func (f *foapiv2) getTypeByID(id string, h map[string]string, ap tftypes.Attribu
+ 		return nil, errors.New("invalid type reference (nil)")
+ 	}
+ 
+-	sch, err := resolveSchemaRef(swd, f.swagger.Definitions)
++	sch, err := resolveSchemaRef(swd, f.definitions)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to resolve schema: %s", err)
+ 	}
+ 
+-	return getTypeFromSchema(sch, f.recursionDepth, &(f.typeCache), f.swagger.Definitions, ap, h)
++	return getTypeFromSchema(sch, f.recursionDepth, &(f.typeCache), f.definitions, ap, h)
+ }
+ 
+ // buildGvkIndex builds the reverse lookup index that associates each GVK
+ // to its corresponding string key in the swagger.Definitions map
+ func (f *foapiv2) buildGvkIndex() error {
+-	for did, dRef := range f.swagger.Definitions {
+-		def, err := resolveSchemaRef(dRef, f.swagger.Definitions)
++	for did, dRef := range f.definitions {
++		def, err := resolveSchemaRef(dRef, f.definitions)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -120,8 +123,12 @@ func (f *foapiv2) buildGvkIndex() error {
+ 		if !ok {
+ 			continue
+ 		}
++		exj, err := json.Marshal(ex)
++		if err != nil {
++			return fmt.Errorf("failed to marshal GVK from OpenAPI schema extention: %v", err)
++		}
+ 		gvk := []schema.GroupVersionKind{}
+-		err = json.Unmarshal(([]byte)(ex.(json.RawMessage)), &gvk)
++		err = json.Unmarshal(exj, &gvk)
+ 		if err != nil {
+ 			return fmt.Errorf("failed to unmarshall GVK from OpenAPI schema extention: %v", err)
+ 		}
+@@ -131,3 +138,34 @@ func (f *foapiv2) buildGvkIndex() error {
+ 	}
+ 	return nil
+ }
++
++// v3Schemas gives the definitions of an OpenAPI v2 spec as the OpenAPI v3 schemas getTypeFromSchema reads (kin-openapi's
++// openapi2 has its own Schema type): the fields it reads, each nil where it is nil, and references as they are.
++func v3Schemas(defs openapi2.Schemas) map[string]*openapi3.SchemaRef {
++	if defs == nil {
++		return nil
++	}
++	v3 := make(map[string]*openapi3.SchemaRef, len(defs))
++	for k, v := range defs {
++		v3[k] = v3SchemaRef(v)
++	}
++	return v3
++}
++
++func v3SchemaRef(ref *openapi2.SchemaRef) *openapi3.SchemaRef {
++	if ref == nil {
++		return nil
++	}
++	v3 := &openapi3.SchemaRef{Ref: ref.Ref}
++	if v := ref.Value; v != nil {
++		v3.Value = &openapi3.Schema{
++			Extensions:           v.Extensions,
++			Type:                 v.Type,
++			Format:               v.Format,
++			Items:                v3SchemaRef(v.Items),
++			Properties:           v3Schemas(v.Properties),
++			AdditionalProperties: v.AdditionalProperties,
++		}
++	}
++	return v3
++}
+diff --git a/manifest/openapi/foundry_v3_test.go b/manifest/openapi/foundry_v3_test.go
+index 64d1f66..00815f8 100644
+--- a/manifest/openapi/foundry_v3_test.go
++++ b/manifest/openapi/foundry_v3_test.go
+@@ -5,7 +5,12 @@ package openapi
+ 
+ import (
+ 	"encoding/json"
++	"reflect"
+ 	"testing"
++
++	"github.com/hashicorp/terraform-plugin-go/tftypes"
++	"github.com/hashicorp/terraform-provider-kubernetes/manifest"
++	"k8s.io/apimachinery/pkg/runtime/schema"
+ )
+ 
+ func TestNewFoundryFromSpecV3(t *testing.T) {
+@@ -45,7 +50,7 @@ func TestNewFoundryFromSpecV3(t *testing.T) {
+ 	if crd == nil || crd.Value == nil {
+ 		t.Fail()
+ 	}
+-	if crd.Value.Type != "object" {
++	if !crd.Value.Type.Is("object") {
+ 		t.Fail()
+ 	}
+ 	if crd.Value.Properties == nil {
+@@ -55,14 +60,65 @@ func TestNewFoundryFromSpecV3(t *testing.T) {
+ 	if !ok {
+ 		t.Fail()
+ 	}
+-	if foo.Value.Type != "string" {
++	if !foo.Value.Type.Is("string") {
+ 		t.Fail()
+ 	}
+ 	bar, ok := crd.Value.Properties["bar"]
+ 	if !ok {
+ 		t.Fail()
+ 	}
+-	if bar.Value.Type != "number" {
++	if !bar.Value.Type.Is("number") {
+ 		t.Fail()
+ 	}
+ }
++
++func TestGetTypeByGVKV3Extensions(t *testing.T) {
++	sampleSchema := map[string]interface{}{
++		"type": "object",
++		"properties": map[string]interface{}{
++			"port": map[string]interface{}{
++				"x-kubernetes-int-or-string": true,
++			},
++			"config": map[string]interface{}{
++				"type":                                 "object",
++				"x-kubernetes-preserve-unknown-fields": true,
++			},
++			"labels": map[string]interface{}{
++				"type":                 "object",
++				"additionalProperties": map[string]interface{}{"type": "string"},
++			},
++			"args": map[string]interface{}{
++				"type":  "array",
++				"items": map[string]interface{}{"type": "string"},
++			},
++		},
++	}
++	j, err := json.Marshal(SchemaToSpec("", sampleSchema))
++	if err != nil {
++		t.Fatalf("Error: %+v", err)
++	}
++	f, err := NewFoundryFromSpecV3(j)
++	if err != nil {
++		t.Fatalf("Error: %+v", err)
++	}
++	rt, th, err := f.GetTypeByGVK(schema.GroupVersionKind{})
++	if err != nil {
++		t.Fatalf("Error: %+v", err)
++	}
++	want := tftypes.Object{AttributeTypes: map[string]tftypes.Type{
++		"port":   tftypes.String,
++		"config": tftypes.DynamicPseudoType,
++		"labels": tftypes.Map{ElementType: tftypes.String},
++		"args":   tftypes.List{ElementType: tftypes.String},
++	}}
++	if !rt.Equal(want) {
++		t.Fatalf("\nRETURNED type: %#v\nEXPECTED type: %#v", rt, want)
++	}
++	wantHints := map[string]string{
++		tftypes.NewAttributePath().WithAttributeName("port").String():   "io.k8s.apimachinery.pkg.util.intstr.IntOrString",
++		tftypes.NewAttributePath().WithAttributeName("config").String(): manifest.PreserveUnknownFieldsLabel,
++	}
++	if !reflect.DeepEqual(th, wantHints) {
++		t.Fatalf("\nRETURNED hints: %#v\nEXPECTED hints: %#v", th, wantHints)
++	}
++}
+diff --git a/manifest/openapi/schema.go b/manifest/openapi/schema.go
+index 8aa2c60..0ad1ad3 100644
+--- a/manifest/openapi/schema.go
++++ b/manifest/openapi/schema.go
+@@ -4,7 +4,6 @@
+ package openapi
+ 
+ import (
+-	"encoding/json"
+ 	"errors"
+ 	"fmt"
+ 	"strings"
+@@ -36,14 +35,10 @@ func resolveSchemaRef(ref *openapi3.SchemaRef, defs map[string]*openapi3.SchemaR
+ 	// These are exceptional situations that require non-standard types.
+ 	switch sid {
+ 	case "io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.JSONSchemaProps":
+-		t := openapi3.Schema{
+-			Type: "",
+-		}
++		t := openapi3.Schema{}
+ 		return &t, nil
+ 	case "io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1beta1.JSONSchemaProps":
+-		t := openapi3.Schema{
+-			Type: "",
+-		}
++		t := openapi3.Schema{}
+ 		return &t, nil
+ 	}
+ 
+@@ -67,15 +62,8 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 	// Check if attribute type is tagged as 'x-kubernetes-preserve-unknown-fields' in OpenAPI.
+ 	// If so, we add a type hint to indicate this and return DynamicPseudoType for this attribute,
+ 	// since we have no further structural information about it.
+-	if xpufJSON, ok := elem.Extensions[manifest.PreserveUnknownFieldsLabel]; ok {
+-		var xpuf bool
+-		v, err := xpufJSON.(json.RawMessage).MarshalJSON()
+-		if err == nil {
+-			err = json.Unmarshal(v, &xpuf)
+-			if err == nil && xpuf {
+-				th[ap.String()] = manifest.PreserveUnknownFieldsLabel
+-			}
+-		}
++	if xpuf, ok := elem.Extensions[manifest.PreserveUnknownFieldsLabel].(bool); ok && xpuf {
++		th[ap.String()] = manifest.PreserveUnknownFieldsLabel
+ 	}
+ 
+ 	// check if type is in cache
+@@ -85,7 +73,7 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 	// 		return t.(tftypes.Type), nil
+ 	// 	}
+ 	// }
+-	switch elem.Type {
++	switch strings.Join(elem.Type.Slice(), ",") {
+ 	case "string":
+ 		if elem.Format == "int-or-string" {
+ 			th[ap.String()] = "io.k8s.apimachinery.pkg.util.intstr.IntOrString"
+@@ -102,23 +90,15 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 		return tftypes.Number, nil
+ 
+ 	case "":
+-		if xv, ok := elem.Extensions["x-kubernetes-int-or-string"]; ok {
+-			xb, err := xv.(json.RawMessage).MarshalJSON()
+-			if err != nil {
+-				return tftypes.DynamicPseudoType, nil
+-			}
+-			var x bool
+-			err = json.Unmarshal(xb, &x)
+-			if err == nil && x {
+-				th[ap.String()] = "io.k8s.apimachinery.pkg.util.intstr.IntOrString"
+-				return tftypes.String, nil
+-			}
++		if x, ok := elem.Extensions["x-kubernetes-int-or-string"].(bool); ok && x {
++			th[ap.String()] = "io.k8s.apimachinery.pkg.util.intstr.IntOrString"
++			return tftypes.String, nil
+ 		}
+ 		return tftypes.DynamicPseudoType, nil // this is where DynamicType is set for when an attribute is tagged as 'x-kubernetes-preserve-unknown-fields'
+ 
+ 	case "array":
+ 		switch {
+-		case elem.Items != nil && elem.AdditionalProperties == nil: // normal array - translates to a tftypes.List
++		case elem.Items != nil && elem.AdditionalProperties.Schema == nil: // normal array - translates to a tftypes.List
+ 			it, err := resolveSchemaRef(elem.Items, defs)
+ 			if err != nil {
+ 				return nil, fmt.Errorf("failed to resolve schema for items: %s", err)
+@@ -137,8 +117,8 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 				typeCache.Store(h, t)
+ 			}
+ 			return t, nil
+-		case elem.AdditionalProperties != nil && elem.Items == nil: // "overriden" array - translates to a tftypes.Tuple
+-			it, err := resolveSchemaRef(elem.AdditionalProperties, defs)
++		case elem.AdditionalProperties.Schema != nil && elem.Items == nil: // "overriden" array - translates to a tftypes.Tuple
++			it, err := resolveSchemaRef(elem.AdditionalProperties.Schema, defs)
+ 			if err != nil {
+ 				return nil, fmt.Errorf("failed to resolve schema for items: %s", err)
+ 			}
+@@ -154,7 +134,7 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 	case "object":
+ 
+ 		switch {
+-		case elem.Properties != nil && elem.AdditionalProperties == nil:
++		case elem.Properties != nil && elem.AdditionalProperties.Schema == nil:
+ 			// this is a standard OpenAPI object
+ 			atts := make(map[string]tftypes.Type, len(elem.Properties))
+ 			for p, v := range elem.Properties {
+@@ -175,9 +155,9 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 			}
+ 			return t, nil
+ 
+-		case elem.Properties == nil && elem.AdditionalProperties != nil:
++		case elem.Properties == nil && elem.AdditionalProperties.Schema != nil:
+ 			// this is how OpenAPI defines associative arrays
+-			s, err := resolveSchemaRef(elem.AdditionalProperties, defs)
++			s, err := resolveSchemaRef(elem.AdditionalProperties.Schema, defs)
+ 			if err != nil {
+ 				return nil, fmt.Errorf("failed to resolve schema: %s", err)
+ 			}
+@@ -192,7 +172,7 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 			}
+ 			return t, nil
+ 
+-		case elem.Properties == nil && elem.AdditionalProperties == nil:
++		case elem.Properties == nil && elem.AdditionalProperties.Schema == nil:
+ 			// this is a strange case, encountered with io.k8s.apimachinery.pkg.apis.meta.v1.FieldsV1 and also io.k8s.apiextensions-apiserver.pkg.apis.apiextensions.v1.CustomResourceSubresourceStatus
+ 			t = tftypes.DynamicPseudoType
+ 			if herr == nil {
+@@ -203,7 +183,7 @@ func getTypeFromSchema(elem *openapi3.Schema, stackdepth uint64, typeCache *sync
+ 		}
+ 	}
+ 
+-	return nil, fmt.Errorf("unknown type: %s", elem.Type)
++	return nil, fmt.Errorf("unknown type: %s", strings.Join(elem.Type.Slice(), ","))
+ }
+ 
+ func isTypeFullyKnown(t tftypes.Type) bool {

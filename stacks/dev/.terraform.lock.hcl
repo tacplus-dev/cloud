@@ -42,9 +42,9 @@ provider "registry.opentofu.org/hashicorp/kubernetes" {
   version     = "3.4.0"
   constraints = ">= 3.4.0, 3.4.0, < 4.0.0"
   hashes = [
-    "h1:CkJVIRgGM8sjr2fs45phLdYzXOisv2e9kLz7Eh3XP1Y=",
-    "h1:KBcuBpk/KzpFpPsEHbR9ZjFCmI9TI+HbZ0T9CdbFlPo=",
-    "h1:t1PDnsxvYFsUYpRVoXrxaIRw1ZePcl6Ll7K46LyxYXg=",
-    "h1:yhfBU3+hljEBfVaTOdb8semDjOe4nHbP9ZOTwsX+YUw=",
+    "h1:0H2R9Sgkvz9F7hRnZnEZ3XldBYxpKec9xOIV6qGCgDY=",
+    "h1:Q1vsViapSCGHAB6Jx3CHV2kEy/WJLJ9dT5yetEgTlYk=",
+    "h1:RhbXjJhmkUbbGxSFniQNw0Ufrgq0Gjkhi+2v0StqK+s=",
+    "h1:in8zVozLL/FX0hrlNivqsyT6SYah0ZFiDHdmpa7LOI4=",
   ]
 }

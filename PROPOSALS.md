@@ -52,14 +52,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   and a fetch from gitlab.com, and it is ours to keep current; upstream's signed release is the normal path. Upstream
   has not been asked yet: its issues are on gitlab.com (gitlab-org/terraform-provider-gitlab; the GitHub mirror takes
   none), and this run had no gitlab.com account; the request is drafted on #3 for the hub to file.
-- **Drop the kubernetes provider's build from source** (looper, #18, 2026-11-05). What: when
+- **Drop the kubernetes provider's build from source** (looper, #18, 2026-11-05; #23, 2026-11-07). What: when
   hashicorp/terraform-provider-kubernetes releases a version that compiles against github.com/getkin/kin-openapi
-  >= v0.144.0 and is built with a fixed Go (>= go1.27.3, x/net >= v0.62.0), pin it from the registry again: remove
-  `ci/kubernetes-provider.sh`, its calls (`ci/tools.sh`, `ci/lock.sh`), its entries in `ci/tofurc.sh` and
-  `tests/providers_test.sh`, and the four kin-openapi exceptions (GO-2025-3533, GO-2026-6095, GO-2026-6112,
-  GO-2026-6274, until 2026-12-05), and run `ci/lock.sh`. If only the kin-openapi bump comes first, keep the build and drop
-  the exceptions. Why: v3.4.0's kin-openapi v0.111.0 has those findings and the fixed releases change its API (v0.152.0
-  does not compile); the exceptions expire on 2026-12-05, and the build is ours to keep current.
+  >= v0.149.0, move `ci/kubernetes-provider.sh` to it and drop its kin-openapi override and `ci/kubernetes-provider.patch`
+  (Jody's decision on #23); when it is also built with a fixed Go (>= go1.27.3, x/net >= v0.62.0), pin it from the
+  registry again: remove `ci/kubernetes-provider.sh`, its patch, its calls (`ci/tools.sh`, `ci/lock.sh`), its entries in
+  `ci/tofurc.sh` and `tests/providers_test.sh`, and run `ci/lock.sh`. Why: v3.4.0's kin-openapi v0.111.0 has nine
+  advisories (#18, #23) and the fixed releases change its API, so we carry a port of its `manifest/openapi`
+  (hashicorp/terraform-provider-kubernetes#2949 and #2741 are open upstream bumps, to v0.144.0 and v0.132.0, both short
+  of v0.149.0); the build and the patch are ours to keep current.
 - **Enforce the exceptions' expiry** (looper, #3): done by #10 (the `security` job, not `ci/checks.sh`). What: the security job of the deterministic checks above fails on
   an expired `security-exceptions.yaml` entry, as looper-scan does; today `tests/providers_test.sh` checks only its
   form. Why: an expiry nothing enforces is a note, and a date check in `ci/checks.sh` would make the same commit pass

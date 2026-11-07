@@ -159,11 +159,12 @@ moves to the first upstream release with the fix (#3):
   hashes, for the four platforms (`ci/lock.sh` builds them all). It goes when an upstream release is built on a fixed Go.
 - **The `kubernetes` provider is built from source too** (`ci/kubernetes-provider.sh`, #18), the same way: upstream's
   3.4.0 is built with go1.26.3, and it holds the pipeline's token to dev's cluster. Its tag v3.4.0 at the pinned commit,
-  with go1.27.3 and x/net v0.62.0, installed and locked as the `gitlab` one is. Its kin-openapi v0.111.0 stays, the
-  fixed releases changing the API it compiles against: GO-2025-3533, GO-2026-6095, GO-2026-6112 and GO-2026-6274, all in
-  `openapi3filter` (an HTTP server's request validation), which the provider never imports, are accepted until
-  2026-12-05 (Jody's decision on #18). It goes when an upstream release is built on a fixed Go and against kin-openapi
-  v0.144.0 or later.
+  with go1.27.3, x/net v0.62.0 and kin-openapi v0.152.0, installed and locked as the `gitlab` one is. Upstream's
+  kin-openapi v0.111.0 has GO-2025-3533, GO-2026-6095, GO-2026-6112 and GO-2026-6274 (#18) and GO-2026-6783, 6785,
+  6789, 6795 and 6804 (#23), the last fixed in v0.149.0, and its fixed releases change the API the provider compiles
+  against: `ci/kubernetes-provider.patch` ports the provider's `manifest/openapi` to it (Jody's decision on #23, no
+  exception), and that package's tests, with one the patch adds, run before each build. The patch goes when an
+  upstream release compiles against kin-openapi v0.149.0 or later; the build, when one is also built on a fixed Go.
 - **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0,
   GitLab Runner v19.5.2 and the fleeting plugin v1.3.1: x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over

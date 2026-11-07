@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#20).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#23).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; no HIGH or CRITICAL
@@ -9,8 +9,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by th
   govulncheck v1.1.4 (built from their modules with go1.27.3) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes; the `kubernetes` provider is
-  too, its v3.4.0 tag with go1.27.3 and x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18), its kin-openapi's four
-  findings accepted until 2026-12-05.
+  too, its v3.4.0 tag with go1.27.3, x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18) and kin-openapi v0.152.0, its
+  `manifest/openapi` ported to it by `ci/kubernetes-provider.patch` (#23): no kin-openapi finding, none accepted.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
@@ -157,8 +157,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by th
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
   `security-exceptions.yaml` enforced (an expired entry fails); its report `security/report.json`, the artifact. Its
   first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
-  standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image has none either; the job fails today
-  only on the new govulncheck advisories of #23 (kin-openapi) and #24 (klauspost/compress, brotli), awaiting decisions.
+  standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had none either; the job fails today
+  only on the new govulncheck advisories of #24 (klauspost/compress, brotli) and the image's `gh` CVE-2026-78661 (#27),
+  awaiting decisions; #23's (kin-openapi) are fixed by the kubernetes provider's build.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
