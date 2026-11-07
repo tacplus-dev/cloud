@@ -171,6 +171,8 @@ output "zone" {
       { name = "tacplus.dev.", type = "TXT", ttl = 300, rrdatas = ["\"google-site-verification=BBk1Mdc_mSNbbRfqhsfEK9bHKALRrMo7qCnZyGd99i4\""] },
       { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
       { name = "_dmarc.tacplus.dev.", type = "TXT", ttl = 3600, rrdatas = ["\"v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:dmarc_rua@onsecureserver.net;\""] },
+      # GitHub Pages' domain verification for tacplus-dev (kept so the verified domain stays verified).
+      { name = "_github-pages-challenge-tacplus-dev.tacplus.dev.", type = "TXT", ttl = 3600, rrdatas = ["\"cf48f188ca7e110f048f0a59ca6a92\""] },
     ]
   }
 }
