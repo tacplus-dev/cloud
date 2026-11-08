@@ -117,7 +117,7 @@ step "trivy: the CI image"
 image=$(yq -r '.default.image // ""' "$tree/ci/gitlab-project.gitlab-ci.yml" 2>/dev/null)
 if [[ ! $image =~ @sha256:[0-9a-f]{64}$ ]]; then
   problem "trivy: the CI image is not pinned by digest: [$image]"
-elif trivy image -q --scanners vuln --format json -o "$out/raw/trivy-image.json" "$image" 2>"$out/raw/trivy-image.log"; then
+elif trivy image -q --scanners vuln --timeout 30m --format json -o "$out/raw/trivy-image.json" "$image" 2>"$out/raw/trivy-image.log"; then
   echo "$image"
   norm trivy-image '
     [.[0].Results[]? | .Target as $t | (.Vulnerabilities // [])[]
