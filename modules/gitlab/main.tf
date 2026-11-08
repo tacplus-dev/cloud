@@ -3,7 +3,8 @@
 #
 # GitLab settings: projects, their protected branches and environments, their protected project variables (values
 # from Secret Manager, never in this repository), the runner registrations, whose tokens go to Secret Manager
-# for the runner manager, and the read-only memberships of other projects, each with an expiry.
+# for the runner manager, and the read-only memberships of other projects, each with an expiry; tacplus-dev/build's
+# pipeline file, trigger and schedules are build.tf's.
 
 locals {
   existing = { for path, p in var.projects : path => p if !p.create }
@@ -12,8 +13,8 @@ locals {
     { for path, p in data.gitlab_project.existing : path => p.id },
     { for path, p in gitlab_project.created : path => p.id },
   )
-  # The projects a project runner is registered to, managed here or not.
-  member_projects = toset([for k in keys(var.members) : split(":", k)[0] if !contains(keys(var.projects), split(":", k)[0])])
+  # The projects a project runner is registered to, managed here or not; those of the memberships and the build's.
+  member_projects = toset([for p in concat([for k in keys(var.members) : split(":", k)[0]], var.build == null ? [] : [var.build.project]) : p if !contains(keys(var.projects), p)])
   runner_projects = setsubtract(toset([for r in values(var.runners) : r.project if r.project != null && !contains(keys(var.projects), coalesce(r.project, "-"))]), local.member_projects)
   other_project_id = merge(
     { for path, p in data.gitlab_project.runner : path => p.id },

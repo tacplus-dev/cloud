@@ -8,8 +8,9 @@
 # gitlab.com says it is an Enterprise instance (/metadata), on Free too, and there the provider refuses a branch
 # protection's push_access_level and merge_access_level at plan; and an import by the project's path, whose state
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
-# protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change; it replaces, changes
-# or deletes nothing; the old form of the protection is refused, as gitlab.com refused it. The fixture is built from
+# protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
+# .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and the looper's
+# nightly schedule; it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused it. The fixture is built from
 # the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot read tacplus-dev/cloud's
 # settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
 #
@@ -68,8 +69,24 @@ if plan; then
   variable=$(change 'module.gitlab.gitlab_project_variable.variable["tacplus-dev/cloud:GCP_WIF_PROVIDER"]')
   [ "$(jq -c '.actions' <<< "$variable")" = '["no-op"]' ] && [ "$(jq -r '.importing.id' <<< "$variable")" = '4001:GCP_WIF_PROVIDER:*' ] &&
     ok "GCP_WIF_PROVIDER: adopted (by the project's ID) with no change" || fail "GCP_WIF_PROVIDER: $variable"
-  others=$(jq -r '.resource_changes[] | select(.change.actions != ["create"] and .change.actions != ["no-op"]) | "\(.address) \(.change.actions)"' "$work/plan.json")
-  [ -z "$others" ] && ok "nothing replaced, changed or deleted: adoptions and creates only" || fail "the plan also: $others"
+  ci=$(change 'module.gitlab.gitlab_repository_file.build_ci["build"]')
+  jq -e --rawfile f "$here/stacks/gitlab/files/build.gitlab-ci.yml" '.actions == ["update"] and .importing.id == "4003:main:.gitlab-ci.yml" and
+    .after.content == $f and .after.branch == "main" and .after.project == "4003"' <<< "$ci" > /dev/null &&
+    ok "tacplus-dev/build's .gitlab-ci.yml: adopted (by the project's ID) and made tacplus-dev/looper's ci/build.gitlab-ci.yml (#26)" ||
+    fail "tacplus-dev/build's .gitlab-ci.yml: $(jq -c 'del(.before, .after)' <<< "$ci")"
+  others=$(jq -r '.resource_changes[] | select(.change.actions != ["create"] and .change.actions != ["no-op"])
+    | select(.address != "module.gitlab.gitlab_repository_file.build_ci[\"build\"]") | "\(.address) \(.change.actions)"' "$work/plan.json")
+  [ -z "$others" ] && ok "nothing else replaced, changed or deleted: adoptions and creates only" || fail "the plan also: $others"
+  trigger=$(change 'module.gitlab.gitlab_pipeline_trigger.build["build"]')
+  variable=$(change 'module.gitlab.gitlab_project_variable.build_trigger["build"]')
+  jq -e '.actions == ["create"] and .after.project == "4003"' <<< "$trigger" > /dev/null &&
+    jq -e '.actions == ["create"] and .after.project == "88136765" and .after.key == "BUILD_TRIGGER_TOKEN" and .after.protected and .after.masked and .after_unknown.value' <<< "$variable" > /dev/null &&
+    ok "a trigger of tacplus-dev/build, its token the looper project's protected, masked BUILD_TRIGGER_TOKEN (#26)" ||
+    fail "the build trigger: $trigger; its variable: $(jq -c 'del(.before)' <<< "$variable")"
+  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["looper"]')
+  jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and
+    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=looper"]' <<< "$schedule" > /dev/null &&
+    ok "tacplus-dev/looper's nightly schedule on tacplus-dev/build (#26)" || fail "the looper's schedule: $schedule"
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"

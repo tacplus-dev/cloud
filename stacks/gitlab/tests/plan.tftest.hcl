@@ -55,6 +55,20 @@ run "stack" {
     condition     = can(regex("^20[0-9]{2}-[01][0-9]-[0-3][0-9]$", output.members["tacplus-dev/build:tacplus-looper-bot"].expires_at))
     error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
+  # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and a nightly
+  # schedule per repository of nightly-builds.yaml, tacplus-dev/looper first, with the inputs repo and nightly.
+  assert {
+    condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
+    error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
+  }
+  assert {
+    condition     = output.build.schedules["looper"] == { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } }
+    error_message = "tacplus-dev/looper has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true."
+  }
+  assert {
+    condition     = alltrue([for k, s in output.build.schedules : s.inputs == { repo = k, nightly = "true" }])
+    error_message = "A nightly schedule's inputs are not its repository and nightly: true."
+  }
 }
 
 run "gitlab" {
@@ -80,6 +94,12 @@ run "gitlab" {
     }
     members = {
       "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
+    }
+    build = {
+      project   = "tacplus-dev/build"
+      ci_file   = { content = "stages: [build]\n", commit_message = "ci/build.gitlab-ci.yml at tacplus-dev/looper@abc" }
+      trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules = { looper = { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } } }
     }
   }
 
@@ -118,6 +138,24 @@ run "gitlab" {
   assert {
     condition     = alltrue([for m in gitlab_project_membership.member : contains(["guest", "reporter"], m.access_level) && m.expires_at != null])
     error_message = "A membership is higher than Reporter (20), or does not expire."
+  }
+  # tacplus-dev/build (#26): the trigger on it, its token the protected, masked variable of the project named, its
+  # rotation keyed on rotate_by; the schedules on its main, in UTC, with their inputs; its .gitlab-ci.yml, as given.
+  assert {
+    condition     = gitlab_pipeline_trigger.build["build"].project == "77" && terraform_data.build_trigger_rotation["build"].input == "2027-02-05"
+    error_message = "The build trigger is not on tacplus-dev/build, or its rotation is not keyed on rotate_by."
+  }
+  assert {
+    condition     = gitlab_project_variable.build_trigger["build"].project == "88136765" && gitlab_project_variable.build_trigger["build"].key == "BUILD_TRIGGER_TOKEN" && gitlab_project_variable.build_trigger["build"].protected && gitlab_project_variable.build_trigger["build"].masked && gitlab_project_variable.build_trigger["build"].environment_scope == "*"
+    error_message = "BUILD_TRIGGER_TOKEN is not the looper project's protected, masked variable."
+  }
+  assert {
+    condition     = gitlab_pipeline_schedule.build["looper"].project == "77" && gitlab_pipeline_schedule.build["looper"].ref == "refs/heads/main" && gitlab_pipeline_schedule.build["looper"].cron_timezone == "UTC" && gitlab_pipeline_schedule.build["looper"].active && toset([for i in gitlab_pipeline_schedule.build["looper"].inputs : "${i.name}=${i.value}"]) == toset(["repo=looper", "nightly=true"])
+    error_message = "The looper's nightly schedule is not on tacplus-dev/build's main, in UTC, with the inputs repo and nightly."
+  }
+  assert {
+    condition     = gitlab_repository_file.build_ci["build"].project == "77" && gitlab_repository_file.build_ci["build"].branch == "main" && gitlab_repository_file.build_ci["build"].file_path == ".gitlab-ci.yml" && gitlab_repository_file.build_ci["build"].content == "stages: [build]\n"
+    error_message = "tacplus-dev/build's .gitlab-ci.yml is not the content given, on its main."
   }
 }
 
@@ -178,4 +216,39 @@ run "member_key_refused" {
     members  = { "tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" } }
   }
   expect_failures = [var.members]
+}
+
+# A build trigger's rotate_by is a date in the commit, and a schedule has a five-field cron and inputs (#26).
+run "build_rotate_by_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    build = {
+      project   = "tacplus-dev/build"
+      trigger   = { description = "x", rotate_by = "90d", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules = {}
+    }
+  }
+  expect_failures = [var.build]
+}
+
+run "build_schedule_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    build = {
+      project   = "tacplus-dev/build"
+      trigger   = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules = { looper = { cron = "@daily", inputs = {} } }
+    }
+  }
+  expect_failures = [var.build]
 }

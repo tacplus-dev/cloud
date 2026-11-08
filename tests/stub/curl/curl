@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub curl for tests/build_ci_test.sh: `curl -sS -o OUT -w '%{http_code}' [-H H]... [--data-binary @FILE] URL`, as
+# ci/build-ci.sh calls it. It answers from STUB_CURL: a GET of a raw.githubusercontent.com URL with the file raw (404
+# without it), a POST with the file answer and the status in code (200 without it). It logs each call's arguments to
+# STUB_CURL/calls, a header file's lines to STUB_CURL/headers and the body sent to STUB_CURL/body.
+set -euo pipefail
+out=/dev/stdout url='' method=GET
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) out=$2; shift ;;
+    -w|-X) shift ;;
+    -H) [[ $2 == @* ]] && cat "${2#@}" >> "$STUB_CURL/headers"; shift ;;
+    --data-binary) method=POST; cat "${2#@}" > "$STUB_CURL/body"; shift ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+echo "$method $url" >> "$STUB_CURL/calls"
+if [ "$method" = GET ]; then
+  if [ -f "$STUB_CURL/raw" ]; then cp "$STUB_CURL/raw" "$out"; printf 200; else echo '404: Not Found' > "$out"; printf 404; fi
+else
+  cp "$STUB_CURL/answer" "$out"
+  cat "$STUB_CURL/code" 2>/dev/null || printf 200
+fi

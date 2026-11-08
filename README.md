@@ -37,7 +37,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   Secret Manager by version, never in this repository), the runner registrations of the `ci` pools (registered
   **paused**: moving the runners off jody1-328023 is a later issue), and the read-only memberships of other projects,
   each with an expiry: `tacplus-looper-bot` a Reporter of tacplus-dev/build, for the looper's nightly recap (below,
-  Memberships).
+  Memberships); and tacplus-dev/build's `.gitlab-ci.yml`, its pipeline trigger, whose token is tacplus-dev/looper's
+  `BUILD_TRIGGER_TOKEN`, rotated, and its nightly schedules (below, The build pipeline).
 
 ## Layout
 
@@ -48,7 +49,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
+| `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/nightly-builds.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and its nightly schedules, one per pinned repository (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
@@ -371,6 +373,36 @@ date in the commit (never computed: the plan is the commit's alone). Today one (
 
 **Renewing one:** the drift job's expiry check (`ci/expiry.sh`) reports every `expires_at` of the stacks that is past or
 within 30 days, in the drift issue. A commit of a later date renews it; the pipeline applies it.
+
+## The build pipeline
+
+#26 (tacplus-dev/looper#71, #84; tacplus-dev/roadmap
+`suggestions/2026-11-06-pin-every-repository-so-the-build-pipeline-and-its-security-checks-run-anywhere.md`, step 2):
+the looper's reports and managers get their gates from build jobs in tacplus-dev/build, which this pipeline sets up
+(`modules/gitlab/build.tf`, from the gitlab stack's `build`):
+
+- **Its `.gitlab-ci.yml`** is tacplus-dev/looper's `ci/build.gitlab-ci.yml` at the commit the stack names
+  (`build_ci_commit`), copied as is into `stacks/gitlab/files/build.gitlab-ci.yml` and written to tacplus-dev/build's
+  main by `apply:gitlab` (the hub's hand copy is adopted, then this stack's). Before every plan, `plan:gitlab` runs
+  `ci/build-ci.sh check` (the copy is looper's file at that commit, from GitHub) and `ci/build-ci.sh lint` (GitLab's
+  own lint of it in tacplus-dev/build, `POST /projects/:id/ci/lint`): a copy that differs or that GitLab cannot read
+  is never applied. **A bump** is `ci/build-ci.sh update <looper commit>` (the copy and `build_ci_commit`) in a commit.
+- **`BUILD_TRIGGER_TOKEN`**: a pipeline trigger of tacplus-dev/build, its token the protected, masked variable
+  `BUILD_TRIGGER_TOKEN` of tacplus-dev/looper (project 88136765), which its report and manager jobs start build jobs
+  with (tacplus-dev/looper README, Build jobs). Nobody sees it: GitLab makes it, the apply writes it
+  (`decisions/secrets-by-pipeline-2026-11-05.md`). The trigger is owned by the user of the token this pipeline runs as
+  (`gitlab-token`), and a triggered pipeline runs as its owner.
+- **Its rotation**, every 90 days: the trigger's `rotate_by` in `stacks/gitlab/main.tf` is a date in the commit, never
+  computed (the plan is the commit's alone). The drift job's expiry check (`ci/expiry.sh`) reports it from 30 days
+  before; a commit of a date 90 days later replaces the trigger: the new one is made and becomes the variable's
+  before the old one is deleted, so a build started in between fails at most once.
+- **The nightly schedules**: one per repository of `stacks/gitlab/nightly-builds.yaml`, on tacplus-dev/build's main,
+  its cron in UTC and its inputs (`repo`, `nightly: true`: the build scans the repository's main as it is then).
+  tacplus-dev/looper first. **A repository's pin issue adds it there** once its `tacplus.lock` or `build.lock` is on its
+  main (a nightly of a repository with no pin fails).
+
+**Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
+which the hub registers for tacplus-dev/looper#84.
 
 ## The runners' image
 

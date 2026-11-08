@@ -281,3 +281,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   Why: fleet-seatrials' docs make `test-idp` protected (deployable by Maintainers), but the federation trusts any job
   of protected main in an environment of that name; protected main already limits who pushes, the environment's
   protection would also limit who runs its manual job.
+- **Rotate the build trigger with no commit** (looper, #26, 2026-11-07). What: today `BUILD_TRIGGER_TOKEN` rotates when
+  a commit changes its `rotate_by` (the drift's expiry check asks for it 30 days before); a scheduled rotation job
+  could make that commit itself (a date 90 days on, landed like any other change), or the stack could key the
+  rotation on the plan's date, which would make a plan no longer the commit's alone. Why: the secrets-by-pipeline
+  decision wants rotation on a schedule with no person; a renewal commit is still someone's (or a looper's) step.
+- **tacplus-dev/looper's README on the build project's setup** (looper, #26, 2026-11-07). What: its Build pipeline and
+  Credentials sections say the hub copies `ci/build.gitlab-ci.yml` by hand and that `BUILD_TRIGGER_TOKEN`'s trigger is
+  owned by the build project's bot user; since #26 the cloud gitlab stack writes the file (from a pinned looper commit,
+  `ci/build-ci.sh update`) and owns the trigger as the user of its `gitlab-token`, and the nightly schedules are its
+  `stacks/gitlab/nightly-builds.yaml`. A looper issue to say so, and that a change of `ci/build.gitlab-ci.yml` reaches
+  tacplus-dev/build through a bump here. Why: otherwise a hand copy there is reverted by this pipeline's next apply.

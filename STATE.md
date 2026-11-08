@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by the looper (#27).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-08 by the looper (#26).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -169,6 +169,18 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-07 by th
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`.
+- **tacplus-dev/build's trigger and nightly schedules (#26; looper#71, #84):** the gitlab stack's `build`
+  (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
+  `build_ci_commit` copied as is (`stacks/gitlab/files/`), the hub's copy adopted by import, checked against GitHub and
+  linted by GitLab's `ci/lint` in `plan:gitlab` before every plan (`ci/build-ci.sh`; `update` bumps it); a pipeline
+  trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
+  rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
+  before; the new trigger before the old one goes); and one schedule per repository of
+  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC). Tested with the
+  stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
+  `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
+  whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
+  looper, show there.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

@@ -189,7 +189,7 @@ plan:gitlab:
   needs: [tools, apply:ci]
   variables: { STACK: gitlab }
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/tofu.sh plan "$STACK"
+    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/build-ci.sh check && ci/build-ci.sh lint && ci/tofu.sh plan "$STACK"
 
 apply:gitlab:
   extends: .apply

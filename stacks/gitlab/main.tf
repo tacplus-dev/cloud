@@ -21,6 +21,8 @@ data "google_project" "bootstrap" {
 locals {
   cloud   = module.settings.gitlab_project
   secrets = "projects/${module.settings.bootstrap.project}/secrets"
+  # The tacplus-dev/looper commit whose ci/build.gitlab-ci.yml files/build.gitlab-ci.yml is (ci/build-ci.sh).
+  build_ci_commit = "09316ea026e47d31a9926750c3ad07598727af15"
 }
 
 module "gitlab" {
@@ -46,6 +48,21 @@ module "gitlab" {
   # nothing higher; the expiry is the bot's token's (looper-jobs, 2027-10-01), renewed by a commit with it.
   members = {
     "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
+  }
+  # tacplus-dev/build (#26; tacplus-dev/looper#71, #84): its .gitlab-ci.yml, tacplus-dev/looper's
+  # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
+  # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
+  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository
+  # (nightly-builds.yaml). The trigger rotates every 90 days: the drift job's expiry check reports its rotate_by from 30
+  # days before, and a commit of a date 90 days later replaces it.
+  build = {
+    project = "tacplus-dev/build"
+    ci_file = {
+      content        = file("${path.module}/files/build.gitlab-ci.yml")
+      commit_message = "ci/build.gitlab-ci.yml at tacplus-dev/looper@${local.build_ci_commit}, by tacplus-dev/cloud's gitlab stack"
+    }
+    trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+    schedules = yamldecode(file("${path.module}/nightly-builds.yaml"))
   }
   # Registered paused, but the shared pool (Jody, 2026-11-07: "raise the number of nodes temporarily"): it takes the
   # looper jobs beside jody1-328023's runners until tacplus-dev/looper#84 moves them into the cluster. deploy and
@@ -79,6 +96,14 @@ import {
   id       = "${module.gitlab.project_ids[local.cloud]}:${each.key}:*"
 }
 
+# tacplus-dev/build's .gitlab-ci.yml, which the hub copied by hand (tacplus-dev/looper README, Build pipeline): adopted,
+# by the project's ID, and from then on this stack's.
+import {
+  for_each = var.import_existing ? toset([".gitlab-ci.yml"]) : toset([])
+  to       = module.gitlab.gitlab_repository_file.build_ci["build"]
+  id       = "${module.gitlab.build.project}:main:${each.key}"
+}
+
 output "project_ids" {
   value = module.gitlab.project_ids
 }
@@ -89,4 +114,8 @@ output "runner_ids" {
 
 output "members" {
   value = module.gitlab.members
+}
+
+output "build" {
+  value = module.gitlab.build
 }

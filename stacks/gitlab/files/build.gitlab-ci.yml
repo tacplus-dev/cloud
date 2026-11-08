@@ -1,0 +1,269 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The .gitlab-ci.yml of the GitLab project gitlab.com/tacplus-dev/build, kept
+# here (github.com/tacplus-dev/looper ci/build.gitlab-ci.yml) and copied into
+# that project as is: the project holds the build credentials and runs the
+# pipeline, this repository holds its definition and the script, looper-build,
+# in the image ghcr.io/tacplus-dev/looper. README: Build pipeline.
+#
+# The build pipeline (looper#17): (repo, commit) -> the repository's pinned
+# build image, no agent, read-only source -> a verdict, pass or fail, as a
+# GitHub commit status (context tacplus-dev/build), and on a release the image
+# in Artifact Registry, by digest.
+#
+# Started from the API or the web with inputs (the project forbids pipeline
+# variables; inputs are typed and checked here, before any job runs):
+#   POST /projects/tacplus-dev%2Fbuild/pipeline
+#   {"ref": "main", "inputs": {"repo": "<repo>", "sha": "<40 hex>"}}
+# (The empty defaults only let a push to this project create no pipeline: the
+# workflow rules below drop it. looper-build refuses an empty repo or sha.)
+# A build may name the gate set to run (looper#71): "gates": the commit's
+# gates.yaml sets, joined by + (empty: its full, or `just gates` without a
+# gates.yaml), and "base": the commit their LOOPER_GATES_BASE names (the main
+# a manager's land is rebased on, or a report's branch point). A manager's
+# merge and a report's --build pass the set their diff calls for (repo-looper).
+# A release runs on this project's protected tag <repo>/vX.Y.Z, with
+# "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
+# does the publish job get its GCP identity (tacplus-dev/tacplus#223).
+#
+# Every job runs on the build runner (tags arm64, build): a fresh VM per job,
+# never one an agent's job ran on (Jody, 2026-10-29). plan, status and publish
+# run in the looper image, for looper-build; the gates run in the repository's
+# pinned build image, as the child pipeline plan writes.
+#
+# The macOS smoke (looper#36): a web run on main with "smoke": true and no repo
+# or sha is a pipeline of one manual job, macos-smoke, on the Mac runner (tag
+# macos, a fresh Tart VM per job, protected refs only), and none of the build's
+# jobs. It proves that runner before tacplus-dev/tacplus#195's macOS builds use
+# it. A push, and every (repo, sha) run, never creates it.
+#
+# The security checks (looper#49): the child pipeline plan writes runs them
+# beside the gates (looper-scan, in the looper image: the scanners), on every
+# build; a nightly adds CodeQL and Trivy, and so does a release, whose publish
+# makes the image's SBOM. A nightly is a scheduled (or API) run with inputs
+# repo and "nightly": true, and no sha: the plan scans main as it is then. It
+# sets no commit status: it is no commit's verdict. README: Security checks.
+#
+# The runner image (looper#43): a web or scheduled run on main with
+# "runner_image": true is a pipeline of one job, runner-image, which bakes the
+# runner VMs' image (family runner-arm64-docker: Docker installed, nothing
+# installed at boot) and publishes it once a VM booted from it is ready, through
+# Workload Identity Federation as the service account GCP_RUNNER_IMAGE_SA. On
+# the build runner, as every job here: it holds a GCP identity, so never on a VM
+# an agent's job ran on. README: Infrastructure.
+#
+# Formal verification (looper#74; tacplus-dev/tacplus#275), which no land
+# runs: every release runs `just verify` beside the gates, with no change
+# check, and fails without it. A verify run is a scheduled (or API) run with
+# inputs repo and "verify": true, and no sha: the plan reads main's head and
+# the repository's last record (the generic package verify-<repo>), and its
+# one job runs `just verify` only when `just verify-changed <the last
+# verified commit>` prints run, or there is no record to read. The record
+# (verified commit, result, run) is the job's artifact and the package; the
+# nightly scan files a red one as bugs (looper-verify). It sets no commit
+# status. README: Formal verification.
+spec:
+  inputs:
+    repo:
+      description: "The tacplus-dev repository to build, by name"
+      default: ""
+      regex: '^([A-Za-z0-9][A-Za-z0-9._-]*)?$'
+    sha:
+      description: "The commit to build, in full (40 hex)"
+      default: ""
+      regex: '^([0-9a-f]{40})?$'
+    tag:
+      description: "A release: the repository's tag vX.Y.Z at that commit (run on this project's tag <repo>/vX.Y.Z)"
+      default: ""
+      regex: '^(v[0-9]+\.[0-9]+\.[0-9]+)?$'
+    gates:
+      description: "The gate sets of the commit's gates.yaml to run, joined by + (empty: its full, else just gates)"
+      default: ""
+      regex: '^([A-Za-z0-9_-]+(\+[A-Za-z0-9_-]+)*)?$'
+    base:
+      description: "The commit the gate sets' LOOPER_GATES_BASE names, in full (40 hex)"
+      default: ""
+      regex: '^([0-9a-f]{40})?$'
+    smoke:
+      description: "The macOS smoke: a web run on main whose one manual job checks the Mac runner (no repo, sha or tag)"
+      type: boolean
+      default: false
+    runner_image:
+      description: "The runner VMs' image: a web or scheduled run on main whose one job bakes and publishes it (no repo, sha, tag or smoke)"
+      type: boolean
+      default: false
+    nightly:
+      description: "The nightly security checks of repo's main branch (no tag; sha empty: main's head now)"
+      type: boolean
+      default: false
+    verify:
+      description: "The nightly formal verification of repo's main branch, when changed since the last verified commit (no tag or nightly; sha empty: main's head now)"
+      type: boolean
+      default: false
+---
+workflow:
+  name: $BUILD_PIPELINE_NAME
+  rules:
+    - if: $BUILD_SMOKE == "true" && ($BUILD_REPO || $BUILD_SHA || $BUILD_TAG)
+      when: never
+    - if: $BUILD_RUNNER_IMAGE == "true" && ($BUILD_REPO || $BUILD_SHA || $BUILD_TAG || $BUILD_SMOKE == "true")
+      when: never
+    - if: $BUILD_NIGHTLY == "true" && ($BUILD_TAG || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
+      when: never
+    - if: $BUILD_VERIFY == "true" && ($BUILD_TAG || $BUILD_NIGHTLY == "true" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
+      when: never
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO && $BUILD_VERIFY == "true"
+      variables:
+        BUILD_PIPELINE_NAME: "verify $[[ inputs.repo ]] $[[ inputs.sha ]]"
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO && $BUILD_NIGHTLY == "true"
+      variables:
+        BUILD_PIPELINE_NAME: "nightly $[[ inputs.repo ]] $[[ inputs.sha ]]"
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/ && $BUILD_REPO && $BUILD_SHA
+      variables:
+        BUILD_PIPELINE_NAME: "build $[[ inputs.repo ]] $[[ inputs.sha ]] $[[ inputs.tag ]] $[[ inputs.gates ]]"
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "main" && $BUILD_SMOKE == "true"
+      variables:
+        BUILD_PIPELINE_NAME: "macos smoke"
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|schedule)$/ && $CI_COMMIT_REF_NAME == "main" && $BUILD_RUNNER_IMAGE == "true"
+      variables:
+        BUILD_PIPELINE_NAME: "runner image"
+
+stages: [plan, gates, publish, report]
+
+variables:
+  BUILD_REPO: "$[[ inputs.repo ]]"
+  BUILD_SHA: "$[[ inputs.sha ]]"
+  BUILD_TAG: "$[[ inputs.tag ]]"
+  BUILD_GATES: "$[[ inputs.gates ]]"
+  BUILD_BASE: "$[[ inputs.base ]]"
+  BUILD_SMOKE: "$[[ inputs.smoke ]]"
+  BUILD_RUNNER_IMAGE: "$[[ inputs.runner_image ]]"
+  BUILD_NIGHTLY: "$[[ inputs.nightly ]]"
+  BUILD_VERIFY: "$[[ inputs.verify ]]"
+  GIT_STRATEGY: none
+
+default:
+  image: ghcr.io/tacplus-dev/looper:main
+  tags: [arm64, build]
+  retry:
+    max: 2
+    when: [runner_system_failure, scheduler_failure, unknown_failure]
+
+# The build's jobs, never in a smoke or runner image pipeline.
+.build-run:
+  rules:
+    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true"
+
+# The commit status: a build's verdict, never a nightly's or a verify run's.
+.status-run:
+  rules:
+    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+
+# The commit is marked pending while it builds.
+pending:
+  extends: .status-run
+  stage: plan
+  needs: []
+  allow_failure: true
+  script:
+    - looper-build status pending
+
+# Fetch exactly the commit (a nightly or a verify run: main's head), read its pin (tacplus.lock, or
+# build.lock), write the gates job in the pinned image and the security checks' jobs, and on a
+# release the formal verification's (a verify run: those alone). No pin, or a bad one, is a fail verdict.
+plan:
+  extends: .build-run
+  stage: plan
+  needs: []
+  script:
+    - looper-build plan
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [build-gates.yml, build-verdict]
+
+gates:
+  extends: .build-run
+  stage: gates
+  trigger:
+    include:
+      - artifact: build-gates.yml
+        job: plan
+    strategy: depend
+
+# A release, once the gates and the security checks passed: the image, pushed
+# through Workload Identity Federation (GCP_WIF_PROVIDER, a project variable;
+# no key, no token), and its SBOM (the artifacts, and the generic package
+# sbom-<repo> X.Y.Z, with the job's token).
+publish:
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_TAG && $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true"
+  environment:
+    name: registry
+  id_tokens:
+    GCP_ID_TOKEN:
+      aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
+  timeout: 2h
+  script:
+    - looper-build publish
+  artifacts:
+    expire_in: 1 year
+    paths: [image, sbom.cdx.json, sbom.spdx.json]
+
+# The verdict, on the commit.
+report-pass:
+  stage: report
+  rules:
+    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+      when: on_success
+  script:
+    - looper-build status success
+
+report-fail:
+  stage: report
+  rules:
+    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+      when: on_failure
+  script:
+    - looper-build status failure
+
+# The macOS smoke (looper#36): the Mac runner end to end, played by hand. It
+# reads no credential (the project's protected variables are still in its
+# environment on main: GitLab has no per-job opt-out short of environments),
+# has no id_tokens, no environment, no needs, and nothing depends on it.
+macos-smoke:
+  stage: plan
+  rules:
+    - if: $BUILD_SMOKE == "true"
+      when: manual
+  tags: [macos]
+  image: ghcr.io/cirruslabs/macos-tahoe-xcode:27.1
+  timeout: 30m
+  script:
+    - set -eu
+    - test "$(uname -m)" = arm64
+    - sw_vers
+    - xcodebuild -version | tee xcode.txt; grep -Eq '^Xcode 27\.' xcode.txt
+    - swift --version 2>&1 | tee swift.txt; grep -q 'Swift version' swift.txt
+
+# The runner image (looper#43): bake, boot-check and publish the runner VMs'
+# image. Its identity is the job's id_token, exchanged through Workload Identity
+# Federation for GCP_RUNNER_IMAGE_SA (a project variable), which may create,
+# stop and delete the bake's VMs and images and nothing else (README:
+# Infrastructure). It needs no other job and reads no other credential.
+runner-image:
+  stage: plan
+  rules:
+    - if: $BUILD_RUNNER_IMAGE == "true"
+  environment:
+    name: runner-image
+  id_tokens:
+    GCP_ID_TOKEN:
+      aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
+  timeout: 1h
+  variables:
+    RUNNER_IMAGE_SA: $GCP_RUNNER_IMAGE_SA
+  script:
+    - runner-image build

@@ -17,3 +17,13 @@ output "members" {
     project = m.project, user_id = m.user_id, access_level = m.access_level, expires_at = m.expires_at
   } }
 }
+
+output "build" {
+  description = "tacplus-dev/build's (#26), or null: the project's ID, the trigger's ID, the variable holding its token (project and key), and the schedules, by name: their cron and inputs."
+  value = var.build == null ? null : {
+    project    = local.other_project_id[var.build.project]
+    trigger_id = gitlab_pipeline_trigger.build["build"].pipeline_trigger_id
+    variable   = { project = gitlab_project_variable.build_trigger["build"].project, key = gitlab_project_variable.build_trigger["build"].key }
+    schedules  = { for k, s in gitlab_pipeline_schedule.build : k => { cron = s.cron, inputs = { for i in s.inputs : i.name => i.value } } }
+  }
+}

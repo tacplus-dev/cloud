@@ -3,9 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The drift job's expiry check (#12): each `expires_at = "YYYY-MM-DD"` of the stacks' source (the gitlab stack's
-# memberships), one a line, keyed by its line's first string, that is past or within EXPIRY_DAYS days (30) of today,
-# one line each, which the drift job files. An expiry is a date in a commit, never computed (the plan must be the
-# commit's alone): renewing it is a commit of a later date, which the pipeline applies (README, Memberships). It
+# memberships), and each `rotate_by = "YYYY-MM-DD"` (a secret's next rotation: the build trigger's, #26), one a line,
+# keyed by its line's first string, that is past or within EXPIRY_DAYS days (30) of today, one line each, which the
+# drift job files. Each is a date in a commit, never computed (the plan must be the commit's alone): renewing or
+# rotating is a commit of a later date, which the pipeline applies (README, Memberships; The build pipeline). It
 # exits 0 when it finds something: drift reports, it does not fail. It reads files only.
 #
 #   ci/expiry.sh FILE...    # EXPIRY_TODAY (YYYY-MM-DD, default today, UTC) for the tests; needs GNU date
@@ -15,17 +16,22 @@ today=${EXPIRY_TODAY:-$(date -u +%F)}
 days=${EXPIRY_DAYS:-30}
 now=$(date -u -d "$today" +%s)
 for f in "$@"; do
-  { grep -nE 'expires_at *= *"[^"]*"' "$f" || true; } | while IFS= read -r line; do
+  { grep -nE '(expires_at|rotate_by) *= *"[^"]*"' "$f" || true; } | while IFS= read -r line; do
     n=${line%%:*} text=${line#*:}
     what=$(sed -n 's/^[^"]*"\([^"]*\)".*/\1/p' <<< "$text")
-    when=$(sed -n 's/.*expires_at *= *"\([^"]*\)".*/\1/p' <<< "$text")
+    key=$(sed -n 's/.*\(expires_at\|rotate_by\) *= *"[^"]*".*/\1/p' <<< "$text")
+    when=$(sed -n 's/.*\(expires_at\|rotate_by\) *= *"\([^"]*\)".*/\2/p' <<< "$text")
     if ! [[ $when =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || ! at=$(date -u -d "$when" +%s 2>/dev/null) ||
       [ "$(date -u -d "@$at" +%F)" != "$when" ]; then
-      echo "expiry: $f:$n: $what: expires_at \"$when\" is not a date YYYY-MM-DD"
+      echo "expiry: $f:$n: $what: $key \"$when\" is not a date YYYY-MM-DD"
       continue
     fi
     left=$(( (at - now) / 86400 ))
-    if [ "$left" -lt 0 ]; then
+    if [ "$key" = rotate_by ] && [ "$left" -lt 0 ]; then
+      echo "expiry: $f:$n: $what was to be rotated by $when: rotate it (a commit of a later date replaces it)"
+    elif [ "$key" = rotate_by ] && [ "$left" -le "$days" ]; then
+      echo "expiry: $f:$n: $what is to be rotated by $when, in $left days: rotate it (a commit of a later date replaces it)"
+    elif [ "$left" -lt 0 ]; then
       echo "expiry: $f:$n: $what expired on $when: renew it (a commit of a later date)"
     elif [ "$left" -le "$days" ]; then
       echo "expiry: $f:$n: $what expires on $when, in $left days: renew it (a commit of a later date)"

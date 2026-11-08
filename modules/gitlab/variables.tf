@@ -62,3 +62,40 @@ variable "members" {
     error_message = "A member is PROJECT:USER, guest or reporter (nothing higher), with expires_at a date YYYY-MM-DD."
   }
 }
+
+variable "build" {
+  description = <<-EOT
+    tacplus-dev/build, the build pipeline (#26; tacplus-dev/looper#71, #84), or null. project: its path. ci_file: its
+    .gitlab-ci.yml (tacplus-dev/looper's ci/build.gitlab-ci.yml, copied as is) and the commit message naming its
+    source, or null to leave the file alone. trigger: its pipeline trigger, rotated whenever rotate_by (a date
+    YYYY-MM-DD in the commit, never computed) changes, its token the protected, masked variable key of the project
+    variable_project (a path or ID). schedules: by name, a schedule on main, its cron (UTC) and its inputs.
+  EOT
+  type = object({
+    project = string
+    ci_file = optional(object({
+      content        = string
+      commit_message = string
+    }))
+    trigger = object({
+      description      = string
+      rotate_by        = string
+      variable_project = string
+      variable_key     = string
+    })
+    schedules = map(object({
+      cron   = string
+      inputs = map(string)
+    }))
+  })
+  default = null
+  validation {
+    condition     = var.build == null || can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", var.build.trigger.rotate_by))
+    error_message = "The build trigger's rotate_by is a date YYYY-MM-DD."
+  }
+  validation {
+    condition = var.build == null || alltrue([for s in values(var.build.schedules) :
+    length(split(" ", s.cron)) == 5 && length(s.inputs) > 0 && length(s.inputs) <= 20])
+    error_message = "A build schedule has a cron of five fields and between 1 and 20 inputs."
+  }
+}
