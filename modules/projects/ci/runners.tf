@@ -185,5 +185,6 @@ locals {
 }
 
 resource "terraform_data" "manager_config" {
-  input = sha256(local.manager_config)
+  input      = sha256(local.manager_config)
+  depends_on = [terraform_data.iam_ready]
 }
