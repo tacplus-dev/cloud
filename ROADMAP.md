@@ -21,7 +21,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: global TCP proxy LB on the gateway address, TLS passed through to the tacplus gateway's NEGs, nodes open only to Google's proxy ranges (#21). Agent, at Jody's request, 2026-11-05 (`tacplus-dev/roadmap:decisions/network-exposure-2026-11-03.md`, addendum: we terminate TLS).
 - tacplus-dev/build's BUILD_TRIGGER_TOKEN and one nightly build schedule per pinned repository, from the gitlab stack (#26). Agent, at Jody's request, 2026-11-06 (`tacplus-dev/roadmap:suggestions/2026-11-06-pin-every-repository-so-the-build-pipeline-and-its-security-checks-run-anywhere.md`).
 - dev: seatrials' deploy registry, Cloud Build (until looper#84 moves builds to the cluster's build pool) and build bucket, get-credentials on dev, and the test IdP's deploy account (#20). Agent, at Jody's request, 2026-11-06 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
-- gitlab stack: fleet-seatrials' FLEET_INIT_TOKEN (project access token, Maintainer of that project only), protected and rotated (#28). Agent, at Jody's request, 2026-11-07 (`tacplus-dev/roadmap:decisions/secrets-by-pipeline-2026-11-05.md`).
+- gitlab stack: fleet-seatrials' CA and crypto file in Secret Manager, written by its init-secrets job through WIF, no GitLab token (#28; Jody, 2026-11-08, option D). Agent, at Jody's request, 2026-11-07 (`tacplus-dev/roadmap:decisions/secrets-by-pipeline-2026-11-05.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
