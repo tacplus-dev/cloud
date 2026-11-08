@@ -47,10 +47,12 @@ module "gitlab" {
   members = {
     "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
   }
-  # Registered paused: moving the runners off jody1-328023 is a later issue, which unpauses them.
+  # Registered paused, but the shared pool (Jody, 2026-11-07: "raise the number of nodes temporarily"): it takes the
+  # looper jobs beside jody1-328023's runners until tacplus-dev/looper#84 moves them into the cluster. deploy and
+  # cluster stay paused until their move off jody1-328023.
   runners = {
     for k, p in module.settings.runner_pools : k => merge(p.runner, {
-      paused       = true
+      paused       = k != "shared"
       token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
     })
   }
