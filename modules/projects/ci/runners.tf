@@ -163,13 +163,27 @@ resource "google_compute_instance" "manager" {
     fleeting-plugin-version  = var.runner.plugin_version
     fleeting-plugin-sha256   = var.runner.plugin_sha256
     runner-pools             = join(" ", sort(keys(var.pools)))
-    runner-config = templatefile("${path.module}/files/config.toml.tftpl", {
-      project       = google_project.ci.project_id
-      zone          = var.zone
-      default_image = var.runner.default_image
-      pools         = { for k, p in var.pools : k => merge(p, { group = google_compute_instance_group_manager.pool[k].name }) }
-    })
+    runner-config            = local.manager_config
+  }
+
+  # The startup script writes config.toml from the metadata at boot only, so a changed config (a pool raised, a tag
+  # moved) replaces the manager; an in-place metadata update would change nothing until a reboot (2026-11-08).
+  lifecycle {
+    replace_triggered_by = [terraform_data.manager_config]
   }
 
   depends_on = [google_secret_manager_secret_iam_member.manager_reads_token, google_project_iam_member.manager]
+}
+
+locals {
+  manager_config = templatefile("${path.module}/files/config.toml.tftpl", {
+    project       = google_project.ci.project_id
+    zone          = var.zone
+    default_image = var.runner.default_image
+    pools         = { for k, p in var.pools : k => merge(p, { group = google_compute_instance_group_manager.pool[k].name }) }
+  })
+}
+
+resource "terraform_data" "manager_config" {
+  input = sha256(local.manager_config)
 }
