@@ -22,3 +22,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-06 looper issue dev: global TCP proxy LB on the 'gateway' address, TLS passed through to the tacplus gateway's NEGs; nodes open only to Google's proxy ranges (#21, 14ad992)
 - 2026-11-07 looper issue CI image pinned to tacplus build 2.5; the latest released line is 2.6 (v2.6.1) (#22)
 - 2026-11-07 looper issue security job fails on main: five new kin-openapi advisories (GO-2026-6783/6785/6789/6795/6804) in the kubernetes provider build, outside #18's openapi3filter-only acceptance (#23, 4572122)
+- 2026-11-07 looper issue security job fails on main: klauspost/compress GO-2026-6865 (tofu, gitleaks, osv-scanner, trivy, gitlab-runner) and brotli GO-2026-6888 (gitleaks), no fixed upstream release (#24)
