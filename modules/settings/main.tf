@@ -227,15 +227,16 @@ output "runner_pools" {
     jody1-328023 is a later issue, which unpauses them.
   EOT
   value = {
-    # max_instances 4, temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
+    # pd-standard (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, two 250 GB balanced disks) and
+    # max_instances 3 (CPUS_ALL_REGIONS is 32: three 8-CPU VMs and the manager), 2026-11-08. Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
     # Always on: agent jobs (the loopers' tags), build jobs (tacplus-dev/build's) and the control jobs (the
     # kicker, the planner, the recap, the drift) on one VM. The build identity is not on the VM: build jobs become it
     # through Workload Identity Federation (the ci module's build cache).
     shared = {
-      machine_type    = local.shared_machine_type, disk_type = "pd-balanced", os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 4, idle_count = 1, idle_time = "30m"
+      machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 1, idle_time = "30m"
       job             = local.jobs.build
       service_account = false
       runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false }
