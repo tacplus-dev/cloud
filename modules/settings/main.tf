@@ -108,7 +108,10 @@ output "deployments" {
     images go to, which the builds' account writes and it and the nodes read; bucket, after the project ID, where
     its submits stage their source and write their logs, kept for days; account_id, the account the builds run as);
     and environment_accounts, by GitLab environment, an account only its project's jobs in that environment, on
-    protected main, may become, with the cluster's credentials and no other role.
+    protected main, may become, with the cluster's credentials and no other role; and init_secrets (#28), the GitLab
+    environment of its init-secrets job and the account only its project's jobs in that environment, on protected main,
+    may become: it alone adds the versions of fleet-ca-<deployment> and fleet-crypto-<deployment> (the fleet's CA and
+    crypto file; it sees their metadata, never a value), which its identity alone reads.
   EOT
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
@@ -119,10 +122,13 @@ output "deployments" {
     # tacplus-dev-seatrials-build, into the deploy registry us-central1-docker.pkg.dev/tacplus-dev/seatrials. Cloud
     # Build is for now (Jody, 2026-11-06): its roles and the bucket come out once builds move to the cluster's build
     # pool (tacplus-dev/looper#84). Its test IdP's jobs, in the GitLab environment test-idp, run as test-idp-deploy.
+    # Its init-secrets job, in the GitLab environment init-secrets, runs as seatrials-init-secrets (#28,
+    # fleet-seatrials#44).
     seatrials = {
       gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
       images               = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
       environment_accounts = { test-idp = "test-idp-deploy" }
+      init_secrets         = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
     }
   }
 }

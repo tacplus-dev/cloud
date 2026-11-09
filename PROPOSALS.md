@@ -292,3 +292,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   `ci/build-ci.sh update`) and owns the trigger as the user of its `gitlab-token`, and the nightly schedules are its
   `stacks/gitlab/nightly-builds.yaml`. A looper issue to say so, and that a change of `ci/build.gitlab-ci.yml` reaches
   tacplus-dev/build through a bump here. Why: otherwise a hand copy there is reverted by this pipeline's next apply.
+- **Protected environments on gitlab.com Free** (looper, #28, 2026-11-09). What: check whether `apply:gitlab` can
+  create this project's protected environments (`folder`, `ci`, `dev`, `gitlab`; #17) on tacplus-dev's tier, and if
+  not, drop them or make the guard a protected branch alone, saying so in the README; the same for fleet-seatrials'
+  `init-secrets` environment. Why: gitlab.com documents protected environments as Premium and Ultimate
+  (https://docs.gitlab.com/ci/environments/protected_environments/), and tacplus-dev is on Free (#12, #28). Without them,
+  any Maintainer who can run a job on protected `main` in `init-secrets` becomes `seatrials-init-secrets`; the
+  environment scopes which jobs, not who runs them. Not checked against gitlab.com: the looper has no GitLab API token.
+- **Version hygiene of the fleet secrets** (looper, #28, 2026-11-09). What: once fleet-seatrials#44 has run, decide
+  whether `fleet-ca-<deployment>` and `fleet-crypto-<deployment>` get a version-destroy TTL or a rotation, and
+  whether the drift job reports a secret with no version or more than one enabled. Why: the CA and crypto file are made
+  once and never rotated today; a second version added by mistake would be read as `latest`.

@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-08 by the looper (#26).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-09 by the looper (#28).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -149,6 +149,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-08 by th
   other role. Cloud Build is for now (Jody): it goes once looper#84 moves builds to the cluster. fleet-seatrials' builds
   must name the builds' account (`gcloud builds submit --service-account`). Tested with the dev stack's plan tests (mock
   providers); not applied yet, and the mapping's `has()` not yet seen by GCP: `apply:dev` on main does it.
+- **The fleet's CA and crypto file in Secret Manager (#28; Jody's option D, fleet-seatrials#44):** the dev stack's
+  `fleet-secrets.tf`, from a `deployments` entry's `init_secrets`: the secrets `fleet-ca-seatrials` and
+  `fleet-crypto-seatrials` (us-central1, no version), the account `seatrials-init-secrets`, which only fleet-seatrials'
+  jobs in the environment `init-secrets` on protected main become, holding `secretVersionAdder` and `viewer` (metadata:
+  whether a version exists) on them and no role on the project, and `secretAccessor` for `seatrials-deploy` alone
+  (authoritative bindings; output `deployments` `fleet_secrets`). No GitLab token, no bot user, no `FLEET_INIT_TOKEN`
+  (gitlab.com Free has no project access tokens). Tested with the dev stack's plan tests (mock providers); not applied
+  yet: `apply:dev` on main does it, then fleet-seatrials#44's job adds the versions.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

@@ -103,7 +103,7 @@ variable "cluster_pipeline" {
 }
 
 variable "deployments" {
-  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become."
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become; and its init_secrets (fleet-secrets.tf): the GitLab environment of its init-secrets job and the service account ID only its project's jobs in that environment, on protected main, may become, which adds the versions of its fleet secrets."
   type = map(object({
     gitlab_project = string
     environment    = string
@@ -118,6 +118,10 @@ variable "deployments" {
       days       = number
     }))
     environment_accounts = optional(map(string), {})
+    init_secrets = optional(object({
+      environment = string
+      account_id  = string
+    }))
   }))
   default = {}
   validation {
@@ -125,8 +129,12 @@ variable "deployments" {
     error_message = "Each deployment has an environment and a domain of its own: its ACME account and its challenge zone are its pipeline's alone."
   }
   validation {
-    condition     = length(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts))])) == length(distinct(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts))])))
-    error_message = "A deployment's identity, its builds' account and its environment accounts are each an account of its own."
+    condition     = length(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts), d.init_secrets == null ? [] : [d.init_secrets.account_id])])) == length(distinct(flatten([for d in values(var.deployments) : concat([d.account_id], d.images == null ? [] : [d.images.account_id], values(d.environment_accounts), d.init_secrets == null ? [] : [d.init_secrets.account_id])])))
+    error_message = "A deployment's identity, its builds' account, its environment accounts and its init-secrets account are each an account of its own."
+  }
+  validation {
+    condition     = alltrue([for d in values(var.deployments) : d.init_secrets == null || !contains(concat([d.environment], keys(d.environment_accounts)), try(d.init_secrets.environment, ""))])
+    error_message = "A deployment's init-secrets job has a GitLab environment of its own: no other of its jobs becomes its account."
   }
 }
 

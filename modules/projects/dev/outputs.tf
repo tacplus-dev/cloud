@@ -30,7 +30,7 @@ output "cluster_pipeline" {
 }
 
 output "deployments" {
-  description = "Each deployment's GCP_WIF_PROVIDER and service account, its certificate secrets, its challenge zone with the name servers its delegation needs, its deploy registry and its Cloud Build bucket and account (null without images), and its environment accounts' service accounts, by GitLab environment."
+  description = "Each deployment's GCP_WIF_PROVIDER and service account, its certificate secrets, its challenge zone with the name servers its delegation needs, its deploy registry and its Cloud Build bucket and account (null without images), its environment accounts' service accounts, by GitLab environment, and its fleet secrets with the init-secrets job's environment and service account (null without init_secrets)."
   value = {
     for k, d in var.deployments : k => {
       wif_provider         = google_iam_workload_identity_pool_provider.deploy[k].name
@@ -41,6 +41,7 @@ output "deployments" {
       registry             = d.images == null ? null : "${google_artifact_registry_repository.deploy[k].location}-docker.pkg.dev/${google_project.dev.project_id}/${google_artifact_registry_repository.deploy[k].repository_id}"
       build                = d.images == null ? null : { bucket = "gs://${google_storage_bucket.build[k].name}", sa = google_service_account.build[k].email }
       environment_accounts = { for e in keys(d.environment_accounts) : e => google_service_account.environment["${k}/${e}"].email }
+      fleet_secrets        = d.init_secrets == null ? null : { ca = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-ca-${k}"].secret_id}", crypto = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-crypto-${k}"].secret_id}", environment = d.init_secrets.environment, sa = google_service_account.init_secrets[k].email }
     }
   }
 }
