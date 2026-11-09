@@ -56,7 +56,8 @@ run "stack" {
     error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
   # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and a nightly
-  # schedule per repository of nightly-builds.yaml, tacplus-dev/looper first, with the inputs repo and nightly.
+  # schedule per repository of nightly-builds.yaml, tacplus-dev/looper first, then tacplus-dev/website (#31), each at
+  # its own hour, with the inputs repo and nightly.
   assert {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
@@ -64,6 +65,14 @@ run "stack" {
   assert {
     condition     = output.build.schedules["looper"] == { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } }
     error_message = "tacplus-dev/looper has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true."
+  }
+  assert {
+    condition     = output.build.schedules["website"] == { cron = "0 6 * * *", inputs = { repo = "website", nightly = "true" } }
+    error_message = "tacplus-dev/website (pinned by build.lock, website#2) has no nightly schedule on tacplus-dev/build (#31)."
+  }
+  assert {
+    condition     = length(distinct([for s in output.build.schedules : s.cron])) == length(output.build.schedules)
+    error_message = "Two nightly schedules share a cron: each repository's nightly takes an hour of its own."
   }
   assert {
     condition     = alltrue([for k, s in output.build.schedules : s.inputs == { repo = k, nightly = "true" }])
