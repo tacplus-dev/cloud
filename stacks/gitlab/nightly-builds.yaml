@@ -11,3 +11,8 @@ looper:
   inputs:
     repo: looper
     nightly: true
+website:
+  cron: "0 6 * * *"
+  inputs:
+    repo: website
+    nightly: true

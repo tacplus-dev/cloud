@@ -10,7 +10,7 @@
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
 # protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
 # .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and the looper's
-# nightly schedule; it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused it. The fixture is built from
+# and the website's nightly schedules; it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused it. The fixture is built from
 # the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot read tacplus-dev/cloud's
 # settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
 #
@@ -87,6 +87,10 @@ if plan; then
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and
     ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=looper"]' <<< "$schedule" > /dev/null &&
     ok "tacplus-dev/looper's nightly schedule on tacplus-dev/build (#26)" || fail "the looper's schedule: $schedule"
+  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["website"]')
+  jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and .after.cron == "0 6 * * *" and
+    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=website"]' <<< "$schedule" > /dev/null &&
+    ok "tacplus-dev/website's nightly schedule on tacplus-dev/build (#31)" || fail "the website's schedule: $schedule"
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"
