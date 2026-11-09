@@ -434,12 +434,13 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
-| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16`, `build` | **one, always on** (`idle_count = 1`, `max_instances = 1`): t2a-standard-8, 250 GB | 2: 4 CPUs, 14g, no swap, 100 GB of disk |
+| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `build` (build jobs only, 2026-11-09) | **one, always on** (`idle_count = 1`, `max_instances = 1`): t2a-standard-8, 250 GB | 2: 4 CPUs, 14g, no swap, 100 GB of disk |
 | `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, protected; tag `cluster` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2, 50 GB | 2: 1 CPU, 3g, 10 GB |
 
-- **The shared VM** runs the agent jobs (the loopers'), the build jobs (tacplus-dev/build's) and the control jobs (the
-  kicker, the planner, the recap, the drift), under the tags today's jobs carry. One VM is one runner registration
+- **The shared VM** runs the build jobs (tacplus-dev/build's) only, since 2026-11-09 (Jody): with the loopers' agent and
+  control jobs on it too, they filled every slot and the build jobs their lands wait on never started
+  (tacplus-dev/looper#113). The agents run on the jody1-328023 pools until tacplus-dev/looper#84. One VM is one runner registration
   (GitLab does not share an instance group between `[[runners]]` entries), so these jobs share one set of container
   settings: the build jobs' (`jobs.build` in `modules/settings`, today the same as the agents'). If builds need
   settings agents must not get (rootless BuildKit, tacplus-dev/tacplus#315), the split is a `build` pool of its own.

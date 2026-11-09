@@ -231,15 +231,16 @@ output "runner_pools" {
     # max_instances 3 (CPUS_ALL_REGIONS is 32: three 8-CPU VMs and the manager), 2026-11-08. Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
-    # Always on: agent jobs (the loopers' tags), build jobs (tacplus-dev/build's) and the control jobs (the
-    # kicker, the planner, the recap, the drift) on one VM. The build identity is not on the VM: build jobs become it
+    # Build jobs only (tacplus-dev/build's, tag build), Jody 2026-11-09 ("A"): the loopers' agent and control jobs
+    # filled every slot and pinned repositories' build jobs never started (tacplus-dev/looper#113). The agents run on
+    # the jody1-328023 pools until the in-cluster runners take them (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
     # through Workload Identity Federation (the ci module's build cache).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
       capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 1, idle_time = "30m"
       job             = local.jobs.build
       service_account = false
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false }
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
     deploy = {

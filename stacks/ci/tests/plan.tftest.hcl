@@ -92,7 +92,7 @@ run "settings" {
     error_message = "A shared pool's job is not limited to 4 CPUs and 14g, without swap."
   }
   assert {
-    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false } && !output.runner_pools.shared.service_account
+    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false } && !output.runner_pools.shared.service_account
     error_message = "The shared pool is not an unprotected group runner of tacplus-dev under today's tags, with no account on its VM."
   }
   assert {

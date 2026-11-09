@@ -36,8 +36,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-08 by th
   OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
   (`instance_ready_command`). No baked image and no bake identity (superseded). Tested against mock providers only.
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
-  (two jobs of 4 CPUs and 14g, no swap) for agent, build and control jobs, a tacplus-dev group runner under today's tags
-  (`arm64`, `autoscale`, `autoscale-16`, `build`); `deploy` and `cluster`, protected and on demand. Job containers
+  (two jobs of 4 CPUs and 14g, no swap) for build jobs only since 2026-11-09 (agents filled it and builds starved, looper#113), a tacplus-dev group runner
+  tagged `arm64`, `build`; `deploy` and `cluster`, protected and on demand. Job containers
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
