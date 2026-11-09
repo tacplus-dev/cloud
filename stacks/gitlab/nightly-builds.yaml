@@ -11,3 +11,8 @@ looper:
   inputs:
     repo: looper
     nightly: true
+cloud:
+  cron: "0 6 * * *"
+  inputs:
+    repo: cloud
+    nightly: true

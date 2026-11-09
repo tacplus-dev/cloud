@@ -398,8 +398,8 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   before the old one is deleted, so a build started in between fails at most once.
 - **The nightly schedules**: one per repository of `stacks/gitlab/nightly-builds.yaml`, on tacplus-dev/build's main,
   its cron in UTC and its inputs (`repo`, `nightly: true`: the build scans the repository's main as it is then).
-  tacplus-dev/looper first. **A repository's pin issue adds it there** once its `tacplus.lock` or `build.lock` is on its
-  main (a nightly of a repository with no pin fails).
+  tacplus-dev/looper first (05:00), then this repository (06:00, #25). **A repository's pin issue adds it there**
+  once its `tacplus.lock` or `build.lock` is on its main (a nightly of a repository with no pin fails).
 
 **Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
 which the hub registers for tacplus-dev/looper#84.

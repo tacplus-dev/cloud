@@ -176,8 +176,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-08 by th
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
   before; the new trigger before the old one goes); and one schedule per repository of
-  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC). Tested with the
-  stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
+  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC; tacplus-dev/cloud,
+  06:00 UTC, #25). Tested with the stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
   `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
   whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
   looper, show there.

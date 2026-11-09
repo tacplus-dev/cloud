@@ -65,6 +65,11 @@ run "stack" {
     condition     = output.build.schedules["looper"] == { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } }
     error_message = "tacplus-dev/looper has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true."
   }
+  # tacplus-dev/cloud, pinned by its build.lock (#25), an hour after the looper.
+  assert {
+    condition     = output.build.schedules["cloud"] == { cron = "0 6 * * *", inputs = { repo = "cloud", nightly = "true" } }
+    error_message = "tacplus-dev/cloud has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true (#25)."
+  }
   assert {
     condition     = alltrue([for k, s in output.build.schedules : s.inputs == { repo = k, nightly = "true" }])
     error_message = "A nightly schedule's inputs are not its repository and nightly: true."
