@@ -23,6 +23,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: seatrials' deploy registry, Cloud Build (until looper#84 moves builds to the cluster's build pool) and build bucket, get-credentials on dev, and the test IdP's deploy account (#20). Agent, at Jody's request, 2026-11-06 (`tacplus-dev/roadmap:decisions/only-vms-are-k8s-nodes-2026-11-04.md`).
 - gitlab stack: fleet-seatrials' CA and crypto file in Secret Manager, written by its init-secrets job through WIF, no GitLab token (#28; Jody, 2026-11-08, option D). Agent, at Jody's request, 2026-11-07 (`tacplus-dev/roadmap:decisions/secrets-by-pipeline-2026-11-05.md`).
 - ci: the tacplus-reader App's key and fleet-seatrials-reader move to tacplus-ci, import-only like #19 (#30). Agent, at Jody's request, 2026-11-08 (off thescottsweb.com).
+- dev: the test IdP's certificate and seed secrets, its challenge zone, its listener ready (#32). Agent, at Jody's request, 2026-11-09 (fleet-seatrials#27).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
