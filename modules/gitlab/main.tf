@@ -109,6 +109,12 @@ resource "gitlab_user_runner" "runner" {
   locked       = each.value.type == "project_type"
 }
 
+resource "gitlab_project_runner_enablement" "also" {
+  for_each  = merge([for k, r in var.runners : { for p in r.also_projects : "${k}:${p}" => { runner = k, project = p } }]...)
+  project   = local.project_id[each.value.project]
+  runner_id = gitlab_user_runner.runner[each.value.runner].id
+}
+
 # The runner's token, for the manager (modules/projects/ci). A re-registered runner replaces the version, so the
 # secret's only enabled version is the live token.
 resource "google_secret_manager_secret_version" "runner_token" {

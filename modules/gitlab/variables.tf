@@ -33,6 +33,9 @@ variable "runners" {
     type         = string
     group        = optional(string)
     project      = optional(string)
+    # More projects a project runner serves (gitlab_project_runner_enablement), e.g. the cluster pool's runner also
+    # running tacplus-dev/cloud's own pipeline (2026-11-10, off jody1-328023).
+    also_projects = optional(list(string), [])
     tags         = list(string)
     protected    = bool
     paused       = bool

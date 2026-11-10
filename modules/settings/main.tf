@@ -287,12 +287,15 @@ output "runner_pools" {
       service_account = false
       runner          = { type = "project_type", group = null, project = "tacplus-dev/fleet-seatrials", tags = ["deploy"], protected = true }
     }
+    # Also tacplus-dev/cloud's own pipeline (tag cloud), 2026-11-10: its jody1-328023 runner (58307471) stopped taking
+    # jobs, and nothing stays in the thescottsweb.com org. Both are Jody's infrastructure pipelines on protected main,
+    # as on jody1. Two jobs of 2 CPUs and 7g (tofu, trivy, the scanners).
     cluster = {
-      machine_type    = "t2a-standard-2", disk_type = "pd-balanced", os_disk_gb = 30
+      machine_type    = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 30
       capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
-      job             = { cpus = "1", memory = "3g", memory_swap = "3g", disk_gb = 10, security_opt = [] }
+      job             = { cpus = "2", memory = "7g", memory_swap = "7g", disk_gb = 20, security_opt = [] }
       service_account = false
-      runner          = { type = "project_type", group = null, project = "tacplus-dev/cluster", tags = ["cluster"], protected = true }
+      runner          = { type = "project_type", group = null, project = "tacplus-dev/cluster", also_projects = ["tacplus-dev/cloud"], tags = ["cluster", "cloud"], protected = true }
     }
   }
 }
