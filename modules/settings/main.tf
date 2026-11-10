@@ -254,16 +254,30 @@ output "runner_pools" {
     # max_instances 3 (CPUS_ALL_REGIONS is 32: three 8-CPU VMs and the manager), 2026-11-08. Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
-    # The three always-on nodes for now (Jody, 2026-11-10, "go"): every looper, control and build job, with no slots
-    # (capacity above). It replaces the jody1-328023 pools, whose settings change only over SSH. The in-cluster
-    # runners take this arrangement over (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
+    # The three always-on nodes for now (Jody, 2026-11-10): every looper and control job, with no slots (capacity
+    # above): "The loopers run as many as needed divided across the 3 always on nodes." Builds are not here: they run
+    # on the spot build pool below. It replaces the jody1-328023 pools, whose settings change only over SSH. The
+    # in-cluster runners take this arrangement over (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
     # through Workload Identity Federation (the ci module's build cache).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
       capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 3, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false }
+      spot            = false
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false }
+    }
+    # The builds (Jody, 2026-11-10): "Builds run on the spot instances. And builds can be limited to a few at a time."
+    # One spot t2a-standard-4 at most, from zero (no VM while no build waits), two builds at a time, each allowed the
+    # VM's 4 CPUs and 14g (they share it like processes). Its size keeps the project inside CPUS_ALL_REGIONS 32 (three
+    # 8-CPU nodes, the 1-CPU manager, 4); more builds at once is a bigger quota first. tacplus-dev/build's jobs only.
+    build = {
+      machine_type    = "t2a-standard-4", disk_type = "pd-standard", os_disk_gb = 50
+      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "15m"
+      job             = local.jobs.build
+      service_account = false
+      spot            = true
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
     deploy = {

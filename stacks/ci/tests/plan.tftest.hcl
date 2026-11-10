@@ -102,8 +102,13 @@ run "settings" {
     error_message = "A shared pool's job may not use the whole VM's CPUs and all but 4 GB of its memory, without swap, or the VM's disk is over 500 GB."
   }
   assert {
-    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false } && !output.runner_pools.shared.service_account
+    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false } && !output.runner_pools.shared.service_account
     error_message = "The shared pool is not an unprotected group runner of tacplus-dev under today's tags, with no account on its VM."
+  }
+  # The builds run on spot, a few at a time, never on the always-on nodes (Jody, 2026-11-10).
+  assert {
+    condition     = output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 4 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
+    error_message = "Builds do not run only on spot, from zero, a few at a time, apart from the always-on nodes."
   }
   assert {
     condition     = alltrue([for k in ["deploy", "cluster"] : output.runner_pools[k].runner.protected && output.runner_pools[k].runner.type == "project_type" && output.runner_pools[k].idle_count == 0 && output.runner_pools[k].max_instances == 1])

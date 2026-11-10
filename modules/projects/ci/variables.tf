@@ -94,6 +94,9 @@ variable "pools" {
       security_opt = list(string)
     })
     service_account = bool
+    # Spot VMs (Jody, 2026-11-10: "builds run on the spot instances"): GCP may reclaim one at any time, and the job on
+    # it fails and is retried; the always-on nodes are never spot.
+    spot = optional(bool, false)
   }))
   validation {
     condition     = alltrue([for p in values(var.pools) : p.capacity > 1 && p.idle_count <= p.max_instances && can(regex("^[0-9.]+$", p.job.cpus)) && can(regex("^[0-9]+[mg]$", p.job.memory)) && p.job.memory_swap == p.job.memory && p.job.disk_gb > 0])

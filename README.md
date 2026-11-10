@@ -434,12 +434,13 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
-| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16`, `build` | **three, always on** (`idle_count = 3`, `max_instances = 3`): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
+| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **three, always on** (`idle_count = 3`, `max_instances = 3`): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
+| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 1`): t2a-standard-4, 250 GB pd-standard | 2 builds at a time, each may use the VM's 4 CPUs and 14g |
 | `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, protected; tag `cluster` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2, 50 GB | 2: 1 CPU, 3g, 10 GB |
 
-- **The shared VMs** are the three always-on nodes for now (Jody, 2026-11-10): every looper, control and build job
-  runs on them, with no slots. "If it's a looper and it wants to run, it runs, period": a job is not a reservation of
+- **The shared VMs** are the three always-on nodes for now (Jody, 2026-11-10): every looper and control job runs on
+  them, with no slots; builds run on the spot `build` pool, a few at a time. "If it's a looper and it wants to run, it runs, period": a job is not a reservation of
   CPUs or memory, and the jobs share a VM like processes on a laptop (25 a VM is a ceiling, not a slot count). They
   replace the jody1-328023 pools (whose settings change only over SSH); tacplus-dev/looper#84 moves the same
   arrangement into the cluster. One VM is one runner registration

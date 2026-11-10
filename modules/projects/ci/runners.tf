@@ -96,8 +96,11 @@ resource "google_compute_instance_template" "pool" {
   }
 
   scheduling {
-    automatic_restart   = false
-    on_host_maintenance = "TERMINATE"
+    automatic_restart           = false
+    on_host_maintenance         = "TERMINATE"
+    provisioning_model          = each.value.spot ? "SPOT" : "STANDARD"
+    preemptible                 = each.value.spot
+    instance_termination_action = each.value.spot ? "DELETE" : null
   }
 
   # Vanilla Container-Optimized OS (decisions/builds-in-containers-2026-11-03.md): no startup-script, nothing installed

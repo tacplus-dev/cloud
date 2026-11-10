@@ -64,12 +64,12 @@ module "gitlab" {
     trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
     schedules = yamldecode(file("${path.module}/nightly-builds.yaml"))
   }
-  # Registered paused, but the shared pool (Jody, 2026-11-07: "raise the number of nodes temporarily"): it takes the
-  # looper jobs beside jody1-328023's runners until tacplus-dev/looper#84 moves them into the cluster. deploy and
+  # Registered paused, but the shared pool (the loopers' three always-on nodes) and the build pool (spot), Jody
+  # 2026-11-10: they take the looper and build jobs until tacplus-dev/looper#84 moves them into the cluster. deploy and
   # cluster stay paused until their move off jody1-328023.
   runners = {
     for k, p in module.settings.runner_pools : k => merge(p.runner, {
-      paused       = k != "shared"
+      paused       = !contains(["shared", "build"], k)
       token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
     })
   }
