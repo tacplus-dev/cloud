@@ -33,13 +33,13 @@ variable "runners" {
     type         = string
     group        = optional(string)
     project      = optional(string)
-    # More projects a project runner serves (gitlab_project_runner_enablement), e.g. the cluster pool's runner also
-    # running tacplus-dev/cloud's own pipeline (2026-11-10, off jody1-328023).
-    also_projects = optional(list(string), [])
     tags         = list(string)
     protected    = bool
     paused       = bool
     token_secret = string
+    # More projects a project runner serves (gitlab_project_runner_enablement), e.g. the cluster pool's runner also
+    # running tacplus-dev/cloud's own pipeline (2026-11-10, off jody1-328023).
+    also_projects = optional(list(string), [])
   }))
   validation {
     condition     = alltrue([for r in values(var.runners) : (r.type == "group_type" && r.group != null && r.project == null) || (r.type == "project_type" && r.project != null && r.group == null)])

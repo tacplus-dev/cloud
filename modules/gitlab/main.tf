@@ -112,7 +112,7 @@ resource "gitlab_user_runner" "runner" {
 resource "gitlab_project_runner_enablement" "also" {
   for_each  = merge([for k, r in var.runners : { for p in r.also_projects : "${k}:${p}" => { runner = k, project = p } }]...)
   project   = local.project_id[each.value.project]
-  runner_id = gitlab_user_runner.runner[each.value.runner].id
+  runner_id = tonumber(gitlab_user_runner.runner[each.value.runner].id)
 }
 
 # The runner's token, for the manager (modules/projects/ci). A re-registered runner replaces the version, so the
