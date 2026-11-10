@@ -26,11 +26,11 @@ locals {
   }
 }
 
+# GCP refuses a display_name over 100 characters, at apply, not plan (2026-11-10: 136): the precondition fails the plan.
 resource "google_service_account" "init_secrets" {
   for_each     = local.init_secrets
   project      = google_project.dev.project_id
   account_id   = each.value.account_id
-  # GCP refuses a display_name over 100 characters, at apply, not plan (2026-11-10: 136): the precondition fails the plan.
   display_name = "${each.key} fleet secrets, ${each.value.environment} (tacplus-dev/cloud)"
   description  = "${var.deployments[each.key].gitlab_project} pipeline, protected main, environment ${each.value.environment}: deployment ${each.key}'s fleet secrets (tacplus-dev/cloud)"
   depends_on   = [terraform_data.iam_ready]
