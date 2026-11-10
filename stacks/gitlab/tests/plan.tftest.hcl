@@ -26,6 +26,10 @@ mock_provider "gitlab" {
   mock_data "gitlab_user" {
     defaults = { user_id = 99 }
   }
+  # A runner's id is GitLab's number (gitlab_project_runner_enablement takes it as one).
+  mock_resource "gitlab_user_runner" {
+    defaults = { id = "4242" }
+  }
 }
 
 run "stack" {

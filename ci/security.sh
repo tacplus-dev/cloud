@@ -117,7 +117,10 @@ step "trivy: the CI image"
 image=$(yq -r '.default.image // ""' "$tree/ci/gitlab-project.gitlab-ci.yml" 2>/dev/null)
 if [[ ! $image =~ @sha256:[0-9a-f]{64}$ ]]; then
   problem "trivy: the CI image is not pinned by digest: [$image]"
-elif trivy image -q --scanners vuln --timeout 30m --format json -o "$out/raw/trivy-image.json" "$image" 2>"$out/raw/trivy-image.log"; then
+# HTTP/1.1 for the image's layers (GODEBUG=http2client=0): since 2026-11-10 ghcr resets the HTTP/2 stream of one
+# large base layer of tacplus build 2.6.x (sha256:d02de502..., 'stream error ... PROTOCOL_ERROR; received from peer'),
+# on every runner and every retry, so the layers come over HTTP/1.1 instead. The scan itself is unchanged.
+elif GODEBUG=http2client=0 trivy image -q --scanners vuln --timeout 30m --format json -o "$out/raw/trivy-image.json" "$image" 2>"$out/raw/trivy-image.log"; then
   echo "$image"
   norm trivy-image '
     [.[0].Results[]? | .Target as $t | (.Vulnerabilities // [])[]
