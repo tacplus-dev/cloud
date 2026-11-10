@@ -404,6 +404,11 @@ run "dev" {
     condition     = google_service_account.init_secrets["seatrials"].account_id == "seatrials-init-secrets" && google_service_account_iam_member.init_secrets_wif["seatrials"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.init_secrets_wif["seatrials"].member == "principalSet://iam.googleapis.com/projects/555/locations/global/workloadIdentityPools/gitlab-com/attribute.project_environment/tacplus-dev/fleet-seatrials:init-secrets"
     error_message = "seatrials-init-secrets is not only tacplus-dev/fleet-seatrials' jobs in the environment init-secrets."
   }
+  # GCP refuses a display_name over 100 characters at apply (2026-11-10: the first apply failed on 136).
+  assert {
+    condition     = length(google_service_account.init_secrets["seatrials"].display_name) <= 100
+    error_message = "seatrials-init-secrets' display_name is over GCP's 100 characters."
+  }
   assert {
     condition     = alltrue([for m in concat(values(google_project_iam_member.cluster_viewer), values(google_project_iam_member.deploy), values(google_project_iam_member.build)) : m.member != "serviceAccount:seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com"])
     error_message = "The init-secrets job's account holds a role on the project."

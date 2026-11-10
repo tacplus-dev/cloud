@@ -30,8 +30,16 @@ resource "google_service_account" "init_secrets" {
   for_each     = local.init_secrets
   project      = google_project.dev.project_id
   account_id   = each.value.account_id
-  display_name = "${var.deployments[each.key].gitlab_project} pipeline, protected main, environment ${each.value.environment}: deployment ${each.key}'s fleet secrets (tacplus-dev/cloud)"
+  # GCP refuses a display_name over 100 characters, at apply, not plan (2026-11-10: 136): the precondition fails the plan.
+  display_name = "${each.key} fleet secrets, ${each.value.environment} (tacplus-dev/cloud)"
+  description  = "${var.deployments[each.key].gitlab_project} pipeline, protected main, environment ${each.value.environment}: deployment ${each.key}'s fleet secrets (tacplus-dev/cloud)"
   depends_on   = [terraform_data.iam_ready]
+  lifecycle {
+    precondition {
+      condition     = length("${each.key} fleet secrets, ${each.value.environment} (tacplus-dev/cloud)") <= 100
+      error_message = "the service account's display_name is over GCP's 100 characters"
+    }
+  }
 }
 
 resource "google_service_account_iam_member" "init_secrets_wif" {
