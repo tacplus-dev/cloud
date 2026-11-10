@@ -38,8 +38,8 @@ run "stack" {
     error_message = "The stack manages more projects than tacplus-dev/cloud."
   }
   assert {
-    condition     = toset(keys(output.runner_ids)) == toset(["shared", "deploy", "cluster"])
-    error_message = "The stack does not register one runner per pool: shared, deploy and cluster."
+    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster"])
+    error_message = "The stack does not register one runner per pool: shared, build, deploy and cluster."
   }
   # The looper's recap reads tacplus-dev/build as tacplus-looper-bot, through every looper job's GITLAB_TOKEN (#12,
   # option B): Reporter, nothing higher, and an expiry.

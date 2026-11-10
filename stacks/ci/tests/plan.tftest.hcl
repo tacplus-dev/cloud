@@ -40,7 +40,7 @@ run "stack" {
     error_message = "The ci project is not tacplus-ci."
   }
   assert {
-    condition     = toset(keys(output.runner_token_secrets)) == toset(["shared", "deploy", "cluster"])
+    condition     = toset(keys(output.runner_token_secrets)) == toset(["shared", "build", "deploy", "cluster"])
     error_message = "Not every runner pool has its token secret."
   }
   # The looper project's variables (#19): its provider and key ring, and the apps' IDs, none of them secret.
@@ -90,8 +90,8 @@ run "settings" {
     source = "../../modules/settings"
   }
   assert {
-    condition     = toset(keys(output.runner_pools)) == toset(["shared", "deploy", "cluster"])
-    error_message = "The pools are not shared, deploy and cluster."
+    condition     = toset(keys(output.runner_pools)) == toset(["shared", "build", "deploy", "cluster"])
+    error_message = "The pools are not shared, build, deploy and cluster."
   }
   assert {
     condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 25 && output.runner_pools.shared.idle_count == 3 && output.runner_pools.shared.max_instances == 3
