@@ -30,6 +30,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
 - Moving dev off jody1-328023: runners, the cluster, DNS, KMS and buckets; then jody1-328023 is drained (Jody deletes it).
 - A spot overflow pool for looper reports (Jody, 2026-11-04): its own pool, separate from the build pool and tainted differently, on the cheapest Arm spot machine that fits the report pods (chosen with prices when it is built). Reports prefer the normal pool and land here only when it is full (the autoscaler adds a node for pending reports); the kicker and the managers never run here. Its maximum starts at 0 and is raised on Jody's word from the recap's wait numbers. Agent, at Jody's request.
+- dev: the secret google-signin-seatrials (no version; seatrials-deploy its only reader) for fleet-seatrials#46 (#37). Agent, at Jody's request, 2026-11-10.
 
 ## Not doing
 - Importing jody1-328023: the new projects are built fresh.
