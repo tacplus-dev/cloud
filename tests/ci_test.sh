@@ -125,9 +125,14 @@ for s in folder ci dev gitlab; do
     fail "$a: not in its stack's environment, one at a time"
 done
 ok "each apply needs its own plan and applies that saved plan, in its environment, one at a time"
-[ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:folder" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:folder" ] &&
+# ci after dev (#30): the ci stack reads the dev project's number, for the reader's account's federation.
+[ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:dev" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:folder" ] &&
   [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test,security ]] &&
-  ok "the order: the checks, folder, then ci and dev, then gitlab" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+  ok "the order: the checks, folder, dev, ci, then gitlab" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:dev $(q '.["plan:dev"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+# The drift issue's reader key is tacplus-ci's (#30), and nothing here signs with jody1-328023's.
+[ "$(q '.variables.TACPLUS_READER_KMS_KEY')" = projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader ] &&
+  ! grep -rn 'jody1-328023/locations/[a-z0-9-]*/keyRings' "$here/ci" "$here/stacks" "$here/modules" &&
+  ok "the reader's key is tacplus-ci's tacplus-reader, never jody1-328023's" || fail "the reader's key: $(q '.variables.TACPLUS_READER_KMS_KEY')"
 
 for j in "${jobs[@]}"; do
   case $j in plan:*|apply:*|drift) want=yes ;; *) want=no ;; esac

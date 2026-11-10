@@ -70,7 +70,12 @@ output "github_apps" {
     GCP_KMS_KEY_IMPORTERS's members) and never leaves KMS. A key's signers are its own bindings, never the key
     ring's: environments, the jobs of looper's ref in those GitLab environments (its provider's attribute role,
     project_id:ref:ref_protected:environment); namespace, every protected ref of the namespace (its provider's
-    attribute namespace_id). The IDs are GitHub's and GitLab's, none of them secret.
+    attribute namespace_id); accounts (#30), by account ID, an account in the ci project that signs, which only
+    gitlab_project's jobs, federated through pool, may become (for a project whose jobs' one provider is another
+    project's: fleet-seatrials', the dev project's); projects, GitLab projects whose jobs, federated through pool, sign
+    as themselves. A pool is bootstrap (tacplus-bootstrap's, this pipeline's) or dev (the dev project's, the
+    deployments'), both gitlab-com, whose providers map attribute.project_path. The IDs are GitHub's and GitLab's,
+    none of them secret.
   EOT
   value = {
     key_ring = "looper"
@@ -82,14 +87,21 @@ output "github_apps" {
     apps = {
       # The bypass actor of main's ruleset: the managers, and the scans for their commits to main, never a report,
       # whose code runs in its job (looper#90).
-      tacplus-manager = { app_id = "5632100", installation_id = "179024536", import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }
+      tacplus-manager = { app_id = "5632100", installation_id = "179024536", import = true, namespace = false, environments = ["looper-manager", "looper-scan"], accounts = {}, projects = [] }
       # Pushes branches, comments and labels, nothing to main.
-      tacplus-looper = { app_id = "5632122", installation_id = "179024135", import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }
-      # Read-only. The projects that sign with it in jody1-328023 today: tacplus-dev/kernel (looper-identity's
-      # prepare) and the github_app_token of tacplus-dev/cloud (its drift issue), tacplus-dev/cluster and
-      # tacplus-dev/fleet-seatrials; tacplus-dev/build holds the key as a file variable. Its key is imported here when
-      # the reader moves off jody1-328023.
-      tacplus-reader = { app_id = "5531358", installation_id = "176655068", import = false, namespace = true, environments = [] }
+      tacplus-looper = { app_id = "5632122", installation_id = "179024135", import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"], accounts = {}, projects = [] }
+      # Read-only. Off jody1-328023 (#30; Jody, 2026-11-08): a new key, imported here, then the old one revoked on
+      # the app. It signs for the namespace's protected refs (through gitlab-loopers' provider gitlab-com: what else
+      # signed in jody1-328023, tacplus-dev/kernel's looper-identity prepare, once it exchanges its id_token there),
+      # for the drift issues of this project (through its own pool) and of tacplus-dev/cluster (through the dev
+      # project's, its GCP_WIF_PROVIDER's), github_app_token's direct call, and for fleet-seatrials' jobs as
+      # fleet-seatrials-reader (their .github-reader's TACPLUS_READER_SA: their GCP_WIF_PROVIDER is the dev project's
+      # tacplus-dev-fleet-seatrials). tacplus-dev/build holds a key as a file variable.
+      tacplus-reader = {
+        app_id   = "5531358", installation_id = "176655068", import = true, namespace = true, environments = []
+        accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }
+        projects = [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }]
+      }
     }
   }
 }

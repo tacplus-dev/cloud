@@ -16,12 +16,18 @@ locals {
   # An import job's resource name, as IAM's conditions see it (the provider has no import job IAM: the importer role
   # is the key ring's, conditioned on these names).
   app_import_names = { for k, j in local.app_imports : k => "projects/${google_project.ci.project_id}/locations/${var.region}/keyRings/${local.apps.key_ring}/importJobs/${j}" }
+  # The accounts that sign for a key (#30), by account ID: a GitLab project's jobs, federated through another
+  # project's pool, become one.
+  app_accounts = merge([for k, a in local.apps.keys : { for id, s in a.accounts : id => merge(s, { key = k }) }]...)
   # Each key's signers: the looper project's jobs of its ref in the key's environments (the attribute role), and with
-  # namespace, every protected ref of the namespace (the attribute namespace_id).
+  # namespace, every protected ref of the namespace (the attribute namespace_id); its projects' jobs, through their
+  # pools (the attribute project_path); and its accounts.
   app_pool = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.loopers.name}"
   app_signers = { for k, a in local.apps.keys : k => concat(
     a.namespace ? ["${local.app_pool}/attribute.namespace_id/${local.apps.namespace.id}"] : [],
     [for e in a.environments : "${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:${e}"],
+    [for p in a.projects : "principalSet://iam.googleapis.com/${local.apps.pools[p.pool]}/attribute.project_path/${p.gitlab_project}"],
+    [for id in sort(keys(a.accounts)) : google_service_account.app[id].member],
   ) }
 }
 
@@ -108,6 +114,24 @@ resource "google_kms_crypto_key_iam_binding" "signer" {
   crypto_key_id = google_kms_crypto_key.app[each.key].id
   role          = "roles/cloudkms.signer"
   members       = each.value
+}
+
+# An account that signs for a key (#30): only its GitLab project's jobs, federated through its pool, become it
+# (roles/iam.workloadIdentityUser, authoritative), and it holds no role but its key's signer. For a project whose
+# jobs' one provider is another project's (fleet-seatrials': the dev project's), which then signs as it.
+resource "google_service_account" "app" {
+  for_each     = local.app_accounts
+  project      = google_project.ci.project_id
+  account_id   = each.key
+  display_name = "${each.value.key}'s signer: ${each.value.gitlab_project}'s jobs (tacplus-dev/cloud)"
+  depends_on   = [terraform_data.iam_ready]
+}
+
+resource "google_service_account_iam_binding" "app" {
+  for_each           = local.app_accounts
+  service_account_id = google_service_account.app[each.key].name
+  role               = "roles/iam.workloadIdentityUser"
+  members            = ["principalSet://iam.googleapis.com/${local.apps.pools[each.value.pool]}/attribute.project_path/${each.value.gitlab_project}"]
 }
 
 # The apps' federation from gitlab.com: a pool of its own, whose two providers each map only their own attribute.

@@ -33,6 +33,12 @@ data "google_project" "bootstrap" {
   project_id = module.settings.bootstrap.project
 }
 
+# The dev project, made by the dev stack (plan:ci comes after apply:dev): its pool federates the deployments' jobs, of
+# which fleet-seatrials' become the reader's account (#30).
+data "google_project" "dev" {
+  project_id = module.settings.projects.dev.project
+}
+
 module "ci" {
   source               = "../../modules/projects/ci"
   project_id           = module.settings.projects.ci.project
@@ -61,7 +67,13 @@ module "ci" {
     wif_pool  = module.settings.github_apps.pool
     namespace = { id = module.settings.github_apps.namespace.id, wif_provider = module.settings.github_apps.namespace.wif_provider }
     looper    = { for a, v in module.settings.github_apps.looper : a => v if a != "project" }
-    keys      = { for k, a in module.settings.github_apps.apps : k => { import = a.import, namespace = a.namespace, environments = a.environments } }
+    # The pools gitlab-com of tacplus-bootstrap (this pipeline's, bootstrap/bootstrap.sh) and of the dev project
+    # (the dev stack's cluster_pipeline.pool).
+    pools = {
+      bootstrap = "projects/${data.google_project.bootstrap.number}/locations/global/workloadIdentityPools/${module.settings.bootstrap.wif_pool}"
+      dev       = "projects/${data.google_project.dev.number}/locations/global/workloadIdentityPools/gitlab-com"
+    }
+    keys = { for k, a in module.settings.github_apps.apps : k => { import = a.import, namespace = a.namespace, environments = a.environments, accounts = a.accounts, projects = a.projects } }
   }
   kms_key_importers = var.kms_key_importers
 }
@@ -80,6 +92,11 @@ output "app_keys" {
 
 output "app_import_jobs" {
   value = module.ci.app_import_jobs
+}
+
+# The reader's account (#30): fleet-seatrials' TACPLUS_READER_SA.
+output "app_accounts" {
+  value = module.ci.app_accounts
 }
 
 # The looper project's variables (tacplus-dev/looper README, Only the manager writes main, Setting it up), which the

@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-09 by the looper (#28).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by the looper (#30).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -123,6 +123,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-09 by th
   (the module refuses `looper-report`), `tacplus-reader` for the namespace. The ci stack's output `looper_variables`
   gives the looper project's variables. Tested with the stack's plan tests (mock providers) and `tests/ci_test.sh`; not
   applied yet: `apply:ci` on main does it, then Jody's import (README, The GitHub Apps' keys) and the looper's setup.
+- **The reader's key off jody1-328023 (#30):** `tacplus-reader` is imported too (`tacplus-reader-import`, the
+  importers' bindings on it), a new key: Jody generates a new private key for the app and imports it (README, The
+  GitHub Apps' keys), then the old one is revoked once its signers have moved. Besides the namespace, it signs for
+  tacplus-dev/cloud's jobs through tacplus-bootstrap's pool (the drift issue: the pipeline file's
+  `TACPLUS_READER_KMS_KEY` is the new key's), tacplus-dev/cluster's through the dev project's pool, and for the account `fleet-seatrials-reader@tacplus-ci` (no other role),
+  which only tacplus-dev/fleet-seatrials' jobs become, through the dev project's pool (their `GCP_WIF_PROVIDER`); the
+  ci stack's output `app_accounts`. The ci stack reads the dev project's number, so `plan:ci` now needs `apply:dev`.
+  Tested with the stack's plan tests (mock providers) and `tests/ci_test.sh`; not applied yet, and no seatrials job
+  has minted a token through it: `apply:ci`, Jody's import, then fleet-seatrials' variables (its own issue).
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
@@ -193,7 +202,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-09 by th
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's
   refusal (a role missing, a name taken) shows only in the first pipeline. The GitLab project `tacplus-dev/cloud`, its
-  runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install and KMS grant, and the schedule are the hub's
+  runner (tag `cloud`), `GCP_WIF_PROVIDER`, the reader app's install, and the schedule are the hub's
   (README, Before the first pipeline); until Jody's registrar change, tacplus.dev resolves through the zone in
 jody1-328023, which the hub keeps alike (README, The tacplus.dev cutover). The test IdP's own load balancer and address
 in jody1-328023 do not carry over: in the new cluster it is on port 8443 of the address `gateway` (#21, PROPOSALS.md). The runners are

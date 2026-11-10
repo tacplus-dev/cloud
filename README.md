@@ -19,8 +19,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     bootstrap script, below);
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
-    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper` and `tacplus-reader`, import-only), their import jobs
-    and the federation that signs with them (below, The GitHub Apps' keys);
+    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper` and `tacplus-reader`, import-only), their import jobs,
+    the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The GitHub Apps' keys);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
     below, The network rules), the DNS zone
@@ -221,8 +221,8 @@ the scanners that need a database.
    together (`tests/ci_test.sh` refuses them apart): a new digest is a change like any other, landed on the full gates.
 2. Merged, a merge request in the GitLab project setting `.gitlab-ci.yml` to `ci/pin.sh <commit>`'s output, for that commit
    of main: the checks run on it.
-3. Merged there, the pipeline on main: checks → `plan:folder` → `apply:folder` → `plan:ci`, `plan:dev` → `apply:ci`, `apply:dev` →
-   `plan:gitlab` → `apply:gitlab`. Each plan is in its job's log and its artifact; each apply applies that plan. Nothing
+3. Merged there, the pipeline on main: checks → `plan:folder` → `apply:folder` → `plan:dev` → `apply:dev` → `plan:ci` →
+   `apply:ci` → `plan:gitlab` → `apply:gitlab` (ci after dev: the ci stack reads the dev project's number, #30). Each plan is in its job's log and its artifact; each apply applies that plan. Nothing
    waits for Jody (not production).
 
 To review a plan: the `plan:<stack>` job's log, or its artifact `src/plans/<stack>.txt`.
@@ -328,10 +328,9 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    `GCP_RUNNER_TOKEN_ADDERS` (protected): the account that adds the runners' token versions (below, The cluster pipeline);
    `GCP_KMS_KEY_IMPORTERS` (protected), only while the apps' keys are imported (below, The GitHub Apps' keys). The gitlab stack adopts it and `main`'s
    protection (its import blocks), and sets the reader's two variables from Secret Manager.
-4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write, and this
-   project's federated principal
-   (`principalSet://iam.googleapis.com/projects/<tacplus-bootstrap's number>/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/cloud`)
-   allowed to sign with the KMS key `tacplus-reader` in jody1-328023 (`roles/cloudkms.signer`).
+4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write. This
+   project's jobs sign with the KMS key `tacplus-reader` in `tacplus-ci` (the ci stack's binding, #30) once its version
+   is imported (below, The GitHub Apps' keys): until then the drift job files no issue.
 5. **`.gitlab-ci.yml`** from `ci/pin.sh <commit of main>`, and a nightly schedule on main.
 
 The first pipeline on main then creates the folders, the `ci` and `dev` projects, and the GitLab
@@ -518,13 +517,12 @@ each are `modules/settings` (`github_apps`); the ci module's `github-apps.tf` ma
 |---|---|---|---|
 | `tacplus-manager` | 5632100 | 179024536 | tacplus-dev/looper's main, environments `looper-manager` and `looper-scan` (never `looper-report`: the module refuses it) |
 | `tacplus-looper` | 5632122 | 179024135 | tacplus-dev/looper's main, environments `looper-report`, `looper-scan`, `looper-plan` and `kicker` |
-| `tacplus-reader` | 5531358 | 176655068 | every protected ref of the namespace tacplus-dev, as in jody1-328023; today kernel's prepare, and the drift issue of tacplus-dev/cloud, tacplus-dev/cluster's and tacplus-dev/fleet-seatrials' `github_app_token` sign with it there |
+| `tacplus-reader` | 5531358 | 176655068 | every protected ref of the namespace tacplus-dev (kernel's prepare, once it exchanges its id_token through `gitlab-com` here); tacplus-dev/cloud's jobs (its drift issue), through tacplus-bootstrap's pool, and tacplus-dev/cluster's (its drift issue), through the dev project's; tacplus-dev/fleet-seatrials' jobs as the account `fleet-seatrials-reader` (#30) |
 
 - **The keys:** asymmetric signing, `RSA_SIGN_PKCS1_2048_SHA256`, software, **import-only**, created with no version
-  (`prevent_destroy`). Cloud KMS never exports a key's material. `tacplus-manager` and `tacplus-looper` each have an
-  import job, `<key>-import` (`RSA_OAEP_3072_SHA256_AES_256`); the reader's is imported when the reader moves off
-  jody1-328023 (its `import` in `modules/settings`). An import job expires three days after it is made, and is never
-  deleted: a key not imported by then needs a new one, a commit that renames it.
+  (`prevent_destroy`). Cloud KMS never exports a key's material, so a key leaving jody1-328023 is a new one (#30).
+  Each key has an import job, `<key>-import` (`RSA_OAEP_3072_SHA256_AES_256`). An import job expires three days after
+  it is made, and is never deleted: a key not imported by then needs a new one, a commit that renames it.
 - **Who imports:** the members of the protected GitLab variable `GCP_KMS_KEY_IMPORTERS` (comma-separated, as
   `GCP_RUNNER_TOKEN_ADDERS`; `ci/lib.sh` gives them to the ci stack as `kms_key_importers` and refuses one that is not a
   member), alone: `roles/cloudkms.importer` on the import jobs (a binding on the key ring, conditioned on the import
@@ -539,15 +537,25 @@ each are `modules/settings` (`github_apps`); the ci module's `github-apps.tf` ma
     `principalSet://iam.googleapis.com/projects/<tacplus-ci's number>/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:<environment>`.
   - `gitlab-com`: tacplus-dev's protected refs (namespace 145863835, by ID: a renamed or re-created path does not take
     it over); `attribute.namespace_id`, the reader's member.
+
+  A key's `projects` sign through their own pools, `gitlab-com` in `tacplus-bootstrap` or in `tacplus-dev`
+  (`attribute.project_path`): the reader's, tacplus-dev/cloud's jobs, through this pipeline's own provider (its drift
+  job's `TACPLUS_READER_KMS_KEY`), and tacplus-dev/cluster's, through the dev project's provider `tacplus-dev-cluster`
+  (its `GCP_WIF_PROVIDER`; `github_app_token`'s direct call). A key's `accounts` are service accounts in `tacplus-ci`, each holding nothing but its
+  key's `roles/cloudkms.signer`, which only its GitLab project's jobs become (`roles/iam.workloadIdentityUser`,
+  authoritative): `fleet-seatrials-reader`, for tacplus-dev/fleet-seatrials, whose jobs federate through the dev
+  project's provider `tacplus-dev-fleet-seatrials` (their one `GCP_WIF_PROVIDER`) and sign as it (their
+  `.github-reader`'s `TACPLUS_READER_SA`). The ci stack reads the dev project's number, so `plan:ci` comes after
+  `apply:dev`.
 - **Outputs:** the ci stack's `looper_variables` are the looper project's variables (`GCP_WIF_PROVIDER`, the provider
-  `gitlab-looper`; `LOOPER_KMS_KEYRING`; the apps' and installations' IDs), `app_keys` each key and `app_import_jobs`
-  each import job.
+  `gitlab-looper`; `LOOPER_KMS_KEYRING`; the apps' and installations' IDs), `app_keys` each key, `app_import_jobs`
+  each import job and `app_accounts` each account's email.
 
 **The import** (Jody, once `apply:ci` has made the keys, `GCP_KMS_KEY_IMPORTERS` set to his account before that
 pipeline): on github.com, each app's page, Generate a private key, then at once:
 
 ```sh
-for k in tacplus-manager tacplus-looper; do
+for k in tacplus-manager tacplus-looper tacplus-reader; do
   openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in $k.private-key.pem -out $k.der
   gcloud kms keys versions import --import-job=$k-import --keyring=looper --location=us-central1 --project=tacplus-ci \
     --key=$k --algorithm=rsa-sign-pkcs1-2048-sha256 --target-key-file=$k.der   # version 1
@@ -556,7 +564,34 @@ done
 ```
 
 Then `GCP_KMS_KEY_IMPORTERS` is cleared (the hub deletes it), and the next commit's pipeline removes the importers'
-bindings. The looper project's variables, its pipeline file, the ruleset and the probe are
+bindings.
+
+**The reader's key, off jody1-328023** (#30; Jody, 2026-11-08). Jody's one step, which GitHub has no API for: once
+`apply:ci` has made `tacplus-reader-import` (with `GCP_KMS_KEY_IMPORTERS` set before that pipeline, and within the
+three days the job lives), on the tacplus-reader app's page (app 5531358, Settings, Private keys), Generate a private
+key, and import it at once:
+
+```sh
+k=tacplus-reader
+openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in $k.private-key.pem -out $k.der
+gcloud kms keys versions import --import-job=$k-import --keyring=looper --location=us-central1 --project=tacplus-ci \
+  --key=$k --algorithm=rsa-sign-pkcs1-2048-sha256 --target-key-file=$k.der   # version 1
+shred -u $k.private-key.pem $k.der
+```
+
+GitHub keeps every key an app has until one is deleted, so the old key in jody1-328023 still signs, and its signers
+still work, until it is revoked. Then, in order:
+
+1. Each signer moves to the new key: this project's pipeline file (`ci/pin.sh` of a commit of main, its
+   `TACPLUS_READER_KMS_KEY`); fleet-seatrials' `TACPLUS_READER_KMS_KEY`
+   (`projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader`) and `TACPLUS_READER_SA`
+   (`fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com`, the ci stack's `app_accounts`); tacplus-dev/cluster's
+   `TACPLUS_READER_KMS_KEY`; kernel's, if it still signs, its key and provider (`gitlab-com` of `gitlab-loopers`); each
+   its own issue.
+2. A seatrials job mints a reader token through the new key (its log: `signing as the service account
+   fleet-seatrials-reader@tacplus-ci...`, then the fetch).
+3. Jody deletes the old key on the app's page (Private keys: the one made before the key just imported), and nothing
+   signs with jody1-328023's key any more; `fleet-seatrials-reader@jody1-328023` and the key go with jody1-328023. The looper project's variables, its pipeline file, the ruleset and the probe are
 the looper README's steps (Only the manager writes main, Setting it up, 4 to 6), with `P=tacplus-ci` and the values of
 `looper_variables`.
 

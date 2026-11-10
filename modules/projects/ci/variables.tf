@@ -114,21 +114,32 @@ variable "build_cache" {
 }
 
 variable "github_apps" {
-  description = "The GitHub Apps' keys (modules/settings github_apps): the key ring key_ring, the workload identity pool wif_pool, the namespace's provider (namespace: its GitLab ID and provider ID) and the looper project's (looper: its GitLab project ID, the ref its signers run on and its provider ID); per key, import (an import job, and the importers' bindings), namespace (the namespace's protected refs sign) and environments (the looper project's environments that sign)."
+  description = "The GitHub Apps' keys (modules/settings github_apps): the key ring key_ring, the workload identity pool wif_pool, the namespace's provider (namespace: its GitLab ID and provider ID) and the looper project's (looper: its GitLab project ID, the ref its signers run on and its provider ID); pools, other projects' workload identity pools by name (projects/N/locations/global/workloadIdentityPools/P), whose providers map attribute.project_path; per key, import (an import job, and the importers' bindings), namespace (the namespace's protected refs sign), environments (the looper project's environments that sign), accounts (by account ID, an account here that signs, which only gitlab_project's jobs federated through pool may become) and projects (GitLab projects whose jobs, federated through pool, sign as themselves)."
   type = object({
     key_ring  = string
     wif_pool  = string
     namespace = object({ id = string, wif_provider = string })
     looper    = object({ project_id = string, ref = string, wif_provider = string })
+    pools     = optional(map(string), {})
     keys = map(object({
       import       = bool
       namespace    = bool
       environments = list(string)
+      accounts     = optional(map(object({ pool = string, gitlab_project = string })), {})
+      projects     = optional(list(object({ pool = string, gitlab_project = string })), [])
     }))
   })
   validation {
     condition     = can(regex("^[0-9]+$", var.github_apps.namespace.id)) && can(regex("^[0-9]+$", var.github_apps.looper.project_id)) && alltrue([for k in values(var.github_apps.keys) : alltrue([for e in k.environments : can(regex("^[a-z0-9][a-z0-9-]*$", e))])])
     error_message = "The namespace and the looper project are GitLab's numeric IDs, and an environment is a GitLab environment's name."
+  }
+  validation {
+    condition     = alltrue(flatten([for k in values(var.github_apps.keys) : [for s in concat(values(k.accounts), k.projects) : contains(keys(var.github_apps.pools), s.pool) && can(regex("^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+$", var.github_apps.pools[s.pool])) && can(regex("^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)+$", s.gitlab_project))]])) && alltrue([for id in flatten([for k in values(var.github_apps.keys) : keys(k.accounts)]) : can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", id))])
+    error_message = "An account's or a project's pool is not one of pools, a pool's resource name, or its GitLab project not a project's path; or an account ID is not a service account's."
+  }
+  validation {
+    condition     = length(flatten([for k in values(var.github_apps.keys) : keys(k.accounts)])) == length(distinct(flatten([for k in values(var.github_apps.keys) : keys(k.accounts)])))
+    error_message = "Two keys have the same account: an account signs for one key."
   }
   validation {
     condition     = !contains(try(var.github_apps.keys["tacplus-manager"].environments, []), "looper-report")

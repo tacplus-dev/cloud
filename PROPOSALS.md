@@ -248,13 +248,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   on the import jobs' names (README, The GitHub Apps' keys). Why: #19 asks for it on each import job; google 8.9.0 has
   no `google_kms_key_ring_import_job_iam_*`, and a condition on `resource.name` grants the same, but only an apply shows
   that KMS evaluates it as expected (Jody's import is the test).
-- **The reader's key imported, and its signers moved** (looper, #19, 2026-11-05). What: when the reader moves off
-  jody1-328023, `import = true` for `tacplus-reader` in `modules/settings` (its import job and importers follow), and
-  each project that signs with it there (kernel's prepare; the `github_app_token` of tacplus-dev/cloud, cluster and
-  fleet-seatrials) exchanging an id_token for the provider `gitlab-com` of `gitlab-loopers` in `tacplus-ci`. This
-  repository's own drift job federates through tacplus-bootstrap's pool, which the new key does not admit: it needs a
-  second `id_tokens` entry for that provider, or the key a binding of its own principal. Why: #19 builds the reader's
-  bindings only as they are in jody1-328023, and nothing signs with the new key until then.
+- **The reader's other signers moved** (looper, #19, 2026-11-05; #30, 2026-11-09). What: #30 imports the reader's key
+  in tacplus-ci and moves this repository's drift job (its own pool's binding), and admits tacplus-dev/cluster's jobs
+  (through the dev project's pool) and fleet-seatrials' (`fleet-seatrials-reader`), whose variables then change;
+  tacplus-dev/kernel's prepare, if it still signs in jody1-328023 (its default branch names no reader key), exchanges its
+  id_token for the provider `gitlab-com` of `gitlab-loopers` in `tacplus-ci`, or becomes a `projects` entry. tacplus-dev/build holds a key as a file variable, generated on the app: it
+  becomes a signer here too, or that key is deleted on the app with the old one. Why: the old key is revoked on the app
+  only once nothing signs with it (README, The GitHub Apps' keys), and jody1-328023 is closing.
+- **One signing path for fleet-seatrials' reader token** (looper, #30, 2026-11-09). What: once a seatrials job has
+  minted a token through `fleet-seatrials-reader@tacplus-ci`, fleet-seatrials drops its `.github-reader`'s first,
+  direct, attempt (fleet-seatrials PROPOSALS, One signing path): the new key admits its federated principal only as
+  that account, so the direct call is always refused, and logged. Why: one KMS call per job, and no refusal in every log.
 - **tacplus-dev/looper's README: its keys and federation are in tacplus-ci** (looper, #19, 2026-11-05). What: a pull
   request there replacing "Only the manager writes main, Setting it up" steps 2 and 3 (the keys, the import jobs, the
   provider and the bindings in jody1-328023) with this repository's README, The GitHub Apps' keys, and the variables

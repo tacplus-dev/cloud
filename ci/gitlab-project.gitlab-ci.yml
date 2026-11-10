@@ -20,8 +20,8 @@
 #   drift                       the nightly schedule: a plan of every stack, and an issue on
 #                               github.com/tacplus-dev/cloud if anything differs; never applies
 #
-# The stacks run in order: folder (the folders under the parent folder), then ci and dev (the projects), then gitlab (whose runners'
-# tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
+# The stacks run in order: folder (the folders under the parent folder), then dev, then ci (the projects: ci reads
+# dev's number), then gitlab (whose runners' tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
 # decisions/deterministic-deployments-2026-11-02.md, addendum "approval only for production"): ci and dev apply on
 # main once their plan succeeds. prod is not built; its apply-prod will be a protected manual job only Jody plays.
 #
@@ -36,8 +36,9 @@ variables:
   # the GitLab project's copy (ci/pin.sh).
   CLOUD_COMMIT: ""
   GCP_DEPLOY_SA: cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
-  # The tacplus-reader app's key, in Cloud KMS (github_app_token in ci/lib.sh): the drift job files its issue with it.
-  TACPLUS_READER_KMS_KEY: projects/jody1-328023/locations/us/keyRings/looper/cryptoKeys/tacplus-reader
+  # The tacplus-reader app's key, in Cloud KMS (github_app_token in ci/lib.sh): the drift job files its issue with it,
+  # as the job itself (the ci stack's binding, #30).
+  TACPLUS_READER_KMS_KEY: projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader
 
 workflow:
   rules:
@@ -159,10 +160,11 @@ apply:folder:
   needs: [tools, plan:folder]
   variables: { STACK: folder }
 
+# ci after dev: the ci stack reads the dev project's number, whose pool federates the reader's account (#30).
 plan:ci:
   extends: .plan
   stage: projects
-  needs: [tools, apply:folder]
+  needs: [tools, apply:dev]
   variables: { STACK: ci }
 
 apply:ci:

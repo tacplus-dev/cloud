@@ -26,6 +26,11 @@ output "app_import_jobs" {
   value       = { for k, j in google_kms_key_ring_import_job.app : k => local.app_import_names[k] }
 }
 
+output "app_accounts" {
+  description = "The accounts that sign for a key (#30), each email by account ID: a TACPLUS_READER_SA, say."
+  value       = { for id, a in google_service_account.app : id => a.email }
+}
+
 output "looper_wif_provider" {
   description = "The looper project's provider (projects/N/locations/global/workloadIdentityPools/P/providers/R): its GCP_WIF_PROVIDER."
   value       = google_iam_workload_identity_pool_provider.looper.name

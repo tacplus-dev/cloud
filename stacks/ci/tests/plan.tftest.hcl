@@ -59,10 +59,20 @@ run "stack" {
     condition     = output.app_keys == { for k in ["tacplus-reader", "tacplus-manager", "tacplus-looper"] : k => "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/${k}" }
     error_message = "The stack does not give each app's key."
   }
+  # The reader's account and its pools (#30): the dev project's, which plan:ci reads after apply:dev made it, and
+  # tacplus-bootstrap's.
+  assert {
+    condition     = output.app_accounts == { fleet-seatrials-reader = "fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com" } && data.google_project.dev.project_id == "tacplus-dev"
+    error_message = "The stack does not give the reader's account fleet-seatrials-reader, or does not read the dev project."
+  }
   # Computed at apply: the provider's name and the key ring's and keys' IDs, as Google gives them.
   override_resource {
     target = module.ci.google_iam_workload_identity_pool_provider.looper
     values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-loopers/providers/gitlab-looper" }
+  }
+  override_resource {
+    target = module.ci.google_service_account.app
+    values = { email = "fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com" }
   }
   override_resource {
     target = module.ci.google_kms_key_ring.looper
@@ -105,14 +115,17 @@ run "settings" {
   }
   # The apps Jody created on 2026-11-05 (#19), and who signs with each: the looper app for the reports, the scans, the
   # plan and the kicker; the manager app for the manager and the scans (their commits to main) alone; the reader for
-  # the namespace's protected refs, as in jody1-328023. Only the two new keys are imported now.
+  # the namespace's protected refs, as in jody1-328023, and, off jody1-328023 (#30), for the drift issues of this
+  # project (its jobs through tacplus-bootstrap's pool) and of tacplus-dev/cluster (through the dev project's pool),
+  # and for fleet-seatrials' jobs as fleet-seatrials-reader (through the dev project's pool, which their
+  # GCP_WIF_PROVIDER is a provider of). Every key is imported.
   assert {
-    condition = { for k, a in output.github_apps.apps : k => [a.app_id, a.installation_id, a.import, a.namespace, toset(a.environments)] } == {
-      tacplus-manager = ["5632100", "179024536", true, false, toset(["looper-manager", "looper-scan"])]
-      tacplus-looper  = ["5632122", "179024135", true, false, toset(["looper-report", "looper-scan", "looper-plan", "kicker"])]
-      tacplus-reader  = ["5531358", "176655068", false, true, toset([])]
+    condition = { for k, a in output.github_apps.apps : k => [a.app_id, a.installation_id, a.import, a.namespace, toset(a.environments), a.accounts, a.projects] } == {
+      tacplus-manager = ["5632100", "179024536", true, false, toset(["looper-manager", "looper-scan"]), {}, []]
+      tacplus-looper  = ["5632122", "179024135", true, false, toset(["looper-report", "looper-scan", "looper-plan", "kicker"]), {}, []]
+      tacplus-reader  = ["5531358", "176655068", true, true, toset([]), { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }]]
     }
-    error_message = "The apps, their IDs or their signers are not the ones #19 lists."
+    error_message = "The apps, their IDs or their signers are not the ones #19 and #30 list."
   }
   assert {
     condition     = output.github_apps.key_ring == "looper" && output.github_apps.pool == "gitlab-loopers" && output.github_apps.looper == { project = "tacplus-dev/looper", project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" } && output.github_apps.namespace == { path = "tacplus-dev", id = "145863835", wif_provider = "gitlab-com" }
@@ -156,7 +169,11 @@ run "ci" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    github_apps = {
+      key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }
+      pools    = { bootstrap = "projects/111/locations/global/workloadIdentityPools/gitlab-com", dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }
+      keys     = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, projects = [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } }
+    }
     # As GCP_KMS_KEY_IMPORTERS gives it: an account of the host's directory, which no file here names.
     kms_key_importers = ["user:jody@example.com"]
   }
@@ -164,6 +181,10 @@ run "ci" {
   override_resource {
     target = google_iam_workload_identity_pool.loopers
     values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-loopers" }
+  }
+  override_resource {
+    target = google_service_account.app
+    values = { email = "fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com" }
   }
 
   assert {
@@ -327,26 +348,25 @@ run "ci" {
     condition     = alltrue([for k in google_kms_crypto_key.app : k.import_only && k.skip_initial_version_creation && k.purpose == "ASYMMETRIC_SIGN" && k.version_template[0].algorithm == "RSA_SIGN_PKCS1_2048_SHA256" && k.version_template[0].protection_level == "SOFTWARE"])
     error_message = "An app's key has an initial version, or is not an import-only RS256 software key of Cloud KMS's own."
   }
-  # One import job per key that is imported (the reader's is imported when the reader moves), RSA-OAEP-3072 wrapping,
-  # for software keys.
+  # One import job per key that is imported (the reader's too, since #30), RSA-OAEP-3072 wrapping, for software keys.
   assert {
-    condition     = toset(keys(google_kms_key_ring_import_job.app)) == toset(["tacplus-manager", "tacplus-looper"]) && alltrue([for k, j in google_kms_key_ring_import_job.app : j.import_job_id == "${k}-import" && j.import_method == "RSA_OAEP_3072_SHA256_AES_256" && j.protection_level == "SOFTWARE"])
-    error_message = "tacplus-manager and tacplus-looper have not each their own RSA_OAEP_3072_SHA256_AES_256 import job, or another key has one."
+    condition     = toset(keys(google_kms_key_ring_import_job.app)) == toset(["tacplus-reader", "tacplus-manager", "tacplus-looper"]) && alltrue([for k, j in google_kms_key_ring_import_job.app : j.import_job_id == "${k}-import" && j.import_method == "RSA_OAEP_3072_SHA256_AES_256" && j.protection_level == "SOFTWARE"])
+    error_message = "tacplus-reader, tacplus-manager and tacplus-looper have not each their own RSA_OAEP_3072_SHA256_AES_256 import job."
   }
   # Who imports: the members of GCP_KMS_KEY_IMPORTERS alone, the importer on each import job (a binding on the key ring
   # conditioned on the import jobs' names: the provider has no import job IAM) and the versions-create permission
-  # alone on each imported key; nobody on the reader's key.
+  # alone on each imported key.
   assert {
     condition     = google_project_iam_custom_role.key_version_importer.role_id == "kmsKeyVersionImporter" && google_project_iam_custom_role.key_version_importer.permissions == toset(["cloudkms.cryptoKeyVersions.create"])
     error_message = "The importers' role on the keys is not the versions-create permission alone."
   }
   assert {
-    condition     = toset(keys(google_kms_crypto_key_iam_binding.importer)) == toset(["tacplus-manager", "tacplus-looper"]) && alltrue([for b in google_kms_crypto_key_iam_binding.importer : b.members == toset(["user:jody@example.com"]) && b.role == "projects/tacplus-ci/roles/kmsKeyVersionImporter"])
+    condition     = toset(keys(google_kms_crypto_key_iam_binding.importer)) == toset(["tacplus-reader", "tacplus-manager", "tacplus-looper"]) && alltrue([for b in google_kms_crypto_key_iam_binding.importer : b.members == toset(["user:jody@example.com"]) && b.role == "projects/tacplus-ci/roles/kmsKeyVersionImporter"])
     error_message = "The keys' versions are created by someone other than the importers, or on a key with no import job."
   }
   assert {
-    condition     = length(google_kms_key_ring_iam_binding.importer) == 1 && google_kms_key_ring_iam_binding.importer[0].role == "roles/cloudkms.importer" && google_kms_key_ring_iam_binding.importer[0].members == toset(["user:jody@example.com"]) && google_kms_key_ring_iam_binding.importer[0].condition[0].expression == "resource.name == \"projects/tacplus-ci/locations/us-central1/keyRings/looper/importJobs/tacplus-looper-import\" || resource.name == \"projects/tacplus-ci/locations/us-central1/keyRings/looper/importJobs/tacplus-manager-import\""
-    error_message = "The importer role is not the importers' alone, on the two import jobs alone."
+    condition     = length(google_kms_key_ring_iam_binding.importer) == 1 && google_kms_key_ring_iam_binding.importer[0].role == "roles/cloudkms.importer" && google_kms_key_ring_iam_binding.importer[0].members == toset(["user:jody@example.com"]) && google_kms_key_ring_iam_binding.importer[0].condition[0].expression == join(" || ", [for k in ["tacplus-looper", "tacplus-manager", "tacplus-reader"] : "resource.name == \"projects/tacplus-ci/locations/us-central1/keyRings/looper/importJobs/${k}-import\""])
+    error_message = "The importer role is not the importers' alone, on the three import jobs alone."
   }
   # The looper project's federation: a pool of its own, gitlab-loopers; its provider admits tacplus-dev/looper's
   # (88136765) protected refs alone, and maps role to project_id:ref:ref_protected:environment, GitLab's word for each.
@@ -365,14 +385,34 @@ run "ci" {
   }
   # Each key's own signers, never at the key ring (no binding there but the importers'): tacplus-looper for the
   # reports, scans, plan and kicker; tacplus-manager for the manager and the scans alone, never a report; the reader
-  # for the namespace's protected refs.
+  # for the namespace's protected refs, tacplus-dev/cloud's and tacplus-dev/cluster's jobs through their pools (their
+  # drift issues), and its account fleet-seatrials-reader (#30).
   assert {
     condition = { for k, b in google_kms_crypto_key_iam_binding.signer : k => b.members if b.role == "roles/cloudkms.signer" } == {
       tacplus-looper  = toset([for e in ["looper-report", "looper-scan", "looper-plan", "kicker"] : "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:${e}"])
       tacplus-manager = toset([for e in ["looper-manager", "looper-scan"] : "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:${e}"])
-      tacplus-reader  = toset(["principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.namespace_id/145863835"])
+      tacplus-reader = toset([
+        "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.namespace_id/145863835",
+        "principalSet://iam.googleapis.com/projects/111/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/cloud",
+        "principalSet://iam.googleapis.com/projects/444/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/cluster",
+        "serviceAccount:fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com",
+      ])
     }
-    error_message = "The keys' signers are not exactly the looper's environments and the namespace the README lists."
+    error_message = "The keys' signers are not exactly the looper's environments, the namespace, tacplus-dev/cloud, tacplus-dev/cluster and fleet-seatrials-reader the README lists."
+  }
+  # The reader's account (#30), in tacplus-ci: fleet-seatrials' jobs alone become it, through the dev project's pool
+  # (their provider maps project_path), and it holds no role but its signer on the reader's key.
+  assert {
+    condition     = keys(google_service_account.app) == ["fleet-seatrials-reader"] && google_service_account.app["fleet-seatrials-reader"].account_id == "fleet-seatrials-reader" && google_service_account.app["fleet-seatrials-reader"].project == "tacplus-ci"
+    error_message = "The reader's account is not fleet-seatrials-reader in tacplus-ci, or another app has one."
+  }
+  assert {
+    condition     = google_service_account_iam_binding.app["fleet-seatrials-reader"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_binding.app["fleet-seatrials-reader"].members == toset(["principalSet://iam.googleapis.com/projects/444/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/fleet-seatrials"]) && google_service_account_iam_binding.app["fleet-seatrials-reader"].service_account_id == google_service_account.app["fleet-seatrials-reader"].name
+    error_message = "Something other than fleet-seatrials' jobs, through the dev project's pool, may become fleet-seatrials-reader."
+  }
+  assert {
+    condition     = alltrue([for m in google_project_iam_member.manager : m.member != google_service_account.app["fleet-seatrials-reader"].member])
+    error_message = "The reader's account holds a project role."
   }
   assert {
     condition     = !contains(google_kms_crypto_key_iam_binding.signer["tacplus-manager"].members, "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:looper-report")
@@ -530,7 +570,7 @@ run "no_importers" {
     error_message = "Someone imports with no importer in GCP_KMS_KEY_IMPORTERS."
   }
   assert {
-    condition     = length(google_kms_key_ring_import_job.app) == 2 && length(google_kms_crypto_key_iam_binding.signer) == 3
+    condition     = length(google_kms_key_ring_import_job.app) == 2 && length(google_kms_crypto_key_iam_binding.signer) == 3 && length(google_service_account.app) == 0
     error_message = "Clearing the importers changed the import jobs or the signers."
   }
 }
@@ -568,4 +608,37 @@ run "manager_signs_for_report_refused" {
     kms_key_importers = ["jody@example.com"]
   }
   expect_failures = [var.github_apps, var.kms_key_importers]
+}
+
+# A key's account or project federates only through a pool the stack gives (#30), and an account signs for one key.
+run "unknown_pool_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version           = "v19.5.2"
+      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
+      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
+      plugin_version    = "v1.3.1"
+      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, pools = { dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }, keys = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "elsewhere", gitlab_project = "tacplus-dev/fleet-seatrials" } } }, tacplus-looper = { import = true, namespace = false, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } } } } }
+  }
+  expect_failures = [var.github_apps]
 }
