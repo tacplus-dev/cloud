@@ -25,3 +25,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-07 looper issue security job fails on main: klauspost/compress GO-2026-6865 (tofu, gitleaks, osv-scanner, trivy, gitlab-runner) and brotli GO-2026-6888 (gitleaks), no fixed upstream release (#24)
 - 2026-11-08 looper issue security job fails on main: CVE-2026-78661 (golang.org/x/net v0.60.0, HIGH) in the CI image build:2.6's gh (#27)
 - 2026-11-08 looper issue gitlab stack: tacplus-dev/build's BUILD_TRIGGER_TOKEN and one nightly build schedule per pinned repository (#26, 2c416e8; gates: full)
+- 2026-11-10 looper issue dev: fleet-seatrials' CA and crypto file in Secret Manager, written by its init-secrets job through WIF (no GitLab token) (#28, 636f2d6; gates: full)
