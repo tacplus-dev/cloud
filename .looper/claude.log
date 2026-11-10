@@ -1,0 +1,278 @@
+= init
+> Bash git status --short && git log --oneline -3 && git diff --stat && gh issue view 25 --repo tacplus-dev/cloud --comments | tail -40
+<  M README.md  M STATE.md  M stacks/gitlab/nightly-builds.yaml  M stacks/gitlab/tests/plan.tftest.hcl a9ae65e ci: the shared pool takes build jobs only (Jody, 2026-11-09, option A) 0ca1e4e ROADMAP: #34, Anthropic workload identity for llmproxy owned by the pipeline (Jody, 2026-11-09) 9b02023 ROADMAP:...
+= thinking_tokens
+= thinking_tokens
+> Bash git show a9ae65e --stat && git show a9ae65e | head -150 && git diff
+< commit a9ae65e89acf0c32bae955b8818276ba710c11e0 Author: jodydadescott <jody@thescottsweb.com> Date:   Mon Nov 9 14:10:24 2026 -0700      ci: the shared pool takes build jobs only (Jody, 2026-11-09, option A)          The loopers' agent and control jobs filled every slot of the shared pool,     the o...
+= thinking_tokens
+= thinking_tokens
+Jody's a9ae65e explains the silent builds: agent jobs filled the only `build`-tagged runner (looper#113). The diff is intact on top of it. Commit and build.
+> Bash git add -A && git commit -q -F - <<'EOF' gitlab stack: tacplus-dev/cloud's nightly build on tacplus-dev/build (#25)  cloud's build.lock is on main (f9cdcbd), so its pin issue adds it to the nightly schedules #26 created: 06:00 UTC, an hour after the looper's, inputs repo: cloud and nightly: true, so...
+< d56e81e gitlab stack: tacplus-dev/cloud's nightly build on tacplus-dev/build (#25) pid 750
+> ToolSearch {"query":"select:Monitor","max_results":1}
+< 
+> Bash sleep 5; cat /tmp/build25.log
+= task_started
+= task_notification
+< [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/30470...
+= thinking_tokens
+= thinking_tokens
+> Bash while kill -0 750 2>/dev/null; do sleep 20; done; tail -30 /tmp/build25.log
+= background_tasks_changed
+= task_started
+< Command running in background with ID: breu5ajc1. Output is being written to: /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/breu5ajc1.output. You will be notified when it completes. To check interim output, use Read on...
+Meanwhile, I'll check whether the build is reporting commit statuses now.
+> Bash cd /builds/looper/cloud/issues/25; sleep 240; tail -5 /tmp/build25.log; for c in d56e81e a9ae65e f9cdcbd; do s=$(git rev-parse $c); echo "== $c"; gh api repos/tacplus-dev/cloud/commits/$s/statuses --jq '.[] | "\(.context) \(.state) \(.created_at) \(.target_url)"' 2>&1 | head -5; done
+= task_started
+= background_tasks_changed
+= task_updated
+< Command did not complete within its 120s timeout and was moved to the background (ID: bjdayq7rf). Output is being written to: /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bjdayq7rf.output. You will be notified when it...
+> Bash until [ -s /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bjdayq7rf.output ] && grep -q '== f9cdcbd' /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c526...
+= task_started
+= task_updated
+= task_notification
+= background_tasks_changed
+= task_notification
+< [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/30470...
+= thinking_tokens
+= thinking_tokens
+No status yet after 4 min. I'll check whether Jody's runner fix is applied and how looper#113 stands.
+> Bash gh issue view 113 --repo tacplus-dev/looper --comments 2>&1 | tail -40; echo ====; for r in looper operator; do s=$(gh api repos/tacplus-dev/$r/commits/main --jq .sha); echo "== $r $s"; gh api repos/tacplus-dev/$r/commits/$s/statuses --jq '.[] | "\(.context) \(.state) \(.created_at)"' | head -3; don...
+< author:	jodydadescott association:	member edited:	false status:	none -- Hub triage, 2026-11-09: approved, priority high. Build jobs are #84's gate path, and a build that never reports blocks every pinned repo's land. Have the build pipeline post its commit status (pending at start, then the result) ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash while kill -0 750 2>/dev/null; do sleep 15; [ $(( $(date +%s) % 900 )) -lt 15 ] && break; done; date -u; tail -5 /tmp/build25.log; gh api repos/tacplus-dev/cloud/commits/$(git -C /builds/looper/cloud/issues/25 rev-parse HEAD)/statuses --jq '.[] | "\(.context) \(.state) \(.created_at)"'
+= background_tasks_changed
+= task_started
+< Command running in background with ID: bh55yoos1. Output is being written to: /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bh55yoos1.output. You will be notified when it completes. To check interim output, use Read on...
+> Bash f=/builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bh55yoos1.output; until grep -q 'UTC' $f 2>/dev/null; do sleep 10; done; sleep 5; cat $f
+= task_started
+= background_tasks_changed
+= task_updated
+< Command did not complete within its 600s timeout and was moved to the background (ID: bz28sw28e). Output is being written to: /builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bz28sw28e.output. You will be notified when it...
+> Bash sleep 100; f=/builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bh55yoos1.output; date -u; cat $f; tail -3 /tmp/build25.log
+< <tool_use_error>Blocked: sleep 100 followed by: f=/builds/looper/cloud/homes/looper-25/tmp/claude-61000/-builds-looper-cloud-issues-25/fc30bbcb-6286-48ae-8c74-07848c5265fa/tasks/bh55yoos1.output date -u cat $f tail -3 /tmp/build25.log. To wait for a condition, use Monitor with an until-loop (e.g. `u...
+= thinking_tokens
+= thinking_tokens
+> Bash end=$(( $(date +%s) + 580 )); until ! kill -0 750 2>/dev/null || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -4 /tmp/build25.log
+= task_started
+= task_updated
+= task_notification
+= background_tasks_changed
+= task_updated
+= task_notification
+= background_tasks_changed
+= task_notification
+< Mon Nov  9 21:52:01 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+= thinking_tokens
+= thinking_tokens
+25 minutes in, still nothing. Is a9ae65e actually applied? I'll check how the `ci` stack gets applied.
+> Bash cd /builds/looper/cloud/issues/25; grep -n -A12 'apply:ci' .gitlab-ci.yml | head -50; grep -rn 'when: manual' .gitlab-ci.yml | head
+< grep: .gitlab-ci.yml: No such file or directory grep: .gitlab-ci.yml: No such file or directory
+> Bash cd /builds/looper/cloud/issues/25; ls -a; ls .github/workflows ci 2>/dev/null; grep -rln 'apply' .github ci 2>/dev/null | head
+< . .. .git .gitignore .tflint.hcl HISTORY.md LICENSE PROPOSALS.md README.md ROADMAP.md STATE.md bootstrap build.lock ci gates.yaml modules security-exceptions.yaml stacks tests ci: audit.sh build-ci.sh checks.sh dns.sh drift.sh expiry.sh gitlab-project.gitlab-ci.yml gitlab-provider.sh iam-ready.sh ku...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/cloud/issues/25; grep -n -B2 -A10 '^apply' ci/gitlab-project.gitlab-ci.yml | head -60; echo ===; cat security-exceptions.yaml; git log --oneline -3 -- security-exceptions.yaml
+< 154-  variables: { STACK: folder } 155- 156:apply:folder: 157-  extends: .apply 158-  stage: folder 159-  needs: [tools, plan:folder] 160-  variables: { STACK: folder } 161- 162-plan:ci: 163-  extends: .plan 164-  stage: projects 165-  needs: [tools, apply:folder] 166-  variables: { STACK: ci } 167-...
+= thinking_tokens
+= thinking_tokens
+Earlier issues (#3, #10, #24, #27) already settled the known security findings in `security-exceptions.yaml`. The build is what's left to wait on. I'll checkpoint, then keep waiting.
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 25 --checkpoint "d56e81e (cloud's nightly schedule) recommitted on main a9ae65e (Jody's runner fix for looper#113: the shared pool takes build jobs only); build 3047054112 requested 21:27Z, waiting. Left: build verdict, land, comment, close." 2>&1 | ta...
+< [2026-11-09T21:52:13Z] checkpoint of #25 (a step) pushed to looper/cloud-25:  6 files changed, 338 insertions(+), 4 deletions(-)
+> Bash end=$(( $(date +%s) + 585 )); until ! kill -0 750 2>/dev/null || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -4 /tmp/build25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:02:05 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/cloud/issues/25; s=$(git rev-parse a9ae65e); gh api repos/tacplus-dev/cloud/commits/$s/check-runs --jq '.check_runs[] | "\(.name) \(.status) \(.conclusion)"' | head; curl -s -o /dev/null -w '%{http_code}\n' https://gitlab.com/api/v4/projects/tacplus-dev%2Fbuild/pipelines/3047054112
+< 404
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+I can't see the pipeline (GitLab 404, no credential), and the build tool reports nothing before its verdict. Waiting.
+> Bash end=$(( $(date +%s) + 585 )); until ! kill -0 750 2>/dev/null || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -4 /tmp/build25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:12:09 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+> Bash gh api repos/tacplus-dev/looper/issues/113/comments --jq '.[-3:][] | "\(.created_at) \(.user.login): \(.body[0:600])"'; gh issue view 113 --repo tacplus-dev/looper --json state --jq .state
+< 2026-11-09T07:02:18Z jodydadescott: Hub triage, 2026-11-09: approved, priority high. Build jobs are #84's gate path, and a build that never reports blocks every pinned repo's land. Have the build pipeline post its commit status (pending at start, then the result) through the reader or manager App's ...
+> Bash end=$(( $(date +%s) + 590 )); until ! kill -0 750 2>/dev/null || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -3 /tmp/build25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:22:05 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/cloud/issues/25; /usr/local/bin/repo-looper --repo cloud --issue 25 --checkpoint "d56e81e (cloud's nightly schedule) on main a9ae65e; build 3047054112 pending since 21:27Z (no runner yet, looper#113); land queued 22:22Z. Left: verdicts, then comment (pinned build seen or not) and c...
+< [2026-11-09T22:22:13Z] checkpoint of #25 (a step) pushed to looper/cloud-25:  6 files changed, 381 insertions(+), 4 deletions(-) pid 10487
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -3 /tmp/build25.log; echo ---; tail -5 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:32:06 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -3 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:41:59 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -3 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 22:51:51 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+= thinking_tokens
+= thinking_tokens
+> Bash gh search issues --owner tacplus-dev --updated '>=2026-11-09T21:10:00Z' --json repository,number,title --limit 30 --jq '.[] | "\(.repository.name)#\(.number) \(.title[0:60])"'
+< cloud#33 gitlab stack: no nightly build schedule for tacplus-dev/clus cluster#17 deployments.yaml: the test-idp deployment (no operator): ope cloud#32 dev: the test IdP's certificate secrets, challenge zone and  cloud#29 ci: the runner pools' instance groups keep stuck VM creation messaging#14 Relea...
+= thinking_tokens
+= thinking_tokens
+cloud#33 may touch the same nightly-builds file, and messaging#14 looks like a security finding from a build that ran. Checking both.
+> Bash gh issue view 33 --repo tacplus-dev/cloud --comments | head -60; echo =====; gh api repos/tacplus-dev/messaging/issues/14/comments --jq '.[-2:][] | "\(.created_at) \(.user.login): \(.body[0:500])"'
+< author:	jodydadescott association:	member edited:	false status:	none -- Hub triage, 2026-11-09: approved, with cloud#31. Better still, derive the schedule list from the pinned repositories rather than a hand list, so a newly pinned repo is never missed. -- author:	tacplus-looper association:	none ed...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -3 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 23:01:56 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -3 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 23:11:48 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -3 /tmp/land25.log; git -C /builds/looper/cloud/issues/25 fetch -q origin main && git -C /builds/looper/...
+= task_started
+= task_notification
+< Mon Nov  9 23:21:41 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+= thinking_tokens
+= thinking_tokens
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_updated
+= task_notification
+= background_tasks_changed
+= task_notification
+< Mon Nov  9 23:31:36 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+That notice was my watcher hitting its time limit. The build process (pid 750) is still running. Waiting on.
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; kill -0 750 && echo build running; tail -2 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 23:41:29 UTC 2026 build running [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] check...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_notification
+< Mon Nov  9 23:51:22 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_notification
+< Tue Nov 10 00:01:14 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -2 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log; gh api repos/tacplus-dev/cloud/issues/33/comments --jq '.[-1] | "\(.created_at) \(.u...
+= task_started
+= task_notification
+< Tue Nov 10 00:11:07 UTC 2026 [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplus-dev/build/-/pipelines/3047054112 of cloud d56e81e, the gates full on base a9ae65e --- [2026-11-09T22:22:16Z] checkpoint of #25 (...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; tail -4 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_notification
+< Tue Nov 10 00:21:00 UTC 2026 [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitlab.com/tacplu...
+> Bash end=$(( $(date +%s) + 590 )); until { ! kill -0 750 2>/dev/null && ! kill -0 10487 2>/dev/null; } || [ $(date +%s) -ge $end ]; do sleep 10; done; date -u; kill -0 750 2>/dev/null || { wait 750 2>/dev/null; echo build exited; }; tail -4 /tmp/build25.log; echo ---; tail -2 /tmp/land25.log
+= task_started
+= task_notification
+< Tue Nov 10 00:30:53 UTC 2026 build exited [2026-11-09T21:27:45Z] checkpoint of #25 (a build) pushed to looper/cloud-25:  6 files changed, 250 insertions(+), 4 deletions(-) [2026-11-09T21:27:45Z] build requested: cloud d56e81e, the gates full (README.md matches no gate set) the build job https://gitl...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /builds/looper/cloud/issues/25; /usr/local/bin/repo-looper --repo cloud --issue 25 --checkpoint "d56e81e (cloud's nightly schedule) on main a9ae65e, land queued 22:22Z. Build 3047054112 (21:27Z) again 'no verdict within 3h', after a9ae65e: tacplus-dev/build's jobs still not running (looper#113). ...
+< [2026-11-10T00:31:13Z] checkpoint of #25 (a step) pushed to looper/cloud-25:  7 files changed, 496 insertions(+), 4 deletions(-) https://github.com/tacplus-dev/cloud/issues/25#issuecomment-6755354290
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash gh issue view 113 --repo tacplus-dev/looper --json state --jq .state && echo 'Blocked-by: tacplus-dev/looper#113' > /builds/gXYQvlSPm/0/tacplus-dev/looper/looper-runs/20261109T212723Z-issue-25/outcome && cat /builds/gXYQvlSPm/0/tacplus-dev/looper/looper-runs/20261109T212723Z-issue-25/outcome
+< OPEN Blocked-by: tacplus-dev/looper#113
+Issue #25 is still open: nothing landed this run, and no build of cloud from the pin has run yet, so its second acceptance criterion isn't met.
+
+- **Land:** the previous land came back red only because its build never ran. I recommitted the same change on current main as d56e81e: cloud's nightly build at 06:00 UTC, its plan-test assertion, and the README and STATE.md lines. Its land has been queued with the manager since 22:22Z, with no verdict yet. If my time runs out, the manager still lands it afterwards and posts the result on the issue.
+- **Build of cloud from the pin:** my verification build (pipeline 3047054112) started from `build.lock`, so this is not a "no pin" failure. It still returned "no verdict within 3h", even though Jody's runner change (a9ae65e, the shared pool takes build jobs only) was committed 17 minutes earlier. The cause is tacplus-dev/looper#113: the build jobs are stuck waiting for a free slot on the only runner that takes them. I can't tell whether a9ae65e wasn't applied yet or isn't enough. That pipeline is not visible to me (404) and I have no GitLab credential.
+- **Security findings:** with no build running, I've seen no security run. The vulnerabilities found so far are each either fixed or accepted until an expiry date in `security-exceptions.yaml` (from #3, #10, #23, #24, #27 and cluster#16).
+- **Conflict ahead:** cloud#33 is queued ahead of this land. It deletes `stacks/gitlab/nightly-builds.yaml` and builds the schedule list from the pinned repositories, cloud included. If it lands first, my change conflicts and isn't needed: keep #33's deletion and drop mine.
+- **Gates:** I ran none locally; this machine has no `tofu` and no container runtime. The only gate run was that build, which gave no verdict. The repository has no service handlers to check for trace propagation.
+
+I posted all of this on the issue. I also wrote `Blocked-by: tacplus-dev/looper#113` to the outcome file, so the next run starts once builds can actually run, rather than spending another 3h on a build that won't start.
+= success: Issue #25 is still open: nothing landed this run, and no build of cloud from the pin has run yet, so its second acceptance criterion isn't met.
+
+- **Land:** the previous land came back red only because its build never ran. I recommitted the same change on current main as d56e81e: cloud's nightly build at 06:00 UTC, its plan-test assertion, and the README and STATE.md lines. Its land has been queued with the manager since 22:22Z, with no verdict yet. If my time runs out, the manager still lands it afterwards and posts the result on the issue.
+- **Build of cloud from the pin:** my verification build (pipeline 3047054112) started from `build.lock`, so this is not a "no pin" failure. It still returned "no verdict within 3h", even though Jody's runner change (a9ae65e, the shared pool takes build jobs only) was committed 17 minutes earlier. The cause is tacplus-dev/looper#113: the build jobs are stuck waiting for a free slot on the only runner that takes them. I can't tell whether a9ae65e wasn't applied yet or isn't enough. That pipeline is not visible to me (404) and I have no GitLab credential.
+- **Security findings:** with no build running, I've seen no security run. The vulnerabilities found so far are each either fixed or accepted until an expiry date in `security-exceptions.yaml` (from #3, #10, #23, #24, #27 and cluster#16).
+- **Conflict ahead:** cloud#33 is queued ahead of this land. It deletes `stacks/gitlab/nightly-builds.yaml` and builds the schedule list from the pinned repositories, cloud included. If it lands first, my change conflicts and isn't needed: keep #33's deletion and drop mine.
+- **Gates:** I ran none locally; this machine has no `tofu` and no container runtime. The only gate run was that build, which gave no verdict. The repository has no service handlers to check for trace propagation.
+
+I posted all of this on the issue. I also wrote `Blocked-by: tacplus-dev/looper#113` to the outcome file, so the next run starts once builds can actually run, rather than spending another 3h on a build that won't start.
