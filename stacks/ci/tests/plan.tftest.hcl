@@ -94,15 +94,15 @@ run "settings" {
     error_message = "The pools are not shared, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 2 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 3
-    error_message = "The shared pool is not one always-on t2a-standard-8 running two jobs, up to three VMs (temporary, Jody 2026-11-07)."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 25 && output.runner_pools.shared.idle_count == 3 && output.runner_pools.shared.max_instances == 3
+    error_message = "The shared pool is not three always-on t2a-standard-8s with no slots (25 jobs a VM, Jody 2026-11-10)."
   }
   assert {
-    condition     = output.runner_pools.shared.job.cpus == "4" && output.runner_pools.shared.job.memory == "14g" && output.runner_pools.shared.job.memory_swap == "14g"
-    error_message = "A shared pool's job is not limited to 4 CPUs and 14g, without swap."
+    condition     = output.runner_pools.shared.job.cpus == "8" && output.runner_pools.shared.job.memory == "28g" && output.runner_pools.shared.job.memory_swap == "28g" && output.runner_pools.shared.capacity * output.runner_pools.shared.job.disk_gb + output.runner_pools.shared.os_disk_gb <= 500
+    error_message = "A shared pool's job may not use the whole VM's CPUs and all but 4 GB of its memory, without swap, or the VM's disk is over 500 GB."
   }
   assert {
-    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false } && !output.runner_pools.shared.service_account
+    condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false } && !output.runner_pools.shared.service_account
     error_message = "The shared pool is not an unprotected group runner of tacplus-dev under today's tags, with no account on its VM."
   }
   assert {

@@ -217,9 +217,10 @@ locals {
   # The always-on shared VM's machine type (Jody, #5: "B for now"). Moving to t2a-standard-16, four jobs at once, is
   # this one line, on Jody's word (if the recap shows jobs queueing): its capacity and its disk follow.
   shared_machine_type = "t2a-standard-8"
-  # How many jobs a machine type runs at once at a job's limits below; what is left is the OS's, Docker's and the
-  # runner's helper containers' (8 vCPU and 32 GB: two jobs of 4 CPUs and 14g, 4 GB left).
-  shared_capacity = { "t2a-standard-8" = 2, "t2a-standard-16" = 4 }
+  # How many jobs a machine type runs at once. Jody, 2026-11-10: "If it's a looper and it wants to run, it runs,
+  # period" (as on his Mac): no slots. A job is not a reservation of CPUs or memory; the jobs share the VM like
+  # processes, and 25 is a ceiling no day reaches, not a slot count.
+  shared_capacity = { "t2a-standard-8" = 25, "t2a-standard-16" = 25 }
 
   # The job containers' settings, the agents' and the builds' kept apart (#5): the shared pool runs both under one
   # registration, so with one setting, today the builds' (the same as the agents'). If the build jobs need settings
@@ -230,6 +231,10 @@ locals {
   jobs = {
     agent = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
     build = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
+    # The shared pool's (Jody, 2026-11-10, no slots): a job may use the whole VM's CPUs and all but 4 GB of its
+    # memory (the OS's, Docker's and the runner's), so one job can't starve the VM's own processes. Its disk share is
+    # what a looper job needs (its checkout and its tools' caches); the disk is the VM's, shared.
+    shared = { cpus = "8", memory = "28g", memory_swap = "28g", disk_gb = 12, security_opt = [] }
   }
 }
 
@@ -249,16 +254,16 @@ output "runner_pools" {
     # max_instances 3 (CPUS_ALL_REGIONS is 32: three 8-CPU VMs and the manager), 2026-11-08. Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
-    # Build jobs only (tacplus-dev/build's, tag build), Jody 2026-11-09 ("A"): the loopers' agent and control jobs
-    # filled every slot and pinned repositories' build jobs never started (tacplus-dev/looper#113). The agents run on
-    # the jody1-328023 pools until the in-cluster runners take them (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
+    # The three always-on nodes for now (Jody, 2026-11-10, "go"): every looper, control and build job, with no slots
+    # (capacity above). It replaces the jody1-328023 pools, whose settings change only over SSH. The in-cluster
+    # runners take this arrangement over (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
     # through Workload Identity Federation (the ci module's build cache).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 1, idle_time = "30m"
-      job             = local.jobs.build
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 3, idle_time = "30m"
+      job             = local.jobs.shared
       service_account = false
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16", "build"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
     deploy = {
