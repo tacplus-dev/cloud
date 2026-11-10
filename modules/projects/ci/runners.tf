@@ -96,11 +96,12 @@ resource "google_compute_instance_template" "pool" {
   }
 
   scheduling {
-    automatic_restart           = false
-    on_host_maintenance         = "TERMINATE"
-    provisioning_model          = each.value.spot ? "SPOT" : "STANDARD"
-    preemptible                 = each.value.spot
-    instance_termination_action = each.value.spot ? "DELETE" : null
+    # A spot VM in a managed instance group takes GCP's default termination action (STOP; DELETE is refused there,
+    # 2026-11-10): the group recreates a reclaimed VM, and the manager's autoscaler removes the ones it no longer needs.
+    automatic_restart   = false
+    on_host_maintenance = "TERMINATE"
+    provisioning_model  = each.value.spot ? "SPOT" : "STANDARD"
+    preemptible         = each.value.spot
   }
 
   # Vanilla Container-Optimized OS (decisions/builds-in-containers-2026-11-03.md): no startup-script, nothing installed
