@@ -5,7 +5,7 @@
 # The gitlab provider (gitlabhq/gitlab), built from its source (#3). Upstream's 19.5.0, its latest release, is built
 # with go1.26.5 and x/net v0.58.0: it lacks Go's crypto/x509, crypto/tls and net/http fixes (go1.26.6 to go1.26.10)
 # and x/net's (v0.60.0, v0.62.0), and it is the provider that talks to gitlab.com with the project's token. This
-# builds the same release, its tag at the pinned commit, with go1.26.10 and x/net v0.62.0, every module checked
+# builds the same release, its tag at the pinned commit, with go1.27.4 and x/net v0.62.0, every module checked
 # against the Go checksum database, as upstream builds it (CGO_ENABLED=0, -trimpath, its ldflags) and with no VCS
 # stamp, so the build is reproducible: each one is refused unless its SHA-256 is the pinned one. OpenTofu installs
 # it from the mirror only (ci/tofurc.sh), and the lock files hold this build's hashes, not upstream's (ci/lock.sh).
@@ -19,13 +19,13 @@ die() { echo "gitlab-provider.sh: $*" >&2; exit 1; }
 version=19.5.0
 commit=2929be292a5961995e47e5776b3f358d53e9ef9b   # tag v19.5.0
 repo=https://gitlab.com/gitlab-org/terraform-provider-gitlab.git
-go_version=go1.26.10
+go_version=go1.27.4
 x_net=v0.62.0
 declare -A sha256=(
-  [linux_arm64]=b8a330b43975a4e5b1ce72fc1624df162b28ae646b8c302dfdca04ab4d5e339c
-  [linux_amd64]=95f075c5e8467be849e6ce720bd7d81b38f2fd4571e1c7a9e06b29abd1ea6e73
-  [darwin_arm64]=f0a861afcc81376ee82631b897cdd2678eedc6fc30d68afb757ffcd97b54e9e7
-  [darwin_amd64]=1808cb4d1741ddd66e68f1cd077f252f7148a1cd9334a0f65c6b69cbe8d21473
+  [linux_arm64]=cd32aa3cdb9f0702a13f9fa47183ed1d5fcd4b57933de4d63c7083d05caf350e
+  [linux_amd64]=01eab6040c1dd2d98e3487a00bdd0003e423038331a1c47d73c4edf107483cba
+  [darwin_arm64]=f9dab24327d2c6a00457f91adc77c5171bf0f8d1cc555a8debafd1d3e0d0ff7e
+  [darwin_amd64]=5629e23dfa93df5750840420b39f06ec3a1b7ff5f22191965bb6bc6335ae32e7
 )
 
 mirror=${1:?usage: ci/gitlab-provider.sh MIRROR [OS_ARCH...]}

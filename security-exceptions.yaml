@@ -7,23 +7,25 @@
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
 # ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are GitLab Runner and its fleeting plugin,
-# built from source with go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2 (ci/runner.sh, #40); nor are the
-# scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor gitleaks' and
+# built from source with go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2 (ci/runner.sh, #40); nor are the Go
+# standard library findings of what we build (the tools, the scanners and the four providers, ci/tools.sh: GO-2026-6859
+# among them, #39), fixed by building them with the latest Go, nor is the google provider's x/net, built with v0.62.0
+# (ci/google-provider.sh, #39), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
 # versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest but for its gh's x/net (CVE-2026-78661, #27).
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
 # binaries, by pin:
 #
 #   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866
-#   hashicorp/google 8.9.0 (stacks/*/.terraform.lock.hcl) GO-2026-5932 6860 6866
+#   hashicorp/google 8.9.0 (ci/google-provider.sh, #39)   GO-2026-5932
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
-#   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-6865
+#   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-5932 6860 6865 6866
 #   the CI image build:2.6, v2.6.1's digest: its gh       CVE-2026-78661 (Trivy; tacplus-dev/tacplus#350 rebuilds it)
 #   the CI image build:2.6, its zlib1g                    CVE-2026-85091 76844 (Trivy; the image rebuild, cluster#16)
 exceptions:
   - id: GO-2026-5932
-    reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
+    reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6179
@@ -59,11 +61,11 @@ exceptions:
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6860
-    reason: "x/net html quadratic text-node coalescing (OpenTofu, the google provider, tflint and its ruleset): the HTML they parse, if any, is from this repository, the pinned registries and Google APIs. Fixed in x/net v0.62.0; no release of them with it yet."
+    reason: "x/net html quadratic text-node coalescing (OpenTofu, tflint and its ruleset, Trivy): the HTML they parse, if any, is from this repository, the pinned registries and Google APIs. Fixed in x/net v0.62.0; no release of them with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6866
-    reason: "x/net html raw-text rendering namespaces (OpenTofu, the google provider, tflint and its ruleset): no untrusted HTML is rendered. Fixed in x/net v0.62.0; no release of them with it yet."
+    reason: "x/net html raw-text rendering namespaces (OpenTofu, tflint and its ruleset, Trivy): no untrusted HTML is rendered. Fixed in x/net v0.62.0; no release of them with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6865

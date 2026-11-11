@@ -4,12 +4,12 @@
 #
 # The anthropic provider (ippontech/anthropic), built from its source (#34), as the gitlab provider is
 # (ci/gitlab-provider.sh). It is the provider that holds the pipeline's org:admin token to the Anthropic organization
-# (the anthropic stack), so it is our own build of its pinned release: the tag at the pinned commit, with the Go its
-# go.mod names (go1.27.3), every module checked against the Go checksum database, as upstream builds it
-# (CGO_ENABLED=0, -trimpath, its ldflags) and with no VCS stamp, so the build is reproducible: each one is refused
-# unless its SHA-256 is the pinned one. OpenTofu installs it from the mirror only (ci/tofurc.sh), the lock files hold
-# this build's hashes (ci/lock.sh), and the security job scans it (govulncheck). The provider releases often: a new
-# release is a commit of its version, commit and builds' SHA-256, like any other pin.
+# (the anthropic stack), so it is our own build of its pinned release: the tag at the pinned commit, with go1.27.4
+# (its go.mod names go1.27.3, without GO-2026-6859's net/http fix, #39), every module checked against the Go checksum
+# database, as upstream builds it (CGO_ENABLED=0, -trimpath, its ldflags) and with no VCS stamp, so the build is
+# reproducible: each one is refused unless its SHA-256 is the pinned one. OpenTofu installs it from the mirror only
+# (ci/tofurc.sh), the lock files hold this build's hashes (ci/lock.sh), and the security job scans it (govulncheck).
+# The provider releases often: a new release is a commit of its version, commit and builds' SHA-256, like any other pin.
 #
 #   ci/anthropic-provider.sh MIRROR [OS_ARCH...]   # into MIRROR, an unpacked filesystem mirror; default the host's
 #                                                  # platform. Needs git and go (the toolchain is GOTOOLCHAIN's).
@@ -19,12 +19,12 @@ die() { echo "anthropic-provider.sh: $*" >&2; exit 1; }
 version=1.92.0
 commit=6b7d1bc71b17f3102d855018130c487806575415   # tag v1.92.0
 repo=https://github.com/ippontech/terraform-provider-anthropic.git
-go_version=go1.27.3
+go_version=go1.27.4
 declare -A sha256=(
-  [linux_arm64]=50b696493af6a29a4e639c775959c3e0a80f654d7b5d0cbcd1caafd21f7396eb
-  [linux_amd64]=1e3f5c42b040cef33a792caf16f87241203374ddae26fb7c786023594dbedd6a
-  [darwin_arm64]=e0b5af053beded9615a8f40ac0650f32450028c7a9bed70a1290a2aff35a689c
-  [darwin_amd64]=8fdc19c08fcb39197d017c498c285427854613415301d90187c8b4bb2fa93b82
+  [linux_arm64]=89f170bfbc23b892083fb7e79f1a9618913baf222d29222cdf3a839c2589b4ae
+  [linux_amd64]=69c8fe11067a1fa6e2a66d728ddc01c8eaefe3982854af828e7025f2471ba05f
+  [darwin_arm64]=9a372759815c58a20253d19658e984835a5d934edfa973c50bfe88356620efc8
+  [darwin_amd64]=2af3c86bebdf4b0aeeb900dbb1d40bffb1d0d71ec536b50cf2f0b6769e71ba8c
 )
 
 mirror=${1:?usage: ci/anthropic-provider.sh MIRROR [OS_ARCH...]}

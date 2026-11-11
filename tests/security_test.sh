@@ -25,13 +25,13 @@ for t in gitleaks yq jq git; do command -v "$t" >/dev/null || { echo "FAIL no $t
 # The base repository: what ci/security.sh reads, committed, and a bin/ of the pinned binaries' names (empty files:
 # the govulncheck stub reads none), the stubs and the real gitleaks and yq.
 base=$work/base
-mkdir -p "$base/ci" "$base/bin/tflint.d/x" "$base/bin/providers/x" "$base/bin/scan/plugins/x"
+mkdir -p "$base/ci" "$base/bin/tflint.d/x" "$base/bin/providers/x" "$base/bin/scan"
 cp "$here/ci/security.sh" "$here/ci/gitlab-project.gitlab-ci.yml" "$base/ci/"
 printf '/bin/\n/security/\n' > "$base/.gitignore"
 echo "a clean tree" > "$base/README.md"
 printf 'exceptions:\n' > "$base/security-exceptions.yaml"
 for b in tofu tflint tflint.d/x/tflint-ruleset-google providers/x/terraform-provider-gitlab_v1 \
-         scan/plugins/x/terraform-provider-google_v1 providers/x/terraform-provider-kubernetes_v3 providers/x/terraform-provider-anthropic_v1 scan/gitlab-runner \
+         providers/x/terraform-provider-google_v8 providers/x/terraform-provider-kubernetes_v3 providers/x/terraform-provider-anthropic_v1 scan/gitlab-runner \
          scan/fleeting-plugin-googlecloud; do
   : > "$base/bin/$b"
 done
@@ -74,7 +74,7 @@ fi
 image=$(yq -r .default.image "$here/ci/gitlab-project.gitlab-ci.yml")
 grep -qx "trivy $image" "$r/stub.log" 2>/dev/null && ok "trivy scans the CI image, by its digest" || fail "trivy scanned: $(cat "$r/stub.log" 2>/dev/null)"
 for b in tofu tflint tflint-ruleset-google yq gitleaks osv-scanner trivy govulncheck terraform-provider-gitlab_v1 \
-         terraform-provider-google_v1 terraform-provider-kubernetes_v3 terraform-provider-anthropic_v1 gitlab-runner fleeting-plugin-googlecloud; do
+         terraform-provider-google_v8 terraform-provider-kubernetes_v3 terraform-provider-anthropic_v1 gitlab-runner fleeting-plugin-googlecloud; do
   grep -q "/$b\$" "$r/log" || fail "govulncheck did not scan $b"
 done
 ok "govulncheck scans every pinned binary"

@@ -1,18 +1,22 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#34).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#39).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
-  finding with a fix, its `gh`'s x/net CVE-2026-78661, accepted in `security-exceptions.yaml` until 2026-12-06, #27); OpenTofu 1.13.2, providers `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock
-  files), tflint 0.65.0 (google ruleset 0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0,
-  govulncheck v1.1.4 (built from their modules with go1.27.3; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and
-  gitleaks brotli v1.2.7, #24) and Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). The `gitlab`
-  provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
-  #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes; the `kubernetes` provider is
-  too, its v3.4.0 tag with go1.27.3, x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18) and kin-openapi v0.152.0, its
-  `manifest/openapi` ported to it by `ci/kubernetes-provider.patch` (#23): no kin-openapi finding, none accepted; and the
-  `anthropic` provider (`ippontech/anthropic`) is our build of its v1.92.0 tag with go1.27.3 (`ci/anthropic-provider.sh`, #34).
+  `ghcr.io/tacplus-dev/tacplus/build:2.6.8` by digest (#39: the first 2.6 build with go1.27.4; 2.6.4's had go1.27.3; its
+  `gh`'s x/net CVE-2026-78661 accepted in `security-exceptions.yaml` until 2026-12-06, #27); OpenTofu 1.13.2, providers
+  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock files), tflint 0.65.0 (google ruleset
+  0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0, govulncheck v1.1.4 (built
+  from their modules; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and gitleaks brotli v1.2.7, #24) and
+  Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). Since #39 (GO-2026-6859, net/http) everything but shellcheck
+  is built here with **go1.27.4**: OpenTofu, tflint, its ruleset and Trivy from their release's module source (pinned
+  by module hash and by the build's SHA-256, `srcbuild`), yq and the scanners from their modules, and the four
+  providers from their tags, reproducibly, each by its pinned SHA-256 (`ci/gitlab-provider.sh`, #3, x/net v0.62.0;
+  `ci/kubernetes-provider.sh`, #18, x/net v0.62.0 and kin-openapi v0.152.0, its `manifest/openapi` ported by
+  `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0; and `ippontech/anthropic` v1.92.0,
+  the `anthropic` stack's, `ci/anthropic-provider.sh`, #34), installed only from
+  `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.5.2 and
+  the fleeting plugin v1.3.1 are built here with go1.27.4 too (`ci/runner.sh`, #40): GO-2026-6859 has no exception.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
@@ -207,7 +211,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
   `security-exceptions.yaml` enforced (an expired entry fails); its report `security/report.json`, the artifact. Its
   first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
-  standard library ones by building them with go1.27.3, gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had one, its `gh`'s x/net
+  standard library ones by building them with the latest Go (go1.27.4 since #39), gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had one, its `gh`'s x/net
   CVE-2026-78661, accepted until **2026-12-06** (the hub's decision on #27) until tacplus-dev/tacplus#350 ships a `gh`
   with x/net >= v0.62.0 and the digest moves; #23's (kin-openapi) are fixed by the kubernetes
   provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
@@ -245,7 +249,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   `svac_01EoVk8wqp7sVYgBkRyyd5MT`, `fdrl_01Fvxu1oSKHN6rwtdZmRbGY8`, the membership in `wrkspc_017AfVbSBgLY399kXGDRtQ6e`);
   `prevent_destroy` and an `archived_at` postcondition refuse a re-create under a new ID; `ci/policy.sh` refuses an
   adoption with a change, a rule of another scope than `workspace:developer`/`workspace:inference` and a non-developer
-  account. The provider is our reproducible build of `ippontech/anthropic` 1.92.0 with go1.27.3
+  account. The provider is our reproducible build of `ippontech/anthropic` 1.92.0 with go1.27.4 (#39)
   (`ci/anthropic-provider.sh`), installed from `bin/providers` only, locked, scanned by govulncheck. Its credential is no
   key: the jobs' GitLab ID tokens, one per exchange (`ci/anthropic-token.sh`), through a bootstrap `org:admin` rule made
   by hand, which the stack only reads and checks; `ci/tofu.sh` reports a failing check in the plan and the drift.

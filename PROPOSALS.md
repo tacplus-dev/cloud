@@ -48,6 +48,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   `default.image` and `build.lock`; `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`.
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
+- **The fixed dependencies in the tools we now build** (looper, #39, 2026-11-11). What: OpenTofu, tflint, its google
+  ruleset and Trivy are built from their module source since #39 (`srcbuild` in `ci/tools.sh`), so the same build can
+  require the fixed x/net (v0.62.0), grpc (v1.83.2), x/mod (v0.40.0) and klauspost/compress (v1.20.2), as the providers'
+  and gitleaks' builds do, and drop most of OpenTofu's, tflint's and Trivy's `security-exceptions.yaml` entries
+  (GO-2026-6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866) before they expire on 2026-12-03 and 2026-12-06.
+  Why: a release's dependencies we can fix in our own build need no exception.
+- **Drop our builds of OpenTofu, tflint, its ruleset, Trivy and the google provider** (looper, #39). What: when each
+  publishes a release built with go >= 1.27.4 (or >= 1.26.11), pin it by its release SHA-256 again (`ci/tools.sh`'s
+  `fetch`; the google provider from the registry, removing `ci/google-provider.sh`, its calls and its entries in
+  `ci/tofurc.sh` and `tests/providers_test.sh`, and running `ci/lock.sh`). Why: the builds cost every `tools` job, and
+  upstream's signed release is the normal path.
 - **gitleaks and OSV-Scanner on their releases' dependencies again** (looper, #24, 2026-11-07). What: drop the
   `klauspost_compress` and `brotli` requirements of their `gobuild` in `ci/tools.sh` when a gitleaks release past
   v8.30.1 requires klauspost/compress >= v1.20.2 and brotli >= v1.2.7, and an OSV-Scanner release past v2.7.0

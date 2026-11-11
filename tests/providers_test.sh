@@ -2,8 +2,8 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tests that the gitlab, kubernetes and anthropic providers are only ever our own builds (ci/gitlab-provider.sh, #3;
-# ci/kubernetes-provider.sh, #18; ci/anthropic-provider.sh, #34): every lock file that names one pins it at the version its script builds, by the
+# Tests that the gitlab, kubernetes, google and anthropic providers are only ever our own builds (ci/gitlab-provider.sh, #3;
+# ci/kubernetes-provider.sh, #18; ci/google-provider.sh, #39; ci/anthropic-provider.sh, #34): every lock file that names one pins it at the version its script builds, by the
 # hashes of its pinned builds for each platform and by nothing else (none of upstream's); the stacks require that
 # version; ci/tofurc.sh installs them from bin/'s mirror and never from a registry, and every script that runs tofu
 # uses it. And that security-exceptions.yaml is what looper-scan reads (tacplus-dev/looper#49): a list of entries with
@@ -49,6 +49,7 @@ own() {
 }
 own gitlab-provider.sh gitlabhq/gitlab
 own kubernetes-provider.sh hashicorp/kubernetes
+own google-provider.sh hashicorp/google
 own anthropic-provider.sh ippontech/anthropic
 
 # ci/tofurc.sh, sourced from a copy of the repository elsewhere: the mirror is that copy's bin/providers.
@@ -58,12 +59,12 @@ mkdir -p "$work/repo/bin" && cp -r "$here/ci" "$work/repo/"
 cfg=$(bash -c 'set -eu; source "$1/ci/tofurc.sh"; echo "$TF_CLI_CONFIG_FILE"' - "$work/repo" 2>&1)
 if [ -f "$cfg" ]; then
   flat=$(tr -s ' \n' ' ' < "$cfg")
-  [[ $flat == *'filesystem_mirror { path = "'"$work"'/repo/bin/providers" include = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes", "registry.opentofu.org/ippontech/anthropic"] }'* ]] &&
-    ok "ci/tofurc.sh: gitlabhq/gitlab, hashicorp/kubernetes and ippontech/anthropic from the checkout's bin/providers" ||
-    fail "ci/tofurc.sh: the mirror is not bin/providers for gitlabhq/gitlab, hashicorp/kubernetes and ippontech/anthropic only: $flat"
-  [[ $flat == *'direct { exclude = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes", "registry.opentofu.org/ippontech/anthropic"] }'* ]] &&
-    ok "ci/tofurc.sh: gitlabhq/gitlab, hashicorp/kubernetes and ippontech/anthropic never from a registry" ||
-    fail "ci/tofurc.sh: the registry is not refused gitlabhq/gitlab, hashicorp/kubernetes and ippontech/anthropic: $flat"
+  [[ $flat == *'filesystem_mirror { path = "'"$work"'/repo/bin/providers" include = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes", "registry.opentofu.org/hashicorp/google", "registry.opentofu.org/ippontech/anthropic"] }'* ]] &&
+    ok "ci/tofurc.sh: gitlabhq/gitlab, hashicorp/kubernetes, hashicorp/google and ippontech/anthropic from the checkout's bin/providers" ||
+    fail "ci/tofurc.sh: the mirror is not bin/providers for gitlabhq/gitlab, hashicorp/kubernetes, hashicorp/google and ippontech/anthropic only: $flat"
+  [[ $flat == *'direct { exclude = ["registry.opentofu.org/gitlabhq/gitlab", "registry.opentofu.org/hashicorp/kubernetes", "registry.opentofu.org/hashicorp/google", "registry.opentofu.org/ippontech/anthropic"] }'* ]] &&
+    ok "ci/tofurc.sh: gitlabhq/gitlab, hashicorp/kubernetes, hashicorp/google and ippontech/anthropic never from a registry" ||
+    fail "ci/tofurc.sh: the registry is not refused gitlabhq/gitlab, hashicorp/kubernetes, hashicorp/google and ippontech/anthropic: $flat"
 else
   fail "ci/tofurc.sh exports no TF_CLI_CONFIG_FILE: $cfg"
 fi

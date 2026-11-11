@@ -5,7 +5,7 @@
 # The kubernetes provider (hashicorp/kubernetes), built from its source (#18), as the gitlab provider is
 # (ci/gitlab-provider.sh). Upstream's 3.4.0, its latest release, is built with go1.26.3: it lacks Go's crypto/x509,
 # crypto/tls and net/http fixes since, and it is the provider that holds the pipeline's token to dev's cluster. This
-# builds the same release, its tag at the pinned commit, with go1.27.3, x/net v0.62.0 and kin-openapi v0.152.0 (#23: its
+# builds the same release, its tag at the pinned commit, with go1.27.4, x/net v0.62.0 and kin-openapi v0.152.0 (#23: its
 # v0.111.0 has the advisories of #18 and #23, fixed by v0.149.0), every module checked against the Go checksum
 # database, as upstream builds it (CGO_ENABLED=0, -trimpath, -buildvcs=false, its ldflags), so the build is
 # reproducible: each one is refused unless its SHA-256 is the pinned one. kin-openapi's API changed since v0.111.0:
@@ -22,15 +22,15 @@ die() { echo "kubernetes-provider.sh: $*" >&2; exit 1; }
 version=3.4.0
 commit=f76a1ae8afd51777c8ef068b3cfaf34d58a32803   # tag v3.4.0
 repo=https://github.com/hashicorp/terraform-provider-kubernetes.git
-go_version=go1.27.3
+go_version=go1.27.4
 x_net=v0.62.0
 kin_openapi=v0.152.0
 here=$(cd "$(dirname "$0")/.." && pwd)
 declare -A sha256=(
-  [linux_arm64]=12e0a98fa7ed0cf8cc76069e973c899f580f625969b56efe1ce3d4d22e40f889
-  [linux_amd64]=840a70def64f06460541aaf71eea03e953375af7379964850583d092a67a426b
-  [darwin_arm64]=15c404312790e75e97048aa3f003bc866ccd68b9afbf87897888df67f8273600
-  [darwin_amd64]=2bbb5c69760adb0bbedb9b69fda319b64fef2b677b75b20744d04b6c0e266c72
+  [linux_arm64]=d48723368123a92dd55fc6252c7800b807434d59afca6ad933df1b73585d49c8
+  [linux_amd64]=044149fb534a697f110d22f29c936f2fc93d8b265c9b88d00fe8d04a27b28542
+  [darwin_arm64]=fd4ea93a792a356fd8bbd5d78e1592270d0cbf42f1cf723be11b44cc63cf063f
+  [darwin_amd64]=095b238a3cd3a24257599a34d68dee5738169892bc521f1a9ef010675e0ce385
 )
 
 mirror=${1:?usage: ci/kubernetes-provider.sh MIRROR [OS_ARCH...]}

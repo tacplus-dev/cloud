@@ -104,7 +104,7 @@ that Jody plays, on a commit already applied to dev.
   0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
   `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack), `gitlab` 19.5.0 and `anthropic` 1.92.0 (ippontech's, the anthropic stack) providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab`, `kubernetes` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
+  `-lockfile=readonly`), the `gitlab`, `kubernetes`, `google` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
   the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its fleeting plugin,
   our builds, by commit and SHA-256 (below, The manager's binaries); the runners' helper and default images by digest.
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
@@ -162,19 +162,29 @@ moves to the first upstream release with the fix (#3):
 
 - **The `gitlab` provider is built from source** (`ci/gitlab-provider.sh`), because upstream's 19.5.0 is built with
   go1.26.5 and x/net v0.58.0, without Go's crypto/x509, crypto/tls and net/http fixes, and it holds the GitLab token. Its
-  tag v19.5.0 at the pinned commit, with go1.26.10 and x/net v0.62.0, every module checked against the Go checksum
+  tag v19.5.0 at the pinned commit, with go1.27.4 (#39) and x/net v0.62.0, every module checked against the Go checksum
   database, built as upstream builds it and reproducibly: each build is refused unless its SHA-256 is the pinned one.
   `ci/tools.sh` puts this platform's build in `bin/providers`; OpenTofu installs `gitlabhq/gitlab` from there and never
   from the registry (`ci/tofurc.sh`, which every script running tofu sources), and the lock file holds only this build's
   hashes, for the four platforms (`ci/lock.sh` builds them all). It goes when an upstream release is built on a fixed Go.
 - **The `kubernetes` provider is built from source too** (`ci/kubernetes-provider.sh`, #18), the same way: upstream's
   3.4.0 is built with go1.26.3, and it holds the pipeline's token to dev's cluster. Its tag v3.4.0 at the pinned commit,
-  with go1.27.3, x/net v0.62.0 and kin-openapi v0.152.0, installed and locked as the `gitlab` one is. Upstream's
+  with go1.27.4, x/net v0.62.0 and kin-openapi v0.152.0, installed and locked as the `gitlab` one is. Upstream's
   kin-openapi v0.111.0 has GO-2025-3533, GO-2026-6095, GO-2026-6112 and GO-2026-6274 (#18) and GO-2026-6783, 6785,
   6789, 6795 and 6804 (#23), the last fixed in v0.149.0, and its fixed releases change the API the provider compiles
   against: `ci/kubernetes-provider.patch` ports the provider's `manifest/openapi` to it (Jody's decision on #23, no
   exception), and that package's tests, with one the patch adds, run before each build. The patch goes when an
   upstream release compiles against kin-openapi v0.149.0 or later; the build, when one is also built on a fixed Go.
+- **The `google` provider is built from source too** (`ci/google-provider.sh`, #39), the same way: upstream's 8.9.0, and
+  its latest release, are built with go1.26.10, without net/http's GO-2026-6859 fix (go1.26.11, go1.27.4), and it holds
+  the pipeline's Google credentials. Its tag v8.9.0 at the pinned commit, with go1.27.4 and x/net v0.62.0, installed and
+  locked as the `gitlab` one is.
+- **OpenTofu, tflint, its google ruleset and Trivy are built from source with go1.27.4** (#39): upstream's releases are
+  built with go1.27.3 or go1.26.10, without GO-2026-6859's fix. `ci/tools.sh` builds each from its release's module
+  (pinned by its `h1:` hash, checked against the Go checksum database) as upstream builds it (CGO off, `-trimpath`, its
+  ldflags), with no VCS stamp, so reproducibly: each build is refused unless its SHA-256 is the pinned one. yq, gitleaks,
+  OSV-Scanner and govulncheck are built with the same Go. Each goes back to upstream's release when one is built on a
+  fixed Go (PROPOSALS.md).
 - **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0:
   x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
@@ -205,9 +215,9 @@ request and nightly schedule:
 - **OSV-Scanner** on the tree's dependency manifests and lock files (the commit's tree; today it reads none of them:
   the providers' lock files are OpenTofu's, and their binaries are scanned below);
 - **`govulncheck -mode=binary`** on every pinned binary the pipeline runs or installs, symbols present: OpenTofu, tflint
-  and its google ruleset, yq, gitleaks, OSV-Scanner, Trivy and govulncheck, the `gitlab` provider (`bin/`), the `google`
-  provider (from the lock files' hashes) and GitLab Runner and its fleeting plugin (our builds, the very bytes the
-  manager installs, from `bin/manager/`) (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
+  and its google ruleset, yq, gitleaks, OSV-Scanner, Trivy and govulncheck, the `gitlab`, `kubernetes` and `google`
+  providers (`bin/`), and GitLab Runner and its fleeting plugin (our builds, the very bytes the manager installs, from
+  `bin/manager/`) (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
 - **gitleaks** on the tree and its whole history (the job fetches it: a shallow clone fails);
 - **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
 
@@ -960,7 +970,7 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
   poll, is no change). A Console edit of a managed field is an update in the plan, and the next apply on main puts it
   back. `ci/policy.sh` refuses a rule of any other scope than `workspace:developer` or `workspace:inference`, and an
   account of any other role than `developer`.
-- **The provider:** `ippontech/anthropic` 1.92.0 (MPL-2.0), our reproducible build of its tag with go1.27.3
+- **The provider:** `ippontech/anthropic` 1.92.0 (MPL-2.0), our reproducible build of its tag with go1.27.4 (#39)
   (`ci/anthropic-provider.sh`), installed only from `bin/providers` and locked by its hashes; the security job scans it
   (govulncheck). A new release is a commit of its version, commit and SHA-256s, then `ci/lock.sh`.
 - **Tests:** the stack's plan against a mock provider, and against a stub of Anthropic's API with the real provider
@@ -1005,14 +1015,14 @@ accounts.
 ## Locally
 
 ```sh
-ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), shellcheck, yq, gitleaks, the gitlab
-                                 # provider (needs go, git, curl, unzip, xz, jq)
+ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), shellcheck, yq, gitleaks, the gitlab,
+                                 # kubernetes and google providers, GitLab Runner and its plugin (needs go, git, curl, xz, jq)
 ci/tools.sh security             # bin/: osv-scanner, trivy, govulncheck; bin/scan/: the binaries to scan (after ci/tools.sh)
 ci/security.sh                   # the security job: security/report.json (needs the full history)
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers
 bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run    # with your gcloud: changes nothing
-ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh, ci/kubernetes-provider.sh or ci/anthropic-provider.sh: the lock files
+ci/lock.sh                       # after changing a provider's version, or one of ci/*-provider.sh: the lock files
 ```
 
 ## Never
