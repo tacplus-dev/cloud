@@ -53,8 +53,8 @@ module "gitlab" {
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
   # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
   # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository
-  # (nightly-builds.yaml). The trigger rotates every 90 days: the drift job's expiry check reports its rotate_by from 30
-  # days before, and a commit of a date 90 days later replaces it.
+  # (local.nightly_builds). The trigger rotates every 90 days: the drift job's expiry check reports its rotate_by from
+  # 30 days before, and a commit of a date 90 days later replaces it.
   build = {
     project = "tacplus-dev/build"
     ci_file = {
@@ -62,7 +62,7 @@ module "gitlab" {
       commit_message = "ci/build.gitlab-ci.yml at tacplus-dev/looper@${local.build_ci_commit}, by tacplus-dev/cloud's gitlab stack"
     }
     trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
-    schedules = yamldecode(file("${path.module}/nightly-builds.yaml"))
+    schedules = local.nightly_builds
   }
   # Every pool takes jobs (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the loopers' three
   # always-on nodes), build (spot), deploy (fleet-seatrials') and cluster (tacplus-dev/cluster's and this
@@ -72,6 +72,21 @@ module "gitlab" {
       paused       = false
       token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
     })
+  }
+}
+
+# The nightly builds of tacplus-dev/build (#26, #33; tacplus-dev/looper#84): one pipeline schedule per pinned repository,
+# on tacplus-dev/build's main, by the repository's name, with the inputs repo and nightly: true (tacplus-dev/looper
+# ci/build.gitlab-ci.yml: no sha, so the build scans main as it is then). The repositories are pinned-repositories.yaml,
+# which ci/nightly-builds.sh update writes from GitHub (every tacplus-dev repository, not archived, with a build.lock or
+# a tacplus.lock on main) and nobody edits; the drift job's check reports one pinned since. Each runs at a minute and an
+# hour (UTC) of its name's SHA-256, spread over the day and the same whichever repositories come or go.
+locals {
+  nightly_builds = {
+    for r in yamldecode(file("${path.module}/pinned-repositories.yaml")) : r => {
+      cron   = format("%d %d * * *", parseint(substr(sha256(r), 0, 8), 16) % 60, floor(parseint(substr(sha256(r), 0, 8), 16) / 60) % 24)
+      inputs = { repo = r, nightly = "true" }
+    }
   }
 }
 

@@ -294,8 +294,24 @@ the looper then marks it `promoted` or `declined` here with the date.
   Credentials sections say the hub copies `ci/build.gitlab-ci.yml` by hand and that `BUILD_TRIGGER_TOKEN`'s trigger is
   owned by the build project's bot user; since #26 the cloud gitlab stack writes the file (from a pinned looper commit,
   `ci/build-ci.sh update`) and owns the trigger as the user of its `gitlab-token`, and the nightly schedules are its
-  `stacks/gitlab/nightly-builds.yaml`. A looper issue to say so, and that a change of `ci/build.gitlab-ci.yml` reaches
-  tacplus-dev/build through a bump here. Why: otherwise a hand copy there is reverted by this pipeline's next apply.
+  `stacks/gitlab/pinned-repositories.yaml` (#33: written by `ci/nightly-builds.sh update`, no pin issue adds to it).
+  A looper issue to say so, and that a change of `ci/build.gitlab-ci.yml` reaches tacplus-dev/build through a bump
+  here. Why: otherwise a hand copy there is reverted by this pipeline's next apply.
+- **Pin issues stop asking here for a nightly schedule** (looper, #33, 2026-11-09). What: the pin issues of
+  tacplus-dev/cluster and website (cluster#14, website#2) each filed an issue here (#33, #31) to add their repository
+  to the hand list of nightly builds; since #33 the list is `stacks/gitlab/pinned-repositories.yaml`, written from
+  GitHub by `ci/nightly-builds.sh update`, and the nightly drift reports a repository pinned since. Whatever in
+  tacplus-dev/looper (its pin flow, or #26's wording copied into it) tells a pin issue to ask here should say that
+  instead. Why: otherwise each new pin files a needless issue here.
+- **The drift's `nightly-builds` finding landed by a looper** (looper, #33, 2026-11-09). What: the fix of a
+  `nightly-builds: ...` line in a drift issue is always the same commit (`ci/nightly-builds.sh update`); the drift
+  issue could be approved for a looper as is, or the drift job could file that finding as its own `bug` issue here.
+  Why: so a newly pinned repository is scheduled within a day with nobody's step but the approval.
+- **The nightly builds' load** (looper, #33, 2026-11-09). What: #33 takes the schedules from 1 (looper) to every pinned
+  repository, 25 today, each a build and a security scan (CodeQL, Trivy) on the build runner, spread over the day by
+  their names' hashes (up to 4 in one hour: 14:00 UTC). Watch the build runner's queue after the first apply; if it
+  competes with the lands' builds, confine the hours to a quiet window (the cron's hour from a smaller range). Why: no
+  measurement of a nightly's cost exists yet.
 - **Protected environments on gitlab.com Free** (looper, #28, 2026-11-09). What: check whether `apply:gitlab` can
   create this project's protected environments (`folder`, `ci`, `dev`, `gitlab`; #17) on tacplus-dev's tier, and if
   not, drop them or make the guard a protected branch alone, saying so in the README; the same for fleet-seatrials'

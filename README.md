@@ -50,8 +50,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
-| `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/nightly-builds.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and its nightly schedules, one per pinned repository (below, The build pipeline). |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `nightly-builds` (its nightly schedules' pinned repositories, from GitHub), `lib` (credentials), `lock`, `pin`. |
+| `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/pinned-repositories.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and the pinned repositories its nightly schedules are one per, written by `ci/nightly-builds.sh update` (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
@@ -86,7 +86,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships), and the nightly builds' check (`ci/nightly-builds.sh check`: a repository pinned or unpinned since `stacks/gitlab/pinned-repositories.yaml` was written, below, The build pipeline); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -396,10 +396,15 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   computed (the plan is the commit's alone). The drift job's expiry check (`ci/expiry.sh`) reports it from 30 days
   before; a commit of a date 90 days later replaces the trigger: the new one is made and becomes the variable's
   before the old one is deleted, so a build started in between fails at most once.
-- **The nightly schedules**: one per repository of `stacks/gitlab/nightly-builds.yaml`, on tacplus-dev/build's main,
-  its cron in UTC and its inputs (`repo`, `nightly: true`: the build scans the repository's main as it is then).
-  tacplus-dev/looper first. **A repository's pin issue adds it there** once its `tacplus.lock` or `build.lock` is on its
-  main (a nightly of a repository with no pin fails).
+- **The nightly schedules** (#33): one per pinned repository, on tacplus-dev/build's main, with the inputs `repo` and
+  `nightly: true` (the build scans the repository's main as it is then), at a minute and an hour (UTC) of the
+  repository's name's SHA-256: spread over the day, and the same whichever repositories come or go. The repositories
+  are `stacks/gitlab/pinned-repositories.yaml`, **which nobody edits**: `ci/nightly-builds.sh update` writes it from
+  GitHub, every tacplus-dev repository, not archived, with a `build.lock` or a `tacplus.lock` on its main (a nightly of
+  a repository with no pin fails), and the commit of it is applied as any other. The plan reads only that file, so it
+  stays the commit's alone (tacplus-dev/roadmap `decisions/deterministic-deployments-2026-11-02.md`); the drift job runs
+  `ci/nightly-builds.sh check`, so a repository pinned since, or no longer pinned, is in the next drift issue
+  (`nightly-builds: ...`), whose fix is that commit. A pin issue no longer asks for an entry here.
 
 **Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
 which the hub registers for tacplus-dev/looper#84.

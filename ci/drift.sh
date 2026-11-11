@@ -9,7 +9,9 @@
 # A plan sees only what is in a stack's state, so the live audit (ci/audit.sh) then checks everything the projects
 # hold, hand-made or not, against the network rules ci/policy.sh refuses in a plan (#7), and the DNS check (ci/dns.sh)
 # what the public resolvers answer against tacplus.dev's zone (#13), and the expiry check (ci/expiry.sh) each expiry
-# of the stacks' source that is past or within 30 days, such as a membership's (#12): their findings are drift too.
+# of the stacks' source that is past or within 30 days, such as a membership's (#12), and the nightly builds' check
+# (ci/nightly-builds.sh check) each tacplus-dev repository pinned since stacks/gitlab/pinned-repositories.yaml was
+# written, or no longer pinned (#33): their findings are drift too.
 # (tacplus-dev/cluster ci/drift.sh is the pattern.)
 #
 #   ci/drift.sh STACK...    # sources ci/lib.sh; needs what ci/tofu.sh needs, and curl, jq, openssl
@@ -34,11 +36,12 @@ done
 # shellcheck disable=SC2046 # the project and the zone, a word each
 "$here/dns.sh" $(ci_zone) | tee -a "$tmp/summary" || echo "dns: the check failed: see the job's log" | tee -a "$tmp/summary"
 "$here/expiry.sh" "$here"/../stacks/*/*.tf | tee -a "$tmp/summary" || echo "expiry: the check failed: see the job's log" | tee -a "$tmp/summary"
+"$here/nightly-builds.sh" check | tee -a "$tmp/summary" || echo "nightly-builds: the check failed: see the job's log" | tee -a "$tmp/summary"
 [ -s "$tmp/summary" ] || { echo "drift: none"; exit 0; }
 
 mark="drift-sha256:$(sha256sum < "$tmp/summary" | cut -c1-16)"
 {
-  echo "The nightly drift check found the cloud accounts differ from $repo@${CLOUD_COMMIT:-unknown} (what an apply of each stack would change, and, as \`live\`, what the projects hold against the network rules, and, as \`dns\`, what the public resolvers answer against the zone, and, as \`expiry\`, what expires within 30 days):"
+  echo "The nightly drift check found the cloud accounts differ from $repo@${CLOUD_COMMIT:-unknown} (what an apply of each stack would change, and, as \`live\`, what the projects hold against the network rules, and, as \`dns\`, what the public resolvers answer against the zone, and, as \`expiry\`, what expires within 30 days, and, as \`nightly-builds\`, the repositories pinned or unpinned since the nightly build schedules were written):"
   echo
   echo '```'
   cat "$tmp/summary"

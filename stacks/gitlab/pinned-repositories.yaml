@@ -1,0 +1,30 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The pinned repositories of tacplus-dev, written by ci/nightly-builds.sh update from GitHub (#33): never edit it.
+# The gitlab stack makes one nightly build schedule of tacplus-dev/build per name (stacks/gitlab/main.tf).
+- blobstore
+- cloud
+- cluster
+- coop
+- deploymentproxy
+- doppelganger
+- eventbus
+- fleet-dev
+- gateway
+- kernel
+- kmaker
+- launcher
+- llmproxy
+- looper
+- mailbox
+- messaging
+- oauth
+- opa
+- operator
+- pigeon
+- redo
+- registry
+- stratum
+- tenantecho
+- website

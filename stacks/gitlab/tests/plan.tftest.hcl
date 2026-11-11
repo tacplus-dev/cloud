@@ -60,23 +60,24 @@ run "stack" {
     error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
   # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and a nightly
-  # schedule per repository of nightly-builds.yaml, tacplus-dev/looper first, then tacplus-dev/website (#31), each at
-  # its own hour, with the inputs repo and nightly.
+  # schedule per pinned repository (#33: pinned-repositories.yaml, ci/nightly-builds.sh's), with the inputs repo and
+  # nightly, at a minute and an hour of its name's SHA-256 (of its first 8 hex digits: looper's 0x63a2676c, cluster's
+  # 0x164cf1ca, website's 0x747a8f39). Two may share a cron (of 25 today, two pairs do): each is its own schedule.
   assert {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
   }
   assert {
-    condition     = output.build.schedules["looper"] == { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } }
-    error_message = "tacplus-dev/looper has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true."
+    condition     = length(setintersection(toset(keys(output.build.schedules)), toset(["cluster", "looper", "website"]))) == 3
+    error_message = "tacplus-dev/cluster, looper or website, each pinned, has no nightly schedule."
   }
   assert {
-    condition     = output.build.schedules["website"] == { cron = "0 6 * * *", inputs = { repo = "website", nightly = "true" } }
-    error_message = "tacplus-dev/website (pinned by build.lock, website#2) has no nightly schedule on tacplus-dev/build (#31)."
+    condition     = output.build.schedules["looper"] == { cron = "52 18 * * *", inputs = { repo = "looper", nightly = "true" } } && output.build.schedules["cluster"] == { cron = "46 9 * * *", inputs = { repo = "cluster", nightly = "true" } }
+    error_message = "tacplus-dev/looper's and tacplus-dev/cluster's nightly schedules are not at their names' minute and hour, with the inputs repo and nightly: true."
   }
   assert {
-    condition     = length(distinct([for s in output.build.schedules : s.cron])) == length(output.build.schedules)
-    error_message = "Two nightly schedules share a cron: each repository's nightly takes an hour of its own."
+    condition     = output.build.schedules["website"] == { cron = "33 18 * * *", inputs = { repo = "website", nightly = "true" } }
+    error_message = "tacplus-dev/website (pinned by build.lock, website#2; #31) has no nightly schedule at its name's minute and hour."
   }
   assert {
     condition     = alltrue([for k, s in output.build.schedules : s.inputs == { repo = k, nightly = "true" }])
