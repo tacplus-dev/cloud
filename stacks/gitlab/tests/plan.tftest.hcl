@@ -66,6 +66,11 @@ run "stack" {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
   }
+  # Its jobs are tagged build, which only tacplus-dev's group runners take: group runners on, shared off (#35).
+  assert {
+    condition     = output.build_runners == { group_runners_enabled = true, shared_runners_enabled = false }
+    error_message = "tacplus-dev/build does not take group runners, or takes gitlab.com's shared runners (#35): no tacplus-dev runner takes its build jobs."
+  }
   assert {
     condition     = output.build.schedules["looper"] == { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } }
     error_message = "tacplus-dev/looper has no nightly schedule on tacplus-dev/build with the inputs repo and nightly: true."
@@ -169,6 +174,10 @@ run "gitlab" {
   assert {
     condition     = gitlab_repository_file.build_ci["build"].project == "77" && gitlab_repository_file.build_ci["build"].branch == "main" && gitlab_repository_file.build_ci["build"].file_path == ".gitlab-ci.yml" && gitlab_repository_file.build_ci["build"].content == "stages: [build]\n"
     error_message = "tacplus-dev/build's .gitlab-ci.yml is not the content given, on its main."
+  }
+  assert {
+    condition     = gitlab_project.build["build"].name == "build" && gitlab_project.build["build"].group_runners_enabled && !gitlab_project.build["build"].shared_runners_enabled
+    error_message = "tacplus-dev/build's runner settings are not group runners on and shared runners off (#35)."
   }
 }
 

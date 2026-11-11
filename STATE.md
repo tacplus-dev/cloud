@@ -200,6 +200,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by th
   `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
   whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
   looper, show there.
+- **tacplus-dev/build's runner settings (#35):** a project whose jobs are tagged `build` (or any tag only tacplus-dev's
+  pools serve) needs **group runners on**: the pools are tacplus-dev group runners, and a project with
+  `group_runners_enabled=false` never gets one, its jobs failing `stuck_pending_no_matching_runners` after about 1.5 h
+  (tacplus-dev/build until the hub's hand change of 2026-11-09; tacplus-dev/looper#113). The gitlab stack owns
+  tacplus-dev/build's (`gitlab_project.build`, `modules/gitlab/build.tf`): group runners on, gitlab.com's shared runners
+  off, the project adopted by its ID with `prevent_destroy` and every other attribute ignored. Tested with the stack's
+  plan tests (output `build_runners`) and the stub-API plan (adopted with no change at the hand-set value; with group
+  runners off, the plan turns them on and nothing else); not applied yet: `apply:gitlab` on main, and a build job
+  taken by the shared pool, show there.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

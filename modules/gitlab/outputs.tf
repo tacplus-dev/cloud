@@ -27,3 +27,12 @@ output "build" {
     schedules  = { for k, s in gitlab_pipeline_schedule.build : k => { cron = s.cron, inputs = { for i in s.inputs : i.name => i.value } } }
   }
 }
+
+# Not in build: the stack imports the project by build's project ID, so build cannot depend on the project (#35).
+output "build_runners" {
+  description = "tacplus-dev/build's runner settings (#35), or null: group runners on, shared runners off."
+  value = var.build == null ? null : {
+    group_runners_enabled  = gitlab_project.build["build"].group_runners_enabled
+    shared_runners_enabled = gitlab_project.build["build"].shared_runners_enabled
+  }
+}

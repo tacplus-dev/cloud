@@ -4,7 +4,7 @@
 # GitLab settings: projects, their protected branches and environments, their protected project variables (values
 # from Secret Manager, never in this repository), the runner registrations, whose tokens go to Secret Manager
 # for the runner manager, and the read-only memberships of other projects, each with an expiry; tacplus-dev/build's
-# pipeline file, trigger and schedules are build.tf's.
+# pipeline file, trigger, schedules and runner settings are build.tf's.
 
 locals {
   existing = { for path, p in var.projects : path => p if !p.create }

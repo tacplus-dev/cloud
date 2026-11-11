@@ -51,7 +51,8 @@ module "gitlab" {
     # tacplus-dev/cluster#18: the recap reads cluster's pipelines and jobs too (it got a 404).
     "tacplus-dev/cluster:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
   }
-  # tacplus-dev/build (#26; tacplus-dev/looper#71, #84): its .gitlab-ci.yml, tacplus-dev/looper's
+  # tacplus-dev/build (#26; tacplus-dev/looper#71, #84): its runner settings (group runners on, shared off, #35: its jobs
+  # are tagged build, which only tacplus-dev's group runners take); its .gitlab-ci.yml, tacplus-dev/looper's
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
   # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
   # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository
@@ -106,6 +107,15 @@ import {
   id       = "${module.gitlab.build.project}:main:${each.key}"
 }
 
+# tacplus-dev/build itself (#35), for its runner settings: group runners on, which the hub set by hand on 2026-11-09
+# after every build job had found no runner (tacplus-dev/looper#113), shared runners off. Adopted by its ID, never
+# destroyed (the module's prevent_destroy).
+import {
+  for_each = var.import_existing ? toset(["build"]) : toset([])
+  to       = module.gitlab.gitlab_project.build[each.key]
+  id       = module.gitlab.build.project
+}
+
 # The cluster pool's runner on tacplus-dev/cloud, which the hub enabled by hand on 2026-11-10 while jody1-328023's
 # runner for this repository stopped taking jobs: adopted, from then on this stack's. GitLab refuses to enable a
 # locked runner on a second project, so the adoption is how this one stays locked.
@@ -135,4 +145,8 @@ output "members" {
 
 output "build" {
   value = module.gitlab.build
+}
+
+output "build_runners" {
+  value = module.gitlab.build_runners
 }

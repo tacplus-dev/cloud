@@ -10,9 +10,11 @@
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
 # protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
 # .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and the looper's
-# and the website's nightly schedules; it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused it. The fixture is built from
-# the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot read tacplus-dev/cloud's
-# settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
+# and the website's nightly schedules; it adopts tacplus-dev/build itself with no change, group runners on and shared
+# runners off (#35), and with group runners off, as before the hub's hand change, it turns them on and changes nothing
+# else; it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
+# it. The fixture is built from the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot
+# read tacplus-dev/cloud's settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
 #
 #   tests/gitlab_plan_test.sh
 set -uo pipefail
@@ -20,8 +22,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 export PATH=$here/bin:$PATH TF_IN_AUTOMATION=1 TF_INPUT=0
 source "$here/ci/tofurc.sh"
 work=$(mktemp -d)
-stub=
-trap '[ -n "$stub" ] && kill "$stub" 2>/dev/null; rm -rf "$work"' EXIT
+stub='' stub_before=''
+trap '[ -n "$stub" ] && kill "$stub" 2>/dev/null; [ -n "$stub_before" ] && kill "$stub_before" 2>/dev/null; rm -rf "$work"' EXIT
 failed=0
 fail() { echo "FAIL $*"; failed=1; }
 ok() { echo "ok   $*"; }
@@ -32,6 +34,12 @@ stub=$!
 for _ in $(seq 50); do [ -s "$work/addr" ] && break; sleep 0.1; done
 [ -s "$work/addr" ] || { echo "FAIL the stub API does not listen"; exit 1; }
 api=http://$(cat "$work/addr")
+# A second stub (#35): tacplus-dev/build as it was before the hub's hand change, group runners off.
+jq '."GET /api/v4/projects/4003".group_runners_enabled = false' "$here/tests/fixtures/gitlab/api.json" > "$work/before.json"
+"$work/stubapi" "$work/before.json" "$work/requests-before" "$work/addr-before" &
+stub_before=$!
+for _ in $(seq 50); do [ -s "$work/addr-before" ] && break; sleep 0.1; done
+[ -s "$work/addr-before" ] || { echo "FAIL the second stub API does not listen"; exit 1; }
 
 # The stack as it is, but its state local and its providers on the stub.
 cp -r "$here/stacks" "$here/modules" "$work/"
@@ -94,6 +102,10 @@ if plan; then
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and .after.cron == "0 6 * * *" and
     ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=website"]' <<< "$schedule" > /dev/null &&
     ok "tacplus-dev/website's nightly schedule on tacplus-dev/build (#31)" || fail "the website's schedule: $schedule"
+  project=$(change 'module.gitlab.gitlab_project.build["build"]')
+  jq -e '.actions == ["no-op"] and .importing.id == "4003" and .after.group_runners_enabled == true and .after.shared_runners_enabled == false' <<< "$project" > /dev/null &&
+    ok "tacplus-dev/build: adopted (by its ID) with no change, group runners on and shared runners off as the hub set them (#35)" ||
+    fail "tacplus-dev/build's runner settings: $(jq -c 'del(.before, .after) + {after: (.after | {group_runners_enabled, shared_runners_enabled})}' <<< "$project")"
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"
@@ -101,6 +113,23 @@ else
   fail "the stack does not plan against gitlab.com's answers: $(grep -A4 '^Error' "$work/plan.txt")"
 fi
 ! grep -v '^GET ' "$work/requests" > /dev/null && ok "a plan only reads" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests")"
+
+# tacplus-dev/build with group runners off, as it was until the hub's hand change of 2026-11-09 (#35): every build job
+# found no runner. The plan turns them back on, and changes nothing else of the project.
+sed -i "s|$api/|http://$(cat "$work/addr-before")/|" "$stack/stub_override.tf"
+if plan; then
+  (cd "$stack" && tofu show -json p.tfplan) > "$work/plan-before.json"
+  project=$(jq -c '.resource_changes[] | select(.address == "module.gitlab.gitlab_project.build[\"build\"]") | .change' "$work/plan-before.json")
+  changed=$(jq -c '[.before as $b | .after | to_entries[] | select(.value != $b[.key]) | .key]' <<< "$project")
+  jq -e '.actions == ["update"] and .after.group_runners_enabled == true and .after.shared_runners_enabled == false' <<< "$project" > /dev/null &&
+    [ "$changed" = '["group_runners_enabled"]' ] &&
+    ok "tacplus-dev/build with group runners off: the plan turns them on, and nothing else (#35)" ||
+    fail "tacplus-dev/build with group runners off: $(jq -c '.actions' <<< "$project"), changed $changed"
+else
+  fail "the stack does not plan against tacplus-dev/build with group runners off: $(grep -A4 '^Error' "$work/plan.txt")"
+fi
+! grep -v '^GET ' "$work/requests-before" > /dev/null && ok "that plan only reads too" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests-before")"
+sed -i "s|http://$(cat "$work/addr-before")/|$api/|" "$stack/stub_override.tf"
 
 # The form gitlab.com refused (#17): the fixture makes the provider see an Enterprise instance, so the plan fails here
 # as it failed there.

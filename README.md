@@ -381,6 +381,10 @@ within 30 days, in the drift issue. A commit of a later date renews it; the pipe
 the looper's reports and managers get their gates from build jobs in tacplus-dev/build, which this pipeline sets up
 (`modules/gitlab/build.tf`, from the gitlab stack's `build`):
 
+- **Its runners** (#35): group runners on, gitlab.com's shared runners off (`gitlab_project.build`, the project adopted
+  by its ID, never destroyed, nothing else of it managed). Its jobs are tagged `build`, which only tacplus-dev's group
+  runners (the pools) take: with group runners off, every build job waits about 1.5 h and fails
+  `stuck_pending_no_matching_runners`. Any project that takes `build`-tagged jobs needs group runners on.
 - **Its `.gitlab-ci.yml`** is tacplus-dev/looper's `ci/build.gitlab-ci.yml` at the commit the stack names
   (`build_ci_commit`), copied as is into `stacks/gitlab/files/build.gitlab-ci.yml` and written to tacplus-dev/build's
   main by `apply:gitlab` (the hub's hand copy is adopted, then this stack's). Before every plan, `plan:gitlab` runs
