@@ -435,7 +435,7 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
 | `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **three, always on** (`idle_count = 3`, `max_instances = 3`): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
-| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 1`): t2a-standard-4, 250 GB pd-standard | 2 builds at a time, each may use the VM's 4 CPUs and 14g |
+| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 2`): t2a-standard-8, 450 GB pd-standard | 4 builds a VM (8 at once), each may use 4 CPUs and 14g |
 | `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, also tacplus-dev/cloud's own pipeline, protected; tags `cluster`, `cloud` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 70 GB | 2: 2 CPUs, 7g, 20 GB |
 

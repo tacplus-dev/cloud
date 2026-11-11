@@ -107,7 +107,7 @@ run "settings" {
   }
   # The builds run on spot, a few at a time, never on the always-on nodes (Jody, 2026-11-10).
   assert {
-    condition     = output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 4 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
+    condition     = output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
     error_message = "Builds do not run only on spot, from zero, a few at a time, apart from the always-on nodes."
   }
   assert {

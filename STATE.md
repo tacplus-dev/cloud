@@ -38,7 +38,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by th
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
   (two jobs of 4 CPUs and 14g, no swap) three always-on t2a-standard-8s with no slots since 2026-11-10 (Jody: every looper runs when it wants; up to 25 jobs a
   VM, each may use the whole VM), every looper and control job, a tacplus-dev group runner tagged `arm64`,
-  `autoscale`, `autoscale-16`; builds on the `build` pool, one spot t2a-standard-4 from zero, two builds at a time,
+  `autoscale`, `autoscale-16`; builds on the `build` pool, up to two spot t2a-standard-8s from zero, eight builds at a time,
   tagged `arm64`, `build`; `deploy` and `cluster`, protected and on demand. Job containers
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only

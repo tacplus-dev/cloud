@@ -268,12 +268,12 @@ output "runner_pools" {
       runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false }
     }
     # The builds (Jody, 2026-11-10): "Builds run on the spot instances. And builds can be limited to a few at a time."
-    # One spot t2a-standard-4 at most, from zero (no VM while no build waits), two builds at a time, each allowed the
-    # VM's 4 CPUs and 14g (they share it like processes). Its size keeps the project inside CPUS_ALL_REGIONS 32 (three
-    # 8-CPU nodes, the 1-CPU manager, 4); more builds at once is a bigger quota first. tacplus-dev/build's jobs only.
+    # Up to two spot t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
+    # 14g (they share the VM like processes): eight builds at once (Jody, 2026-11-11, "Yes": two builds at a time left
+    # 13 queued and every manager timing out). 16 CPUs at peak, inside CPUS_ALL_REGIONS 48. tacplus-dev/build's jobs only.
     build = {
-      machine_type    = "t2a-standard-4", disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "15m"
+      machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
+      capacity        = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
       job             = local.jobs.build
       service_account = false
       spot            = true
