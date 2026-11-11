@@ -307,6 +307,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   whether `fleet-ca-<deployment>` and `fleet-crypto-<deployment>` get a version-destroy TTL or a rotation, and
   whether the drift job reports a secret with no version or more than one enabled. Why: the CA and crypto file are made
   once and never rotated today; a second version added by mistake would be read as `latest`.
+- **GitLab Runner and its fleeting plugin built here, served from a private bucket** (looper, #40, 2026-11-11;
+  Jody's follow-up A of #39). What: both built from source with go1.27.4 by `ci/tools.sh` (`srcbuild`, #39: arm64,
+  CGO off, `-trimpath`, upstream's ldflags, x/net v0.62.0 and klauspost/compress v1.20.2), pinned by commit and
+  SHA-256 in `stacks/ci/main.tf`; uploaded by the ci stack to a bucket in tacplus-ci only the manager's account
+  reads, by content-addressed names; `manager-startup.sh` installs the binary and our own systemd unit from there by
+  SHA-256, with no deb and no apt at boot; the helper image pinned by digest, its own build a follow-up; then the
+  `GO-2026-6859` entry and the runner's and plugin's x/net and klauspost/compress entries go. Two lands: build and
+  bucket, then the switch. Why: upstream's v19.5.2 and v1.3.1 are built with go1.26.10 (GO-2026-6859), whose
+  exception expires 2026-11-25, and Jody's rule on #39: nothing the VMs run comes from upstream at boot.
 - **fleet-seatrials' test IdP on what #32 makes** (looper, #32, 2026-11-09). What: fleet-seatrials#27's `test-idp/apply.sh`
   keeps its seeds in `test-idp-seeds` (`gcloud secrets versions access latest`, and `versions add` the first time),
   not as GitLab variables written with `TEST_IDP_GITLAB_TOKEN`; orders `idp.test.tacplus.dev` by DNS-01 in
