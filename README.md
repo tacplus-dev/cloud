@@ -99,9 +99,9 @@ that Jody plays, on a commit already applied to dev.
   0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
   `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab` and `kubernetes` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, its packages from one Ubuntu
-  archive snapshot; the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its
-  fleeting plugin by SHA-256; the runners' default image by digest.
+  `-lockfile=readonly`), the `gitlab` and `kubernetes` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
+  the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its fleeting plugin,
+  our builds, by commit and SHA-256 (below, The manager's binaries); the runners' helper and default images by digest.
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
   (`ci/policy.sh`), and the only inputs are the commit, the pins, and the cloud's state.
 - Nothing is applied that isn't in a reviewed commit: `apply` applies only the plan its pipeline saved, of `CLOUD_COMMIT`,
@@ -170,8 +170,8 @@ moves to the first upstream release with the fix (#3):
   against: `ci/kubernetes-provider.patch` ports the provider's `manifest/openapi` to it (Jody's decision on #23, no
   exception), and that package's tests, with one the patch adds, run before each build. The patch goes when an
   upstream release compiles against kin-openapi v0.149.0 or later; the build, when one is also built on a fixed Go.
-- **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0,
-  GitLab Runner v19.5.2 and the fleeting plugin v1.3.1: x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
+- **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0:
+  x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
   TLS), and none of them has a fixed release yet.
 
@@ -180,8 +180,10 @@ moves to the first upstream release with the fix (#3):
   from its pinned module in a copy of its source that requires klauspost/compress v1.20.2 (GO-2026-6865, a panic on
   two-block frames) and, for gitleaks, brotli v1.2.7 (GO-2026-6888, excessive allocation decompressing crafted
   streams), checked against the Go checksum database, until their releases require them. **Accepted until
-  2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2, Trivy 0.76.1 and GitLab Runner
-  v19.5.2, which decode only pinned, trusted inputs; each pin moves when its upstream ships the fix.
+  2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2 and Trivy 0.76.1, which decode only
+  pinned, trusted inputs; each pin moves when its upstream ships the fix.
+- **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0
+  and klauspost/compress v1.20.2, so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
 - **Accepted until 2026-12-06** (the hub's decision on #27, Jody's delegation): CVE-2026-78661 (x/net/html, a denial of
   service on crafted HTML; Trivy) in the CI image's `gh` (build:2.6, v2.6.1's digest), built with x/net v0.60.0. `gh`
   parses only GitHub API responses over TLS, never untrusted HTML. tacplus-dev/tacplus#350 rebuilds it with x/net
@@ -199,8 +201,8 @@ request and nightly schedule:
   the providers' lock files are OpenTofu's, and their binaries are scanned below);
 - **`govulncheck -mode=binary`** on every pinned binary the pipeline runs or installs, symbols present: OpenTofu, tflint
   and its google ruleset, yq, gitleaks, OSV-Scanner, Trivy and govulncheck, the `gitlab` provider (`bin/`), the `google`
-  provider (from the lock files' hashes) and GitLab Runner and its fleeting plugin (from `stacks/ci/main.tf`'s pins)
-  (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
+  provider (from the lock files' hashes) and GitLab Runner and its fleeting plugin (our builds, the very bytes the
+  manager installs, from `bin/manager/`) (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
 - **gitleaks** on the tree and its whole history (the job fetches it: a shallow clone fails);
 - **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
 
@@ -486,8 +488,20 @@ plugin are **our builds** of upstream's tags (v19.5.2, v1.3.1), not upstream's r
   through their project roles). The ci stack uploads `bin/manager/` there, each object named by its SHA-256
   (`gitlab-runner/<sha256>`): a new build is a new object, created before the old one is deleted, and refused unless
   it is the pinned build.
-- **The manager** installs both from the bucket, by SHA-256, once #40's second step lands; until then it still
-  installs upstream's packages and plugin, by the `deb_sha256`, `helper_deb_sha256` and `upstream_plugin_sha256` pins.
+- **The manager** (`files/manager-startup.sh`) fetches both from the bucket with the VM's token (the subnet has Private
+  Google Access), by the SHA-256s in its metadata, refusing any object that is not that build, and installs them with
+  no package and no apt: `/usr/bin/gitlab-runner`, `/usr/local/bin/fleeting-plugin-googlecloud`, and the service as
+  upstream's package's post-install sets it up (the `gitlab-runner` user, `gitlab-runner install`). At boot it asks
+  only the metadata server, the bucket and Secret Manager. A new build, like a new config or script, replaces the
+  manager (`replace_triggered_by` follows every metadata value), after its objects are in the bucket.
+- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.2, pinned by digest in
+  `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
+  image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a
+  registry only the workers read, is a follow-up (PROPOSALS.md).
+- **If a new manager does not come up**, no runner is left to run the pipeline that would revert it (`apply:ci` runs on
+  the `cluster` pool, through this manager): revert the commit and apply the ci stack from a workstation (Break-glass).
+  #40 landed in two steps for this reason: the builds and the bucket first, the switch second, so the revert of the
+  switch returns to pins already applied.
 
 ## The build cache
 
@@ -930,7 +944,7 @@ accounts.
 ```sh
 ci/tools.sh                      # bin/: tofu, tflint (and the google ruleset), shellcheck, yq, gitleaks, the gitlab
                                  # provider (needs go, git, curl, unzip, xz, jq)
-ci/tools.sh security             # bin/: osv-scanner, trivy, govulncheck; bin/scan/: the binaries to scan (dpkg-deb)
+ci/tools.sh security             # bin/: osv-scanner, trivy, govulncheck; bin/scan/: the binaries to scan (after ci/tools.sh)
 ci/security.sh                   # the security job: security/report.json (needs the full history)
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers

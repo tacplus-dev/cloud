@@ -32,11 +32,11 @@
 #   bin/govulncheck   the pinned binaries (-mode=binary): built as gitleaks is
 #   bin/scan/         the pinned binaries that are not tools here, to scan: the google provider (OpenTofu's plugin
 #                     cache, filled by an init of each stack: by the lock files' hashes), and GitLab Runner and its
-#                     fleeting plugin, by the version and SHA-256 stacks/ci/main.tf pins (arm64, the manager's)
+#                     fleeting plugin, the very builds the manager installs (bin/manager, of the tools job)
 #
 #   ci/tools.sh [security]   # needs curl, unzip, xz, sha256sum, git, jq and go (ghcr.io/tacplus-dev/tacplus/build;
 #                            # the pinned Go is fetched by the go command, by the checksum database); linux arm64
-#                            # or amd64; security also dpkg-deb
+#                            # or amd64; security after ci/tools.sh (bin/manager)
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 bin=$here/bin
@@ -107,7 +107,7 @@ gobuild() {
 
 # The security job's tools and the binaries it scans (above).
 security() {
-  local f main runner plugin s
+  local f b s
   gobuild github.com/google/osv-scanner/v2 "$osv_scanner_version" "$osv_scanner_sum" github.com/google/osv-scanner/v2/cmd/osv-scanner \
     "$klauspost_compress"
   f=$(fetch "https://github.com/aquasecurity/trivy/releases/download/v$trivy_version/trivy_${trivy_version}_Linux-$trivy_arch.tar.gz" "$trivy_sha")
@@ -123,16 +123,11 @@ security() {
       "$bin/tofu" init -backend=false -input=false -lockfile=readonly -no-color >/dev/null) ||
       die "tofu init ${s#"$here"/}: the providers to scan"
   done
-  main=$here/stacks/ci/main.tf
-  pin() { sed -n "s/^    $1 *= *\"\(.*\)\"$/\1/p" "$main"; }
-  runner=$(pin version) plugin=$(pin plugin_version)
-  [ -n "$runner" ] && [ -n "$plugin" ] || die "$main pins no GitLab Runner or fleeting plugin version"
-  f=$(fetch "https://gitlab-runner-downloads.s3.amazonaws.com/$runner/deb/gitlab-runner_arm64.deb" "$(pin deb_sha256)")
-  dpkg-deb -x "$f" "$tmp/runner"
-  install -m 0755 "$tmp/runner/usr/bin/gitlab-runner" "$bin/scan/gitlab-runner"
-  f=$(fetch "https://gitlab.com/api/v4/projects/gitlab-org%2Ffleeting%2Fplugins%2Fgooglecloud/packages/generic/releases/$plugin/fleeting-plugin-googlecloud-linux-arm64" "$(pin upstream_plugin_sha256)")
-  install -m 0755 "$f" "$bin/scan/fleeting-plugin-googlecloud"
-  echo "bin/: osv-scanner $osv_scanner_version, trivy $trivy_version, govulncheck $govulncheck_version; bin/scan/: the providers, GitLab Runner $runner, the fleeting plugin $plugin"
+  for b in gitlab-runner fleeting-plugin-googlecloud; do
+    [ -f "$bin/manager/$b" ] || die "no bin/manager/$b: ci/tools.sh builds it (ci/runner.sh)"
+    install -m 0755 "$bin/manager/$b" "$bin/scan/$b"
+  done
+  echo "bin/: osv-scanner $osv_scanner_version, trivy $trivy_version, govulncheck $govulncheck_version; bin/scan/: the providers, our GitLab Runner and fleeting plugin (bin/manager)"
 }
 
 mkdir -p "$bin"

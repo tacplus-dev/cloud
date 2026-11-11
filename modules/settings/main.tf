@@ -209,10 +209,9 @@ output "zone" {
 }
 
 output "ubuntu_arm64_image" {
-  description = "The runner manager's boot image: one Ubuntu 24.04 arm64 image by name (never a family), and the Ubuntu archive snapshot its packages come from."
+  description = "The runner manager's boot image: one Ubuntu 24.04 arm64 image by name (never a family). Nothing is installed from Ubuntu's archive at boot (#40)."
   value = {
-    image    = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    snapshot = "20261024T000000Z"
+    image = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
   }
 }
 

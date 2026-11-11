@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub curl for tests/manager_startup_test.sh: the GETs modules/projects/ci/files/manager-startup.sh makes, answered
+# from STUB_MANAGER: the metadata server (attributes/<key>, the project tacplus-ci, the VM's token vm-token), the
+# bucket's objects (objects/<name>/<sha256>) and Secret Manager's runner-token-<pool> (glrt-<pool>-token), the last two
+# only with the VM's token. An unknown URL or a missing object fails, as curl -f does (22). Each call is logged to
+# STUB_MANAGER/calls: GET URL, and the bearer token it sent.
+set -euo pipefail
+out=/dev/stdout url='' auth=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) out=$2; shift ;;
+    -H) [[ $2 == @* ]] && auth=$(sed -n 's/^Authorization: Bearer //p' "${2#@}"); shift ;;
+    --retry) shift ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+echo "GET $url${auth:+ Bearer $auth}" >> "$STUB_MANAGER/calls"
+md=http://metadata.google.internal/computeMetadata/v1
+case $url in
+  "$md/project/project-id") printf tacplus-ci > "$out" ;;
+  "$md/instance/service-accounts/default/token") printf '{"access_token": "vm-token", "expires_in": 3599}' > "$out" ;;
+  "$md/instance/attributes/"*) f=$STUB_MANAGER/attributes/${url#"$md/instance/attributes/"}; [ -f "$f" ] || exit 22; cat "$f" > "$out" ;;
+  https://storage.googleapis.com/storage/v1/b/tacplus-ci-runner-bin/o/*'?alt=media')
+    [ "$auth" = vm-token ] || exit 22
+    o=${url#https://storage.googleapis.com/storage/v1/b/tacplus-ci-runner-bin/o/}; o=${o%\?alt=media}
+    f=$STUB_MANAGER/objects/${o//%2F//}; [ -f "$f" ] || exit 22; cat "$f" > "$out" ;;
+  https://secretmanager.googleapis.com/v1/projects/tacplus-ci/secrets/runner-token-*/versions/latest:access)
+    [ "$auth" = vm-token ] || exit 22
+    p=${url#*/secrets/runner-token-}; p=${p%%/*}
+    printf '{"payload": {"data": "%s"}}' "$(printf 'glrt-%s-token' "$p" | base64 -w0)" > "$out" ;;
+  *) exit 22 ;;
+esac

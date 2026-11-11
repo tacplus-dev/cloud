@@ -158,25 +158,17 @@ resource "google_compute_instance" "manager" {
     scopes = ["cloud-platform"]
   }
 
-  metadata = {
-    startup-script           = file("${path.module}/files/manager-startup.sh")
-    apt-snapshot             = var.apt_snapshot
-    runner-version           = var.runner.version
-    runner-deb-sha256        = var.runner.deb_sha256
-    runner-helper-deb-sha256 = var.runner.helper_deb_sha256
-    fleeting-plugin-version  = var.runner.plugin_version
-    fleeting-plugin-sha256   = var.runner.upstream_plugin_sha256
-    runner-pools             = join(" ", sort(keys(var.pools)))
-    runner-config            = local.manager_config
-  }
+  metadata = local.manager_metadata
 
-  # The startup script writes config.toml from the metadata at boot only, so a changed config (a pool raised, a tag
-  # moved) replaces the manager; an in-place metadata update would change nothing until a reboot (2026-11-08).
+  # The startup script reads the metadata at boot only, so a change to any of it (the config: a pool raised, a tag
+  # moved; a build; the script) replaces the manager; an in-place metadata update would change nothing until a reboot
+  # (2026-11-08).
   lifecycle {
     replace_triggered_by = [terraform_data.manager_config]
   }
 
-  depends_on = [google_secret_manager_secret_iam_member.manager_reads_token, google_project_iam_member.manager]
+  # Its builds are in the bucket, and readable by it, before it boots.
+  depends_on = [google_secret_manager_secret_iam_member.manager_reads_token, google_project_iam_member.manager, google_storage_bucket_object.runner_bin, google_storage_bucket_iam_binding.runner_bin]
 }
 
 locals {
@@ -184,11 +176,24 @@ locals {
     project       = google_project.ci.project_id
     zone          = var.zone
     default_image = var.runner.default_image
+    helper_image  = var.runner.helper_image
     pools         = { for k, p in var.pools : k => merge(p, { group = google_compute_instance_group_manager.pool[k].name }) }
   })
 }
 
+# What the manager boots from: GitLab Runner and the fleeting plugin from the bucket by SHA-256 (#40), the config.
+locals {
+  manager_metadata = {
+    startup-script         = file("${path.module}/files/manager-startup.sh")
+    runner-bucket          = google_storage_bucket.runner_bin.name
+    runner-sha256          = var.runner.runner_sha256
+    fleeting-plugin-sha256 = var.runner.plugin_sha256
+    runner-pools           = join(" ", sort(keys(var.pools)))
+    runner-config          = local.manager_config
+  }
+}
+
 resource "terraform_data" "manager_config" {
-  input      = sha256(local.manager_config)
+  input      = sha256(jsonencode(local.manager_metadata))
   depends_on = [terraform_data.iam_ready]
 }

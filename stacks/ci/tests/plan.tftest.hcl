@@ -152,13 +152,12 @@ run "ci" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin = "../../bin/manager"
@@ -266,6 +265,7 @@ run "ci" {
         "  limit = ${pool.limit}",
         "  [runners.docker]",
         "    image = \"alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a\"",
+        "    helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90\"",
         "    privileged = false",
         "    disable_cache = true",
         "    volumes = []",
@@ -363,6 +363,24 @@ run "ci" {
   assert {
     condition     = { for k, o in google_storage_bucket_object.runner_bin : k => [o.bucket, o.name, o.source] } == { gitlab-runner = [google_storage_bucket.runner_bin.name, "gitlab-runner/90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af", "../../bin/manager/gitlab-runner"], fleeting-plugin-googlecloud = [google_storage_bucket.runner_bin.name, "fleeting-plugin-googlecloud/429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb", "../../bin/manager/fleeting-plugin-googlecloud"] }
     error_message = "The runner bucket's objects are not the two builds of bin/manager, each named by its pinned SHA-256."
+  }
+  # The manager installs them from there, by SHA-256, and nothing from upstream or a package archive at boot.
+  assert {
+    condition     = google_compute_instance.manager.metadata["runner-bucket"] == google_storage_bucket.runner_bin.name && google_compute_instance.manager.metadata["runner-sha256"] == "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af" && google_compute_instance.manager.metadata["fleeting-plugin-sha256"] == "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+    error_message = "The manager's metadata does not name the runner bucket and the two builds' pinned SHA-256s."
+  }
+  assert {
+    condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
+    error_message = "The manager's metadata still pins an upstream download or a package archive."
+  }
+  # A new build replaces the manager, as a new config does: the startup script reads the metadata at boot only.
+  assert {
+    condition     = terraform_data.manager_config.input == sha256(jsonencode(google_compute_instance.manager.metadata))
+    error_message = "The manager's replacement does not follow every metadata value (the builds' SHA-256s among them)."
+  }
+  assert {
+    condition     = length(regexall("helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "Each runner's helper image is not the runner version's, by digest."
   }
   # The GitHub Apps' keys (#19): import-only RS256 keys with no version until their app's key is imported, software
   # (Cloud KMS's own: no external key manager holds them), in the key ring looper in us-central1. Cloud KMS never
@@ -470,13 +488,12 @@ run "one_job_per_vm_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin = "../../bin/manager"
@@ -506,13 +523,12 @@ run "unpinned_runner_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24"
     }
     runner_bin  = "../../bin/manager"
@@ -538,13 +554,12 @@ run "unpinned_build_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -572,13 +587,12 @@ run "family_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/family/cos-arm64-stable"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -606,13 +620,12 @@ run "no_importers" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -646,13 +659,12 @@ run "manager_signs_for_report_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin        = "../../bin/manager"
@@ -679,13 +691,12 @@ run "unknown_pool_refused" {
     zone                 = "us-central1-b"
     subnet_cidr          = "10.10.0.0/20"
     image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    apt_snapshot         = "20261024T000000Z"
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
       version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"

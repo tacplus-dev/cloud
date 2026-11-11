@@ -6,7 +6,8 @@
 # Found by `govulncheck -mode=binary` (symbols present) in the pinned binaries, each at its latest upstream release,
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
-# ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are the
+# ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are GitLab Runner and its fleeting plugin,
+# built from source with go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2 (ci/runner.sh, #40); nor are the
 # scanners' Go standard library findings, fixed by building them with the latest Go (ci/tools.sh), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
 # versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest but for its gh's x/net (CVE-2026-78661, #27).
@@ -16,8 +17,6 @@
 #   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866
 #   hashicorp/google 8.9.0 (stacks/*/.terraform.lock.hcl) GO-2026-5932 6860 6866
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
-#   GitLab Runner v19.5.2 (stacks/ci/main.tf)             GO-2026-6603 6610 6611 6612 6617 6865
-#   fleeting-plugin-googlecloud v1.3.1 (stacks/ci)        GO-2026-6603 6610 6611 6612 6617
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-6865
 #   the CI image build:2.6, v2.6.1's digest: its gh       CVE-2026-78661 (Trivy; tacplus-dev/tacplus#350 rebuilds it)
@@ -40,23 +39,23 @@ exceptions:
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6603
-    reason: "x/net HTTP/2 server Trailer memory exhaustion (OpenTofu, GitLab Runner, fleeting plugin): none serves HTTP/2 to a network; they are clients of gitlab.com and Google APIs over TLS. Fixed in x/net v0.60.0; no release of them with it yet."
+    reason: "x/net HTTP/2 server Trailer memory exhaustion (OpenTofu): it serves no HTTP/2 to a network; it is a client of gitlab.com and Google APIs over TLS. Fixed in x/net v0.60.0; no OpenTofu release with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6610
-    reason: "x/net HTTP/2 transport accepts malformed framing headers (OpenTofu, GitLab Runner, fleeting plugin): their HTTP/2 peers are gitlab.com and Google APIs over verified TLS. Fixed in x/net v0.60.0; no release of them with it yet."
+    reason: "x/net HTTP/2 transport accepts malformed framing headers (OpenTofu): its HTTP/2 peers are gitlab.com and Google APIs over verified TLS. Fixed in x/net v0.60.0; no OpenTofu release with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6611
-    reason: "x/net HTTP/2 repeated window changes CPU (OpenTofu, GitLab Runner, fleeting plugin): the peers are gitlab.com and Google APIs over verified TLS. Fixed in x/net v0.60.0; no release of them with it yet."
+    reason: "x/net HTTP/2 repeated window changes CPU (OpenTofu): the peers are gitlab.com and Google APIs over verified TLS. Fixed in x/net v0.60.0; no OpenTofu release with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6612
-    reason: "x/net HTTP/2 server double flow-control refund (OpenTofu, GitLab Runner, fleeting plugin): none serves HTTP/2 to a network. Fixed in x/net v0.60.0; no release of them with it yet."
+    reason: "x/net HTTP/2 server double flow-control refund (OpenTofu): it serves no HTTP/2 to a network. Fixed in x/net v0.60.0; no OpenTofu release with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6617
-    reason: "x/net HTTP/2 server HPACK encoder race (OpenTofu, GitLab Runner, fleeting plugin): none serves HTTP/2 to a network. Fixed in x/net v0.60.0; no release of them with it yet."
+    reason: "x/net HTTP/2 server HPACK encoder race (OpenTofu): it serves no HTTP/2 to a network. Fixed in x/net v0.60.0; no OpenTofu release with it yet."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6860
@@ -68,7 +67,7 @@ exceptions:
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6865
-    reason: "klauspost/compress panic on two-block frames, fse/huff0 (OpenTofu 1.13.2, Trivy 0.76.1, GitLab Runner v19.5.2, upstream's downloads): they decode only pinned, trusted inputs (lock-file hashes, this repository, the CI image by digest), no untrusted compressed stream. Fixed in v1.20.2; no release of them with it yet (OpenTofu 1.13.9 and Trivy 0.76.2 still lack it). gitleaks and OSV-Scanner are built here with v1.20.2 (ci/tools.sh)."
+    reason: "klauspost/compress panic on two-block frames, fse/huff0 (OpenTofu 1.13.2, Trivy 0.76.1, upstream's downloads): they decode only pinned, trusted inputs (lock-file hashes, this repository, the CI image by digest), no untrusted compressed stream. Fixed in v1.20.2; no release of them with it yet (OpenTofu 1.13.9 and Trivy 0.76.2 still lack it). gitleaks, OSV-Scanner (ci/tools.sh) and GitLab Runner (ci/runner.sh, #40) are built here with v1.20.2."
     decided_by: "jodydadescott (tacplus-dev/cloud#24, 2026-11-06)"
     expires: 2026-12-06
   - id: GO-2025-3922

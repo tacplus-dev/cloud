@@ -49,23 +49,21 @@ module "ci" {
   zone                 = "${module.settings.region}-b"
   subnet_cidr          = "10.10.0.0/20"
   image                = module.settings.ubuntu_arm64_image.image
-  apt_snapshot         = module.settings.ubuntu_arm64_image.snapshot
   pool_image           = module.settings.cos_arm64_image
   manager_machine_type = "t2a-standard-1"
   # GitLab Runner and the fleeting plugin, our builds of upstream's tags (ci/runner.sh, #40): each commit, and each
   # build's SHA-256, which the build is refused without and the manager installs by.
   runner = {
-    version                = "v19.5.2"
-    branch                 = "19-5-stable"
-    commit                 = "66ad5002d9249fc178e8f9edf3dd7d58223213ce"
-    runner_sha256          = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
-    plugin_version         = "v1.3.1"
-    plugin_commit          = "31ea56d71b16c75e37999262293b273be509f13d"
-    plugin_sha256          = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-    deb_sha256             = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-    helper_deb_sha256      = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-    upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-    default_image          = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    version        = "v19.5.2"
+    branch         = "19-5-stable"
+    commit         = "66ad5002d9249fc178e8f9edf3dd7d58223213ce"
+    runner_sha256  = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+    plugin_version = "v1.3.1"
+    plugin_commit  = "31ea56d71b16c75e37999262293b273be509f13d"
+    plugin_sha256  = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+    # The helper image of the runner's version, by digest: upstream's, which the pools pull at a job's start.
+    helper_image  = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+    default_image = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
   }
   # The tools job's artifact (ci/tools.sh), which plan:ci and apply:ci get: relative, so a plan applies in another job.
   runner_bin  = "${path.root}/../../bin/manager"

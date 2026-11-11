@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub id for tests/manager_startup_test.sh: `id -u gitlab-runner` succeeds once the stub useradd made the user.
+[ -f "$STUB_MANAGER/user" ] && echo 999

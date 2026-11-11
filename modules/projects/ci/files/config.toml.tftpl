@@ -6,7 +6,9 @@
 # volume, not a host directory. Job containers share a VM (capacity_per_instance), each within its pool's CPU and
 # memory limits, without swap; the VMs are reused (max_use_count = 0), and each job's containers and volumes are
 # removed when it ends (disable_cache: no cache volume outlives its job). No job is privileged, and none gets the
-# host's Docker socket (decisions/looper-job-per-issue-2026-11-03.md, #5).
+# host's Docker socket (decisions/looper-job-per-issue-2026-11-03.md, #5). The helper image each job runs beside is
+# upstream's for the runner's version, by digest, which the pools' VMs pull at the job's start: the manager installs no
+# helper-images package (#40; built here, a follow-up in PROPOSALS.md).
 concurrent = 100
 check_interval = 3
 shutdown_timeout = 0
@@ -20,6 +22,7 @@ shutdown_timeout = 0
   limit = ${pool.max_instances * pool.capacity}
   [runners.docker]
     image = "${default_image}"
+    helper_image = "${helper_image}"
     privileged = false
     disable_cache = true
     volumes = []

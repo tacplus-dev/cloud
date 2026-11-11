@@ -45,12 +45,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
   after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
   mock providers only.
-- **The manager's binaries, step 1 of 2 (#40):** GitLab Runner v19.5.2 and the fleeting plugin v1.3.1 built here with
-  go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2, reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the
-  tools job: `bin/manager/`), and uploaded by the ci stack to `gs://tacplus-ci-runner-bin`, which only the manager's
-  account reads among the VMs' and jobs' (README, The manager's binaries). The manager still installs upstream's packages
-  and plugin at boot until step 2 switches it to the bucket. Plan tests (mock providers) cover the bucket, its one
-  reader and the objects' names; the builds reproduced their pins here (linux/arm64 host).
+- **The manager's binaries (#40):** GitLab Runner v19.5.2 and the fleeting plugin v1.3.1 built here with go1.27.4,
+  x/net v0.62.0 and klauspost/compress v1.20.2, reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the tools job:
+  `bin/manager/`, which `bin/scan/` scans), uploaded by the ci stack to `gs://tacplus-ci-runner-bin`, which only the
+  manager's account reads among the VMs' and jobs' (README, The manager's binaries); the manager installs both from
+  there by SHA-256, with no package, no apt and nothing from upstream at boot. The jobs' helper image is still
+  upstream's (go1.26.10), by digest, pulled by the pools at a job's start. Plan tests (mock providers) cover the
+  bucket, its one reader, the objects and the manager's metadata; `tests/manager_startup_test.sh` the startup against
+  stubs; the builds reproduced their pins here (linux/arm64 host). Not applied yet: the first boot from the bucket
+  shows on the `apply:ci` of the commit the GitLab project pins (step 1's commit first, then step 2's).
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
@@ -195,7 +198,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   dev stack's plan tests (mock providers); not applied yet: the hub sets `GCP_GOOGLE_SIGNIN_ADDERS`, `apply:dev` on
   main makes it, then Jody adds the first version.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
-  provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
+  provider, tflint and its ruleset carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
   when its fix ships (PROPOSALS.md).
 - **Security job (#10):** `security` (`ci/security.sh`), on every push, merge request and nightly, before `plan:folder`:
@@ -207,7 +210,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   CVE-2026-78661, accepted until **2026-12-06** (the hub's decision on #27) until tacplus-dev/tacplus#350 ships a `gh`
   with x/net >= v0.62.0 and the digest moves; #23's (kin-openapi) are fixed by the kubernetes
   provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
-  brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu, Trivy and GitLab Runner accepted until **2026-12-06**.
+  brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6, v2.6.1's)

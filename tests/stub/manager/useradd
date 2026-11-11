@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub useradd for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log; the user then exists (STUB_MANAGER/user).
+echo "useradd $*" >> "$STUB_MANAGER/log"
+touch "$STUB_MANAGER/user"

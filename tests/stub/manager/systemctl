@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub systemctl for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log.
+echo "systemctl $*" >> "$STUB_MANAGER/log"

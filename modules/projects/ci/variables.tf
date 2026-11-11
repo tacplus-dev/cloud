@@ -41,11 +41,6 @@ variable "image" {
   type        = string
 }
 
-variable "apt_snapshot" {
-  description = "The Ubuntu archive snapshot the runner manager installs its packages from (apt --snapshot)."
-  type        = string
-}
-
 variable "pool_image" {
   description = "The pools' boot image: Container-Optimized OS for arm64, by name (never a family)."
   type        = string
@@ -61,23 +56,21 @@ variable "manager_machine_type" {
 }
 
 variable "runner" {
-  description = "GitLab Runner on the manager: our builds of its and the googlecloud fleeting plugin's tags (ci/runner.sh: version, branch and commit; plugin_version and plugin_commit), each by its SHA-256 (runner_sha256, plugin_sha256), and until the manager installs them (#40), upstream's: the SHA-256 of its two arm64 packages and of the plugin's download."
+  description = "GitLab Runner on the manager: our builds of its and the googlecloud fleeting plugin's tags (ci/runner.sh: version, branch and commit; plugin_version and plugin_commit), each installed by its SHA-256 (runner_sha256, plugin_sha256); the helper image its jobs run beside, and the default job image, by digest."
   type = object({
-    version                = string
-    branch                 = string
-    commit                 = string
-    runner_sha256          = string
-    plugin_version         = string
-    plugin_commit          = string
-    plugin_sha256          = string
-    deb_sha256             = string
-    helper_deb_sha256      = string
-    upstream_plugin_sha256 = string
-    default_image          = string
+    version        = string
+    branch         = string
+    commit         = string
+    runner_sha256  = string
+    plugin_version = string
+    plugin_commit  = string
+    plugin_sha256  = string
+    helper_image   = string
+    default_image  = string
   })
   validation {
-    condition     = alltrue([for h in [var.runner.runner_sha256, var.runner.plugin_sha256, var.runner.deb_sha256, var.runner.helper_deb_sha256, var.runner.upstream_plugin_sha256] : can(regex("^[0-9a-f]{64}$", h))]) && alltrue([for c in [var.runner.commit, var.runner.plugin_commit] : can(regex("^[0-9a-f]{40}$", c))]) && can(regex("@sha256:[0-9a-f]{64}$", var.runner.default_image))
-    error_message = "Every build and download is pinned by its SHA-256, each source by its commit, and the default image by digest."
+    condition     = alltrue([for h in [var.runner.runner_sha256, var.runner.plugin_sha256] : can(regex("^[0-9a-f]{64}$", h))]) && alltrue([for c in [var.runner.commit, var.runner.plugin_commit] : can(regex("^[0-9a-f]{40}$", c))]) && alltrue([for i in [var.runner.helper_image, var.runner.default_image] : can(regex("@sha256:[0-9a-f]{64}$", i))])
+    error_message = "Every build is pinned by its SHA-256, each source by its commit, and the helper and default images by digest."
   }
 }
 
