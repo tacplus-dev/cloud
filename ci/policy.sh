@@ -27,6 +27,10 @@
 #   - in a plan, roles/owner or roles/container.admin to a service account (#18), in a member, a member list or a
 #     policy document, or to a member known only after apply, but the pipeline's own owner of its folders: either could
 #     delete the cluster, and cluster-admin inside it is a ClusterRoleBinding, not IAM;
+#   - in a plan, the Anthropic organization (#34): an identity adopted (imported) with a change, as a live deployment
+#     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
+#     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
+#     organization role is not developer: the one org:admin rule and admin account are the bootstrap, made by hand;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -155,6 +159,12 @@ plan_check() {
            end),
         (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
+        (select(.type | startswith("anthropic_")) | select(.change.importing != null)
+         | "\($a) is adopted with a change: an adoption plans none, as its deployment names the identity live; write the config as the Console holds it, and change it in a commit of its own after"),
+        (select(.type == "anthropic_federation_rule" and ($after.oauth_scope | IN("workspace:developer", "workspace:inference") | not))
+         | "\($a) grants \($after.oauth_scope // "an unknown scope"): the pipeline makes workspace:developer and workspace:inference rules only (the org:admin rule is the bootstrap, made by hand)"),
+        (select(.type == "anthropic_service_account" and $after.organization_role != "developer")
+         | "\($a) has the organization role \($after.organization_role // "unknown"): the pipeline makes developer accounts only (the admin account is the bootstrap, made by hand)"),
         (select(.type == "google_container_node_pool")
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")

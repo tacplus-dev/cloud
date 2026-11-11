@@ -17,9 +17,9 @@
 #                     hash (h1:, a SHA-256 of its files) is the pinned one, its dependencies checked against the Go
 #                     checksum database (upstream's release is built with go1.24.11, without Go's fixes since), and
 #                     with the fixed klauspost/compress and brotli its release lacks (#24)
-#   bin/providers     the gitlab and kubernetes providers, our own builds from their source for this platform
-#                     (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, pinned by commit and by the SHA-256 of the
-#                     build): OpenTofu installs them from there only (ci/tofurc.sh)
+#   bin/providers     the gitlab, kubernetes and anthropic providers, our own builds from their source for this
+#                     platform (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, ci/anthropic-provider.sh, pinned by
+#                     commit and by the SHA-256 of the build): OpenTofu installs them from there only (ci/tofurc.sh)
 #   bin/manager       GitLab Runner and its googlecloud fleeting plugin for the runner manager (linux arm64), our
 #                     builds (ci/runner.sh, pinned by commit and by the SHA-256 of the build in stacks/ci/main.tf),
 #                     which the ci stack uploads to the manager's bucket (#40)
@@ -148,6 +148,7 @@ gobuild github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_sum" g
 GOBIN=$bin GOFLAGS=-mod=mod go install "github.com/mikefarah/yq/v4@$yq_version"
 "$here/ci/gitlab-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/kubernetes-provider.sh" "$bin/providers" "linux_$arch"
+"$here/ci/anthropic-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/runner.sh" "$bin/manager"
 chmod 0755 "$bin/tofu" "$bin/tflint" "$plugin/tflint-ruleset-google"
-echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab and kubernetes providers (providers/), GitLab Runner and its fleeting plugin (manager/)"
+echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab, kubernetes and anthropic providers (providers/), GitLab Runner and its fleeting plugin (manager/)"

@@ -13,7 +13,9 @@
 # any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
 # GCP_PARENT_FOLDER, and refuses a job without a valid one, and the dev stack the runners' token adders from
 # GCP_RUNNER_TOKEN_ADDERS (#18) and the Google sign-in secrets' adders from GCP_GOOGLE_SIGNIN_ADDERS (#37), refusing
-# one that is not a member. Needs bash and yq.
+# one that is not a member. The anthropic stack (#34): its jobs only once the bootstrap rule's IDs are set, beside the
+# other stacks, with ID tokens for Anthropic; ci_anthropic gives its provider and the stack the rule, refusing IDs of
+# the wrong form. Needs bash and yq.
 #
 #   tests/ci_test.sh
 set -uo pipefail
@@ -33,7 +35,7 @@ yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.ext
 q() { yq -r "$1" "$ci"; }
 
 mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
-want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,drift,"
+want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,plan:anthropic,apply:anthropic,drift,"
 [ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
 stages=" $(q '.stages | join(" ")') "
 for j in "${jobs[@]}"; do
@@ -113,8 +115,16 @@ check "a push to a branch with a merge request open: no pipeline (the merge requ
 check "the nightly schedule on main: the checks and drift, no plan or apply" "${lint}drift:on_success," schedule main
 check "a schedule on a branch: the checks only" "$lint" schedule some-branch
 check "a trigger: no pipeline" none trigger main
+anthropic="plan:anthropic:on_success,apply:anthropic:on_success,"
+ids=(ANTHROPIC_FEDERATION_RULE_ID=fdrl_01x ANTHROPIC_SERVICE_ACCOUNT_ID=svac_01x)
+check "a push to main once the bootstrap rule is set: the anthropic stack too (#34)" "$lint$stacks$anthropic" push main "${ids[@]}"
+check "a push to main with the rule but no account: no anthropic stack" "$lint$stacks" push main "${ids[0]}"
+check "a merge request once the rule is set: the checks only" "$lint" merge_request_event "" "${ids[@]}"
+check "the nightly schedule once the rule is set: the checks and drift" "${lint}drift:on_success," schedule main "${ids[@]}"
+[ "$(q '.variables.ANTHROPIC_FEDERATION_RULE_ID')" = fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo ] && [ "$(q '.variables.ANTHROPIC_SERVICE_ACCOUNT_ID')" = svac_011SKzqJqvTtj2LmUFbbDztN ] &&
+  ok "the bootstrap rule and account Jody made are set, so a push to main plans the anthropic stack (#34)" || fail "the bootstrap rule or account is not the one made in the Console (#34)"
 
-for s in folder ci dev gitlab; do
+for s in folder ci dev gitlab anthropic; do
   p="plan:$s" a="apply:$s"
   [ "$(q ".[\"$a\"].needs | join(\",\")")" = "tools,$p" ] || fail "$a needs $(q ".[\"$a\"].needs | join(\",\")"), not tools and $p"
   [ "$(q ".[\"$a\"].variables.STACK")" = "$s" ] && [ "$(q ".[\"$p\"].variables.STACK")" = "$s" ] || fail "$p or $a is not for the stack $s"
@@ -129,7 +139,8 @@ ok "each apply needs its own plan and applies that saved plan, in its environmen
 # ci after dev (#30): the ci stack reads the dev project's number, for the reader's account's federation.
 [ "$(q '.["plan:ci"].needs | join(",")')" = "tools,apply:dev" ] && [ "$(q '.["plan:dev"].needs | join(",")')" = "tools,apply:folder" ] &&
   [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test,security ]] &&
-  ok "the order: the checks, folder, dev, ci, then gitlab" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:dev $(q '.["plan:dev"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+  [ "$(q '.["plan:anthropic"].needs | join(",")')" = "$(q '.["plan:folder"].needs | join(",")')" ] &&
+  ok "the order: the checks, folder, dev, ci, then gitlab; anthropic after the checks, needing no other stack" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:dev $(q '.["plan:dev"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
 # The drift issue's reader key is tacplus-ci's (#30), and nothing here signs with jody1-328023's.
 [ "$(q '.variables.TACPLUS_READER_KMS_KEY')" = projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader ] &&
   ! grep -rn 'jody1-328023/locations/[a-z0-9-]*/keyRings' "$here/ci" "$here/stacks" "$here/modules" &&
@@ -141,7 +152,14 @@ for j in "${jobs[@]}"; do
   [ "$has" = "$want" ] || fail "$j: id_token $has"
 done
 ok "only the plan, apply and drift jobs have an id_token"
-[[ $(q '.drift.script | join(" ")') == *'ci/drift.sh folder ci dev gitlab' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
+for j in "${jobs[@]}"; do
+  case $j in plan:anthropic|apply:anthropic|drift) want=https://api.anthropic.com,https://api.anthropic.com,https://api.anthropic.com ;; *) want= ;; esac
+  got=$(q ".[\"$j\"].id_tokens // {} | to_entries | map(select(.key | test(\"^ANTHROPIC\"))) | map(.value.aud) | join(\",\")")
+  [ "$got" = "$want" ] || fail "$j: its ID tokens for Anthropic: [$got]"
+  [ -z "$want" ] || [[ $(q ".[\"$j\"].script | join(\" \")") == *ci_anthropic* ]] || fail "$j: no ci_anthropic"
+done
+ok "only the anthropic jobs and drift have ID tokens for Anthropic, three each, and set its credential"
+[[ $(q '.drift.script | join(" ")') == *'ci/drift.sh folder ci dev gitlab ${ANTHROPIC_FEDERATION_RULE_ID:+anthropic}' ]] && [[ $(q '.drift.script | join(" ")') != *"tofu.sh apply"* ]] &&
   ok "drift plans every stack and never applies" || fail "drift: $(q '.drift.script')"
 [[ $(q '.security.script | join(" ")') == *'--unshallow'*'ci/tools.sh security && ci/security.sh' ]] &&
   [ "$(q '.security.artifacts.paths | join(",")')" = src/security/ ] && [ "$(q '.security.artifacts.when')" = always ] &&
@@ -244,4 +262,20 @@ importers() { # importers [GCP_KMS_KEY_IMPORTERS]: ci_gcp's TF_VAR_kms_key_impor
 [ "$(importers)" = '[] []' ] && [ "$(importers '')" = '[] []' ] && ok "ci_gcp gives no importer without GCP_KMS_KEY_IMPORTERS" || fail "ci_gcp without GCP_KMS_KEY_IMPORTERS: [$(importers)]"
 [ -z "$(importers a@example.com)" ] && grep -q GCP_KMS_KEY_IMPORTERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   ok "ci_gcp refuses a GCP_KMS_KEY_IMPORTERS entry that is not a member" || fail "ci_gcp with a bad importer: $(cat "$work/gcp-err")"
+
+# ci_anthropic (#34) gives the anthropic stack's provider the bootstrap rule as the CI file's variables name it, the
+# stack the same as its variable admin, and ci/anthropic-token.sh its directory; and refuses IDs of the wrong form.
+anthropic() { # anthropic RULE ACCOUNT: ci_anthropic's TF_VAR_admin, or its refusal
+  (
+    export ANTHROPIC_ID_TOKEN_1=x ANTHROPIC_ORGANIZATION_ID=deec78e0-a50d-4817-89e4-043b3d94a5a0 ANTHROPIC_FEDERATION_RULE_ID=$1 ANTHROPIC_SERVICE_ACCOUNT_ID=$2 ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    ci_anthropic >/dev/null 2>"$work/anthropic-err" && [ -d "$ANTHROPIC_ID_TOKENS_DIR" ] && echo "$TF_VAR_admin"
+  )
+}
+[ "$(anthropic fdrl_01A svac_01B)" = '{organization_id = "deec78e0-a50d-4817-89e4-043b3d94a5a0", federation_rule_id = "fdrl_01A", service_account_id = "svac_01B"}' ] &&
+  ok "ci_anthropic gives the stack the bootstrap rule as its variable admin" || fail "ci_anthropic: [$(anthropic fdrl_01A svac_01B)] $(cat "$work/anthropic-err")"
+[ -z "$(anthropic '' svac_01B)" ] && [ -z "$(anthropic fdrl_01A 'svac_01B"}')" ] && grep -q ANTHROPIC_SERVICE_ACCOUNT_ID "$work/anthropic-err" &&
+  ok "ci_anthropic refuses a missing or malformed rule or account" || fail "ci_anthropic with bad IDs: $(cat "$work/anthropic-err")"
 exit "$failed"

@@ -35,6 +35,10 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
     The tacplus.dev cutover);
   - `prod` is designed but **not built**: see PRODUCTION.md.
+- **The Anthropic organization** (#34): for each deployment that runs llmproxy, its llmproxy's workload identity, the
+  federation issuer, the service account, its workspace membership and the rule (below, The Anthropic organization);
+  the hand-made seatrials ones adopted by their IDs. Not the one org:admin rule the pipeline itself federates through,
+  made by hand and only read here.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
   Secret Manager by version, never in this repository), the runner registrations of the `ci` pools (registered
   **paused**: moving the runners off jody1-328023 is a later issue), and the read-only memberships of other projects,
@@ -49,9 +53,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `bootstrap/bootstrap.sh` | Jody's one-time script (below). |
 | `modules/settings` | The names every stack shares: the parent folder (an input, never written here), region, project IDs, the pipeline's identity, the runner pools. |
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
-| `stacks/<folder\|ci\|dev\|gitlab>` | The four roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
+| `stacks/<folder\|ci\|dev\|gitlab\|anthropic>` | The five roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider` and `kubernetes-provider` (those providers, built from source), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
 | `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/nightly-builds.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and its nightly schedules, one per pinned repository (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
@@ -72,7 +76,8 @@ repository it plans and applies. Every job fetches this repository at that commi
 - **The parent folder:** the protected project variable `GCP_PARENT_FOLDER`, its numeric ID; `ci/lib.sh` gives it to the
   stacks as their variable `parent_folder`, and refuses a job without one. No file here holds it.
 - **Order:** the checks, then `folder` (the folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
-  tokens go to the `ci` project's secrets). Each stage's plan is made after the stage before it is applied.
+  tokens go to the `ci` project's secrets). Each stage's plan is made after the stage before it is applied. `anthropic`
+  runs beside them after the checks, needing none (below, The Anthropic organization).
 - **A new project's IAM:** the pipeline's rights in `tacplus-ci` and `tacplus-dev` are its role on the parent folder,
   which reaches a project created seconds before only after a minute or two. In each project module everything after
   the project and its APIs waits for `terraform_data.iam_ready`, which runs `ci/iam-ready.sh`: Resource Manager's
@@ -81,13 +86,13 @@ repository it plans and applies. Every job fetches this repository at that commi
 
 | Job | When | What |
 |---|---|---|
-| `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck, yq and gitleaks, pinned by version and SHA-256, and the gitlab provider built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
+| `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck, yq and gitleaks, pinned by version and SHA-256, and the gitlab, kubernetes and anthropic providers built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
-| `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too. |
+| `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too; and the anthropic stack against a stub of Anthropic's (`tests/anthropic_plan_test.sh`, #34). |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), or a break of the network rules (below). The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), a break of the network rules (below), or an Anthropic identity adopted with a change (below, The Anthropic organization). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `drift` | the nightly schedule | A plan of every stack, saved nowhere, no lock, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -98,8 +103,8 @@ that Jody plays, on a commit already applied to dev.
 - Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.65.0 and its google ruleset
   0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
-  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab` and `kubernetes` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
+  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack), `gitlab` 19.5.0 and `anthropic` 1.92.0 (ippontech's, the anthropic stack) providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
+  `-lockfile=readonly`), the `gitlab`, `kubernetes` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
   the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its fleeting plugin,
   our builds, by commit and SHA-256 (below, The manager's binaries); the runners' helper and default images by digest.
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
@@ -933,6 +938,64 @@ passed (no PROXY header; PROPOSALS.md).
 
 `apply:dev`'s output `load_balancer` gives the address's IP, each listener's NEG, zone and ports, and the source ranges.
 
+## The Anthropic organization
+
+#34 (Jody's option A, 2026-11-10). Each deployment that runs llmproxy reaches the Anthropic API through Workload Identity
+Federation: its fleet's kernel signs a token for llmproxy, and an Anthropic federation rule exchanges it for a
+short-lived token of a service account (decision: vendors' own APIs, through llmproxy). The stack `anthropic` owns
+those identities, from `modules/settings` (`deployments`, `llmproxy`): the federation issuer (the fleet's OIDC issuer,
+by discovery), the service account (`developer`) and its membership of the deployment's workspace, and the rule
+(`subject_prefix` llmproxy's own subject, exactly; a workspace scope, in that workspace). It makes, changes and archives
+them; nobody clicks in the Console. Its output `llmproxy` gives each deployment's pipeline the IDs its llmproxy names.
+
+- **Adopted, not made again:** seatrials' were made by hand on 2026-10-24; `import` blocks adopt them by the IDs its
+  llmproxy names (each `adopt` in `modules/settings`). An adoption plans no change: `ci/policy.sh` refuses a plan that
+  adopts an identity with a change, so the config is what the Console holds, and a change is a commit of its own after.
+  seatrials' rule narrows to `workspace:inference` that way, once adopted (Jody, 2026-11-10: llmproxy calls inference
+  only), in place, with the same ID.
+- **Never made again under a new ID:** each identity is `prevent_destroy`, and the plan fails if it finds one archived
+  (in the Console): a new one would have a new ID and break the deployment's config. One archived by hand is restored by
+  hand, or its deployment's config changes in a commit.
+- **Drift:** the nightly drift plans it like any stack (a normal plan: the issuer's `poll_status`, which moves on every
+  poll, is no change). A Console edit of a managed field is an update in the plan, and the next apply on main puts it
+  back. `ci/policy.sh` refuses a rule of any other scope than `workspace:developer` or `workspace:inference`, and an
+  account of any other role than `developer`.
+- **The provider:** `ippontech/anthropic` 1.92.0 (MPL-2.0), our reproducible build of its tag with go1.27.3
+  (`ci/anthropic-provider.sh`), installed only from `bin/providers` and locked by its hashes; the security job scans it
+  (govulncheck). A new release is a commit of its version, commit and SHA-256s, then `ci/lock.sh`.
+- **Tests:** the stack's plan against a mock provider, and against a stub of Anthropic's API with the real provider
+  and the pipeline's credential path (`tests/anthropic_plan_test.sh`): the adoption with no change, a Console edit planned
+  back, an archived identity refused, a widened bootstrap rule reported.
+
+**The pipeline's credential: no key.** Anthropic's service-account and federation endpoints accept no Admin API key,
+only an `org:admin` OAuth token; a person's login is short-lived, so the pipeline federates too. The jobs
+`plan:anthropic`, `apply:anthropic` and `drift` have three GitLab ID tokens for `https://api.anthropic.com`
+(`ANTHROPIC_ID_TOKEN_<n>`); the provider's `federation` exchanges one through the bootstrap rule for a token of an hour,
+and again before it expires. Anthropic accepts each token's `jti` once, so every exchange takes one no exchange has
+presented (`ci/anthropic-token.sh`); a plan or an apply exchanges once. `ci/lib.sh`'s `ci_anthropic` gives the provider
+the rule, its account and the organization, the CI file's `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`
+and `ANTHROPIC_ORGANIZATION_ID` (IDs, none secret). Until the rule and the account are set there, the anthropic jobs are
+not in the pipeline, and the drift skips the stack.
+
+**The bootstrap, by hand, once (Jody).** An OAuth caller can neither make an `org:admin` rule nor give an account the
+`admin` role, so the one rule the pipeline federates through is made in the Console, and stays out of every state.
+The stack reads it and checks it is still what `modules/settings` (`anthropic`) says; a check that fails is in the plan
+and in the drift issue (`ci/tofu.sh`), and nothing is applied to it.
+
+Done by Jody on 2026-11-11, as follows; a second one, for another project, is the same steps:
+
+1. Workload identity → the issuer `gitlab-com` for `https://gitlab.com` (`fdis_017qDpHredkBHa68QFkT4gcQ`), by
+   discovery, JTI replay protection on. There is one issuer per URL: one archived for it is unarchived and reused.
+2. The service account `cloud-admin-pipeline` (`svac_011SKzqJqvTtj2LmUFbbDztN`) with the **Admin** organization role.
+3. The rule `cloud-admin-pipeline` (`fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo`) on that issuer, to that account, scope
+   **`org:admin`** only (Advanced): `subject_prefix` exactly `project_path:tacplus-dev/cloud:ref_type:branch:ref:main`
+   (no `*`), claims `ref_protected` = `true`, audience `https://api.anthropic.com`, token lifetime 3600.
+4. The rule's `fdrl_` and the account's `svac_` in `ci/gitlab-project.gitlab-ci.yml` (`ANTHROPIC_FEDERATION_RULE_ID`,
+   `ANTHROPIC_SERVICE_ACCOUNT_ID`), by a commit, and the project's copy with it (`ci/pin.sh`): the next pipeline on main
+   plans the adoption.
+
+No key is made, stored or rotated.
+
 ## People
 
 Readers get `viewer` and `iam.securityReviewer` on the parent folder and nothing that writes: their accounts, listed in
@@ -949,7 +1012,7 @@ ci/security.sh                   # the security job: security/report.json (needs
 ci/lint.sh all                   # fmt, validate, tflint, shellcheck, policy
 ci/checks.sh                     # the tests, and tofu test of every stack against mock providers
 bootstrap/bootstrap.sh --folder <FOLDER_ID> --billing-account <ID> --dry-run    # with your gcloud: changes nothing
-ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh or ci/kubernetes-provider.sh: the lock files
+ci/lock.sh                       # after changing a provider's version, or ci/gitlab-provider.sh, ci/kubernetes-provider.sh or ci/anthropic-provider.sh: the lock files
 ```
 
 ## Never

@@ -345,3 +345,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   it does not, give the adders `roles/secretmanager.viewer` on that secret too (metadata, never a value), as the
   init-secrets account's, or say gcloud is the way in the README. Why: #37 asked for `secretVersionAdder` alone, which
   has no `secrets.get`, and the Console may need it to show the page; gcloud's `versions add` does not.
+- **seatrials' pipeline reads the anthropic stack's output** (looper, #34, 2026-11-11). What: fleet-seatrials' deploy
+  takes `llmproxy`'s IDs (rule, account, workspace, organization) from this pipeline's output (`stacks/anthropic`,
+  `llmproxy`) instead of the copy in `deploy/bootstrap/services/llmproxy.yaml`. Why: one source for the IDs; a second
+  deployment's llmproxy then needs no hand-copied IDs either.
+- **The anthropic provider's next releases** (looper, #34). What: ippontech/anthropic releases nearly daily; bump
+  `ci/anthropic-provider.sh` (version, commit, SHA-256s) and `ci/lock.sh` when a release fixes something we use or the
+  security job finds a vulnerability. Why: a pin left alone ages; a bump is a reviewed commit like any other.
+- **The seatrials issuer's JWKS** (looper, #34). What: the issuer `seatrials` shows Failing until the deployment serves
+  its discovery document; once it does, set `jwks_polling_disabled = false` on the llmproxy issuers so that a paused
+  poller is re-enabled by the next apply. Why: Anthropic pauses polling after repeated failures, and today nothing
+  turns it back on.

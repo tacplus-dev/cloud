@@ -19,6 +19,9 @@
 #                               (ci/tofu.sh apply); the stack's environment, one apply at a time
 #   drift                       the nightly schedule: a plan of every stack, and an issue on
 #                               github.com/tacplus-dev/cloud if anything differs; never applies
+#   plan:anthropic,             main, once the bootstrap org:admin rule's IDs are set below (#34): the anthropic
+#   apply:anthropic             stack, beside the others and needing none of them, so that neither Anthropic nor
+#                               GCP holds the other up; its provider federates the job's own ID tokens into Anthropic
 #
 # The stacks run in order: folder (the folders under the parent folder), then dev, then ci (the projects: ci reads
 # dev's number), then gitlab (whose runners' tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
@@ -29,7 +32,7 @@
 # provider's condition: protected main) as cloud-admin-pipeline. No key file and no token is stored in GitLab: the
 # id_token is exchanged for each job, and the GitLab token is read from Secret Manager by version (ci/lib.sh).
 # Every job runs on the project's own runner (tag `cloud`: a VM used once, with no Google account of its own).
-stages: [lint, folder, projects, gitlab]
+stages: [lint, folder, projects, gitlab, anthropic]
 
 variables:
   # The commit of github.com/tacplus-dev/cloud this pipeline plans and applies; empty in the repository, set in
@@ -39,6 +42,13 @@ variables:
   # The tacplus-reader app's key, in Cloud KMS (github_app_token in ci/lib.sh): the drift job files its issue with it,
   # as the job itself (the ci stack's binding, #30).
   TACPLUS_READER_KMS_KEY: projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader
+  # The Anthropic organization and its bootstrap org:admin rule and account, made by hand in the Console (README, The
+  # Anthropic organization; #34): IDs, none secret, which the anthropic stack's provider and ci/lib.sh's ci_anthropic
+  # read. Until the rule and the account are set, the anthropic jobs are not in the pipeline. Made by Jody on 2026-11-11
+  # (the rule and the account cloud-admin-pipeline, on the issuer gitlab-com).
+  ANTHROPIC_ORGANIZATION_ID: deec78e0-a50d-4817-89e4-043b3d94a5a0
+  ANTHROPIC_FEDERATION_RULE_ID: fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo
+  ANTHROPIC_SERVICE_ACCOUNT_ID: svac_011SKzqJqvTtj2LmUFbbDztN
 
 workflow:
   rules:
@@ -201,12 +211,49 @@ apply:gitlab:
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/tofu.sh apply "$STACK"
 
-# The nightly drift check: a plan of every stack, and an issue here when anything differs. It never applies.
+# The anthropic stack (#34): the jobs' ID tokens for Anthropic, one per exchange, as Anthropic accepts each once
+# (ci/anthropic-token.sh); a plan or an apply exchanges once, three leave room. Its state is in the bootstrap bucket,
+# hence GCP's too.
+plan:anthropic:
+  extends: .plan
+  stage: anthropic
+  needs: [tools, fmt, validate, tflint, shellcheck, policy, test, security]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/ && $ANTHROPIC_FEDERATION_RULE_ID && $ANTHROPIC_SERVICE_ACCOUNT_ID
+  id_tokens:
+    ANTHROPIC_ID_TOKEN_1: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_2: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_3: { aud: https://api.anthropic.com }
+  variables: { STACK: anthropic }
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_anthropic && ci/tofu.sh plan "$STACK"
+
+apply:anthropic:
+  extends: .apply
+  stage: anthropic
+  needs: [tools, plan:anthropic]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/ && $ANTHROPIC_FEDERATION_RULE_ID && $ANTHROPIC_SERVICE_ACCOUNT_ID
+      when: on_success
+  id_tokens:
+    ANTHROPIC_ID_TOKEN_1: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_2: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_3: { aud: https://api.anthropic.com }
+  variables: { STACK: anthropic }
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_anthropic && ci/tofu.sh apply "$STACK"
+
+# The nightly drift check: a plan of every stack, and an issue here when anything differs. It never applies. The
+# anthropic stack once its bootstrap rule is set (above).
 drift:
   extends: .gcp
   stage: folder
   needs: [tools, fmt, validate, tflint, shellcheck, policy, test]
   rules:
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule"
+  id_tokens:
+    ANTHROPIC_ID_TOKEN_1: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_2: { aud: https://api.anthropic.com }
+    ANTHROPIC_ID_TOKEN_3: { aud: https://api.anthropic.com }
   script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/drift.sh folder ci dev gitlab
+    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && { [ -z "$ANTHROPIC_FEDERATION_RULE_ID" ] || ci_anthropic; } && ci/drift.sh folder ci dev gitlab ${ANTHROPIC_FEDERATION_RULE_ID:+anthropic}

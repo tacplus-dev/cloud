@@ -7,7 +7,7 @@
 #
 #   osv-scanner   the tree's dependency manifests and lock files (the commit's tree: git archive of HEAD)
 #   govulncheck   -mode=binary, every pinned binary the pipeline runs or installs: OpenTofu, tflint and its google
-#                 ruleset, yq, the scanners, the gitlab and kubernetes providers (bin/), the google provider, GitLab
+#                 ruleset, yq, the scanners, the gitlab, kubernetes and anthropic providers (bin/), the google provider, GitLab
 #                 Runner and its fleeting plugin (bin/scan/); symbols present only. shellcheck is not Go.
 #   gitleaks      the tree, and its history (every commit: a shallow clone is refused)
 #   trivy         the CI image the jobs run in (ci/gitlab-project.gitlab-ci.yml's default image, by digest)
@@ -68,7 +68,7 @@ esac
 step "govulncheck -mode=binary: the pinned binaries"
 shopt -s globstar nullglob
 pinned=(tofu tflint 'tflint.d/**/tflint-ruleset-google' yq gitleaks osv-scanner trivy govulncheck
-  'providers/**/terraform-provider-gitlab*' 'providers/**/terraform-provider-kubernetes*'
+  'providers/**/terraform-provider-gitlab*' 'providers/**/terraform-provider-kubernetes*' 'providers/**/terraform-provider-anthropic*'
   'scan/plugins/**/terraform-provider-google*' scan/gitlab-runner
   scan/fleeting-plugin-googlecloud)
 i=0

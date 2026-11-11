@@ -1,0 +1,6 @@
+{"resource_changes":[
+ {"address":"anthropic_federation_issuer.llmproxy[\"seatrials\"]","type":"anthropic_federation_issuer","change":{"actions":["no-op"],"importing":{"id":"fdis_01JKxG3CyMXqfgcG8HoqorvT"},"after":{"name":"seatrials","issuer_url":"https://seatrials.tacplus.dev"}}},
+ {"address":"anthropic_service_account.llmproxy[\"seatrials\"]","type":"anthropic_service_account","change":{"actions":["no-op"],"importing":{"id":"svac_01EoVk8wqp7sVYgBkRyyd5MT"},"after":{"name":"llmproxy-seatrials","organization_role":"developer"}}},
+ {"address":"anthropic_federation_rule.llmproxy[\"seatrials\"]","type":"anthropic_federation_rule","change":{"actions":["update"],"after":{"name":"llmproxy-seatrials","oauth_scope":"workspace:inference"}}},
+ {"address":"anthropic_service_account.llmproxy[\"other\"]","type":"anthropic_service_account","change":{"actions":["create"],"after":{"name":"llmproxy-other","organization_role":"developer"}}}
+]}

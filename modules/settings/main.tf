@@ -130,7 +130,11 @@ output "deployments" {
     identity alone reads; and google_signin (#37), true when it has a Google sign-in client: the secret
     google-signin-<deployment> (the client JSON the Console downloads), whose versions the dev stack's
     google_signin_adders add by hand, in the Console (Google has no API that makes a web client), and which its
-    identity alone reads.
+    identity alone reads. Optionally (#34): llmproxy, its llmproxy's identity in the Anthropic organization, which the
+    anthropic stack owns: the federation issuer (its fleet's OIDC issuer, url), the service account (an explicit member
+    of workspace_id with workspace_role) and the rule that lets the issuer's tokens whose sub is subject act as that
+    account in workspace_id with oauth_scope; each adopt, the ID of the one made by hand that the stack adopts rather
+    than makes (null: it makes it).
   EOT
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
@@ -146,6 +150,11 @@ output "deployments" {
     # init-secrets job, in the GitLab environment init-secrets, runs as seatrials-init-secrets (#28,
     # fleet-seatrials#44). Its Google sign-in client is in tacplus-dev, its secret google-signin-seatrials (#37,
     # fleet-seatrials#46): Jody makes the client and adds the secret's versions in the Console.
+    # Its llmproxy's Anthropic identity (#34), made by hand in the Console on 2026-10-24 and adopted by the anthropic
+    # stack by these IDs, which its llmproxy names (fleet-seatrials deploy/bootstrap/services/llmproxy.yaml): the
+    # issuer is the fleet's kernel (OIDC discovery at its public name), the rule matches llmproxy's own identity.
+    # The rule narrows to workspace:inference once adopted (Jody, 2026-11-10): an adoption plans no change
+    # (ci/policy.sh), so the narrowing is the commit after it.
     seatrials = {
       gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
       images                   = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
@@ -154,6 +163,30 @@ output "deployments" {
       environment_secrets      = { test-idp = ["test-idp-seeds"] }
       init_secrets             = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
       google_signin            = true
+      llmproxy = {
+        workspace_id    = "wrkspc_017AfVbSBgLY399kXGDRtQ6e"
+        issuer          = { name = "seatrials", url = "https://seatrials.tacplus.dev", adopt = "fdis_01JKxG3CyMXqfgcG8HoqorvT" }
+        service_account = { name = "llmproxy-seatrials", workspace_role = "workspace_developer", adopt = "svac_01EoVk8wqp7sVYgBkRyyd5MT" }
+        rule            = { name = "llmproxy-seatrials", subject = "spiffe://local.dev/system/services/llmproxy", oauth_scope = "workspace:developer", adopt = "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8" }
+      }
+    }
+  }
+}
+
+output "anthropic" {
+  description = <<-EOT
+    The Anthropic organization's bootstrap (#34; README, The Anthropic organization): the one federation rule this
+    pipeline exchanges its GitLab ID tokens through for an org:admin token, made by hand in the Console (an OAuth
+    caller can neither make an org:admin rule nor give an account the admin role) and never in a stack's state. The
+    anthropic stack only reads it and checks it is still this: an issuer of issuer_url, the rule's scope org:admin, its
+    subject exactly this project's protected main, its claims and audience these, its target an admin account.
+  EOT
+  value = {
+    admin = {
+      issuer_url = "https://gitlab.com"
+      subject    = "project_path:tacplus-dev/cloud:ref_type:branch:ref:main"
+      claims     = { ref_protected = "true" }
+      audience   = "https://api.anthropic.com"
     }
   }
 }

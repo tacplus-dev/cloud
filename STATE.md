@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#37).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#34).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -11,7 +11,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   provider is our own reproducible build of its v19.5.0 tag with go1.26.10 and x/net v0.62.0 (`ci/gitlab-provider.sh`,
   #3), installed only from `bin/providers` (`ci/tofurc.sh`) and locked by its own hashes; the `kubernetes` provider is
   too, its v3.4.0 tag with go1.27.3, x/net v0.62.0 (`ci/kubernetes-provider.sh`, #18) and kin-openapi v0.152.0, its
-  `manifest/openapi` ported to it by `ci/kubernetes-provider.patch` (#23): no kin-openapi finding, none accepted.
+  `manifest/openapi` ported to it by `ci/kubernetes-provider.patch` (#23): no kin-openapi finding, none accepted; and the
+  `anthropic` provider (`ippontech/anthropic`) is our build of its v1.92.0 tag with go1.27.3 (`ci/anthropic-provider.sh`, #34).
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
@@ -238,6 +239,23 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   plan tests (output `build_runners`) and the stub-API plan (adopted with no change at the hand-set value; with group
   runners off, the plan turns them on and nothing else); not applied yet: `apply:gitlab` on main, and a build job
   taken by the shared pool, show there.
+- **The Anthropic organization (#34; Jody's option A, 2026-11-10):** the stack `anthropic` owns each llmproxy
+  deployment's workload identity (issuer, service account and its workspace membership, rule) from `modules/settings`
+  (`deployments`, `llmproxy`), and adopts seatrials' hand-made ones by their IDs (`fdis_01JKxG3CyMXqfgcG8HoqorvT`,
+  `svac_01EoVk8wqp7sVYgBkRyyd5MT`, `fdrl_01Fvxu1oSKHN6rwtdZmRbGY8`, the membership in `wrkspc_017AfVbSBgLY399kXGDRtQ6e`);
+  `prevent_destroy` and an `archived_at` postcondition refuse a re-create under a new ID; `ci/policy.sh` refuses an
+  adoption with a change, a rule of another scope than `workspace:developer`/`workspace:inference` and a non-developer
+  account. The provider is our reproducible build of `ippontech/anthropic` 1.92.0 with go1.27.3
+  (`ci/anthropic-provider.sh`), installed from `bin/providers` only, locked, scanned by govulncheck. Its credential is no
+  key: the jobs' GitLab ID tokens, one per exchange (`ci/anthropic-token.sh`), through a bootstrap `org:admin` rule made
+  by hand, which the stack only reads and checks; `ci/tofu.sh` reports a failing check in the plan and the drift.
+  Tested against a mock provider and, with the real provider and the credential path, a stub of Anthropic's API
+  (`tests/anthropic_plan_test.sh`). The bootstrap is made (Jody, 2026-11-11: rule `fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo`,
+  account `svac_011SKzqJqvTtj2LmUFbbDztN`, issuer `gitlab-com`) and set in the CI file, so the pipeline on main plans
+  and applies the stack. **Not run yet:** no `plan:anthropic` has run (the GitLab project's pin of a commit that sets
+  them); the config is written from fleet-seatrials' record of the Console (llmproxy.yaml), not read from the org, so
+  that first plan shows whether the adoption is a no-op (the policy refuses it otherwise); the narrowing of seatrials'
+  rule to `workspace:inference` is the commit after the adoption.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

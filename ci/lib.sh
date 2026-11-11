@@ -77,6 +77,25 @@ ci_gitlab() {
   echo "gitlab: the token of $secret"
 }
 
+# ci_anthropic: the anthropic stack's credential (#34): no key. Its provider exchanges the job's GitLab ID tokens for
+# Anthropic (id_tokens ANTHROPIC_ID_TOKEN_<n>, aud https://api.anthropic.com), one per exchange
+# (ci/anthropic-token.sh), through the bootstrap org:admin rule made by hand in the Console (README, The Anthropic
+# organization), for a short-lived org:admin token. The rule, its account and the organization are
+# ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_SERVICE_ACCOUNT_ID and ANTHROPIC_ORGANIZATION_ID (the CI file's variables,
+# IDs, none secret), which the provider reads as they are, and the stack as its variable admin, to check the rule.
+ci_anthropic() {
+  : "${ANTHROPIC_ID_TOKEN_1:?the job has no id_tokens ANTHROPIC_ID_TOKEN_1}"
+  [[ ${ANTHROPIC_ORGANIZATION_ID:-} =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] &&
+    [[ ${ANTHROPIC_FEDERATION_RULE_ID:-} =~ ^fdrl_[A-Za-z0-9]+$ ]] && [[ ${ANTHROPIC_SERVICE_ACCOUNT_ID:-} =~ ^svac_[A-Za-z0-9]+$ ]] ||
+    { echo "anthropic: ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_SERVICE_ACCOUNT_ID are not an organization's UUID, an fdrl_ and an svac_: [${ANTHROPIC_ORGANIZATION_ID:-}] [${ANTHROPIC_FEDERATION_RULE_ID:-}] [${ANTHROPIC_SERVICE_ACCOUNT_ID:-}] (README, The Anthropic organization)" >&2
+      return 1; }
+  export ANTHROPIC_ORGANIZATION_ID ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_SERVICE_ACCOUNT_ID
+  export ANTHROPIC_ID_TOKENS_DIR=$ci_tmp/anthropic-tokens
+  mkdir -p "$ANTHROPIC_ID_TOKENS_DIR"
+  export TF_VAR_admin="{organization_id = \"$ANTHROPIC_ORGANIZATION_ID\", federation_rule_id = \"$ANTHROPIC_FEDERATION_RULE_ID\", service_account_id = \"$ANTHROPIC_SERVICE_ACCOUNT_ID\"}"
+  echo "anthropic: the org:admin rule $ANTHROPIC_FEDERATION_RULE_ID of $ANTHROPIC_ORGANIZATION_ID, through workload identity federation"
+}
+
 # ci_projects: the projects the pipeline builds, one ID a line, as modules/settings names them (projects).
 ci_projects() {
   local p

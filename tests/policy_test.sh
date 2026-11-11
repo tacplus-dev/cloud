@@ -17,7 +17,9 @@
 # apply), and a certificate, Certificate Manager, an SSL policy, an HTTP(S) or SSL proxy or a URL map is refused, as is
 # ingress from a public range but Google's proxies' and health checkers'; and roles/owner or roles/container.admin to a
 # service account (#18), in a member, a member list or a policy document, or to a member known only after apply, the
-# pipeline's own owner alone excepted. Needs bash and jq.
+# pipeline's own owner alone excepted; and in the Anthropic organization (#34), an identity adopted with a change, a
+# rule of another scope than workspace:developer or workspace:inference, an account of another role than developer.
+# Needs bash and jq.
 #
 #   tests/policy_test.sh
 set -uo pipefail
@@ -59,6 +61,12 @@ refuses "a plan with allUsers nested deep" "allUsers" plan "$fx/plans/public-nes
 refuses "a plan opening the manager's binaries to allUsers (#40)" "allUsers" plan "$fx/plans/public-runner-bin.json"
 refuses "a clean plan and a bad one" "allUsers" plan "$fx/plans/clean.json" "$fx/plans/public-member.json"
 passes "a clean plan" plan "$fx/plans/clean.json"
+# The Anthropic organization (#34): an adoption with no change, then a change in a commit of its own, passes; an
+# adoption with a change, an org-level rule or an admin account made by the pipeline is refused.
+passes "adoptions with no change, then an update and a create" plan "$fx/plans/anthropic-clean.json"
+refuses "an adoption with a change" 'anthropic_federation_rule.llmproxy["seatrials"] is adopted with a change' plan "$fx/plans/anthropic-adopt-change.json"
+refuses "an org:admin rule" "grants org:admin" plan "$fx/plans/anthropic-admin-scope.json"
+refuses "an admin service account" "has the organization role admin" plan "$fx/plans/anthropic-admin-account.json"
 passes "a plan deleting a key" plan "$fx/plans/key-deleted.json"
 
 refuses "a plan with an instance's access config" "an external address" plan "$fx/plans/instance-access-config.json"

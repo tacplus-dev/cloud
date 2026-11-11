@@ -5,8 +5,8 @@
 # Tests ci/tofu.sh against a stub tofu (tests/stub/tofu): plan inits with the lock file read-only, saves the plan
 # and its JSON, text and SHA-256, and is refused, with no SHA-256 to apply, when ci/policy.sh refuses the plan;
 # apply applies exactly the saved plan (no other argument that could change it), and refuses a missing plan or one
-# changed since the plan job; drift never saves, locks or applies, and lists what differs; an unknown stack is
-# refused. Needs bash, jq, sha256sum.
+# changed since the plan job; drift never saves, locks or applies, and lists what differs, a failing check too (#34),
+# with no change or with some; plan says a failing check; an unknown stack is refused. Needs bash, jq, sha256sum.
 #
 #   tests/tofu_test.sh
 set -uo pipefail
@@ -28,6 +28,11 @@ run() { : > "$STUB_LOG"; "$tofu_sh" "$@" > "$work/out" 2>&1; }
 clean='{"resource_changes":[{"address":"module.folder.google_folder.folder[\"ci\"]","type":"google_folder","change":{"actions":["create"],"after":{"display_name":"ci"}}},{"address":"data.x","type":"x","change":{"actions":["read"],"after":{}}}]}'
 key='{"resource_changes":[{"address":"google_service_account_key.k","type":"google_service_account_key","change":{"actions":["create"],"after":{}}}]}'
 echo "$clean" > "$work/clean.json"; echo "$key" > "$work/key.json"
+echo '{"resource_changes":[{"address":"data.x","type":"x","change":{"actions":["read"],"after":{}}}]}' > "$work/none.json"
+# A failing check, as tofu show -json gives it: the anthropic stack's bootstrap rule changed in the Console (#34).
+checks='"checks":[{"address":{"kind":"check","to_display":"check.admin"},"status":"fail","instances":[{"address":{"to_display":"check.admin"},"status":"fail","problems":[{"message":"The bootstrap rule is no longer a live org:admin rule."},{"message":"Another."}]}]},{"address":{"to_display":"terraform_data.r"},"status":"pass","instances":[{"address":{"to_display":"terraform_data.r"},"status":"pass"}]}]'
+echo "{\"resource_changes\":[],$checks}" > "$work/check.json"
+echo "${clean%\}},$checks}" > "$work/clean-check.json"
 
 export STUB_PLAN_JSON=$work/clean.json
 if run plan folder; then ok "plan folder"; else fail "plan folder: $(cat "$work/out")"; fi
@@ -55,13 +60,23 @@ if run plan dev; then fail "a plan creating a key passed"; else
 
 export STUB_PLAN_JSON=$work/clean.json PLAN_SUMMARY=$work/summary
 : > "$PLAN_SUMMARY"
-STUB_PLAN_RC=0 run drift folder && [ ! -s "$PLAN_SUMMARY" ] && ok "drift: none" || fail "drift with no change: $(cat "$work/out" "$PLAN_SUMMARY")"
+STUB_PLAN_JSON=$work/none.json STUB_PLAN_RC=0 run drift folder && [ ! -s "$PLAN_SUMMARY" ] && ok "drift: none" || fail "drift with no change: $(cat "$work/out" "$PLAN_SUMMARY")"
 STUB_PLAN_RC=2 run drift folder && [ "$(cat "$PLAN_SUMMARY")" = 'folder: create module.folder.google_folder.folder["ci"]' ] &&
   ok "drift lists what differs" || fail "drift summary: $(cat "$PLAN_SUMMARY")"
 grep -q ' plan .*-lock=false .*-detailed-exitcode' "$STUB_LOG" && ! grep -q ' apply ' "$STUB_LOG" && ! grep -q "out=$PLANS" "$STUB_LOG" &&
   ok "drift neither locks, saves nor applies" || fail "drift ran: $(cat "$STUB_LOG")"
 : > "$PLAN_SUMMARY"
 STUB_PLAN_RC=1 run drift ci && grep -q '^ci: the plan failed' "$PLAN_SUMMARY" && ok "a failed drift plan is reported" || fail "drift failure: $(cat "$PLAN_SUMMARY")"
+: > "$PLAN_SUMMARY"
+STUB_PLAN_JSON=$work/check.json STUB_PLAN_RC=0 run drift anthropic &&
+  [ "$(cat "$PLAN_SUMMARY")" = 'anthropic: check check.admin failed: The bootstrap rule is no longer a live org:admin rule.; Another.' ] &&
+  ok "drift lists a failing check with no change (#34)" || fail "drift of a failing check: $(cat "$work/out" "$PLAN_SUMMARY")"
+: > "$PLAN_SUMMARY"
+STUB_PLAN_JSON=$work/clean-check.json STUB_PLAN_RC=2 run drift folder && [ "$(wc -l < "$PLAN_SUMMARY")" = 2 ] &&
+  grep -q '^folder: create ' "$PLAN_SUMMARY" && grep -q '^folder: check check.admin failed' "$PLAN_SUMMARY" &&
+  ok "drift lists a failing check beside the changes" || fail "drift of changes and a failing check: $(cat "$PLAN_SUMMARY")"
+STUB_PLAN_JSON=$work/clean-check.json run plan ci && grep -q '^ci: check check.admin failed' "$work/out" && grep -q '1 change(s)' "$work/out" &&
+  ok "plan says a failing check, and counts it as no change" || fail "plan of a failing check: $(cat "$work/out")"
 
 run plan ../folder && fail "a stack outside stacks/ ran" || ok "an unknown stack is refused"
 run destroy folder && fail "destroy ran" || ok "no other command (destroy) exists"
