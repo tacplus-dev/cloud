@@ -48,8 +48,8 @@ run "stack" {
   # The looper's recap reads tacplus-dev/build as tacplus-looper-bot, through every looper job's GITLAB_TOKEN (#12,
   # option B): Reporter, nothing higher, and an expiry.
   assert {
-    condition     = keys(output.members) == ["tacplus-dev/build:tacplus-looper-bot"]
-    error_message = "The stack makes other members than tacplus-looper-bot of tacplus-dev/build."
+    condition     = keys(output.members) == ["tacplus-dev/build:tacplus-looper-bot", "tacplus-dev/cluster:tacplus-looper-bot"]
+    error_message = "The stack makes other members than tacplus-looper-bot of tacplus-dev/build and tacplus-dev/cluster."
   }
   assert {
     condition     = output.members["tacplus-dev/build:tacplus-looper-bot"].access_level == "reporter" && output.members["tacplus-dev/build:tacplus-looper-bot"].user_id == 99 && output.members["tacplus-dev/build:tacplus-looper-bot"].project == "77"

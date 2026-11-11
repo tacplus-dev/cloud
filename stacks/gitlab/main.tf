@@ -48,6 +48,8 @@ module "gitlab" {
   # nothing higher; the expiry is the bot's token's (looper-jobs, 2027-10-01), renewed by a commit with it.
   members = {
     "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
+    # tacplus-dev/cluster#18: the recap reads cluster's pipelines and jobs too (it got a 404).
+    "tacplus-dev/cluster:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
   }
   # tacplus-dev/build (#26; tacplus-dev/looper#71, #84): its .gitlab-ci.yml, tacplus-dev/looper's
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
