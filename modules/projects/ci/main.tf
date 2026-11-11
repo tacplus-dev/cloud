@@ -91,6 +91,13 @@ resource "google_compute_router_nat" "runners" {
   router                             = google_compute_router.runners.name
   nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  # Ports per VM grow with its connections (2026-11-11): with no slots, a VM runs up to 25 jobs that open connections
+  # at once (image pulls, git, the model API), and NAT's default of 64 ports a VM ran out ("Get https://ghcr.io/v2/:
+  # context deadline exceeded" on every new job). Dynamic allocation from 1024 up to 16384 a VM.
+  enable_dynamic_port_allocation      = true
+  enable_endpoint_independent_mapping = false
+  min_ports_per_vm                    = 1024
+  max_ports_per_vm                    = 16384
 }
 
 # The manager reaches its workers over SSH (the docker-autoscaler executor): the one port-22 rule, internal and by

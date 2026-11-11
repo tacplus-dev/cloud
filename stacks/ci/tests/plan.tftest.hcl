@@ -192,6 +192,11 @@ run "ci" {
     values = { email = "fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/fleet-seatrials-reader@tacplus-ci.iam.gserviceaccount.com" }
   }
 
+  # NAT gives each VM ports as its jobs need them: no slots means many connections at once (2026-11-11).
+  assert {
+    condition     = google_compute_router_nat.runners.enable_dynamic_port_allocation && google_compute_router_nat.runners.min_ports_per_vm >= 1024 && google_compute_router_nat.runners.max_ports_per_vm >= 16384
+    error_message = "The runners' NAT does not allocate ports dynamically, from at least 1024 up to 16384 a VM."
+  }
   assert {
     condition     = google_project.ci.folder_id == "folders/222" && google_project.ci.billing_account == "000000-111111-222222" && !google_project.ci.auto_create_network && google_project.ci.deletion_policy == "PREVENT"
     error_message = "The project is not in its folder, billed, without a default network and protected from deletion."
