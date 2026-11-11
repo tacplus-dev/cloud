@@ -103,7 +103,7 @@ variable "cluster_pipeline" {
 }
 
 variable "deployments" {
-  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become; and its init_secrets (fleet-secrets.tf): the GitLab environment of its init-secrets job and the service account ID only its project's jobs in that environment, on protected main, may become, which adds the versions of its fleet secrets."
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become; and, by environment of those accounts, its certificate's domain (certificates.tf: the secrets tls-<environment> and acme-account-<environment> and a challenge zone of its own, the account's alone) and the IDs of the secrets the account alone adds versions to and reads (deploy.tf); and its init_secrets (fleet-secrets.tf): the GitLab environment of its init-secrets job and the service account ID only its project's jobs in that environment, on protected main, may become, which adds the versions of its fleet secrets."
   type = map(object({
     gitlab_project = string
     environment    = string
@@ -117,7 +117,9 @@ variable "deployments" {
       account_id = string
       days       = number
     }))
-    environment_accounts = optional(map(string), {})
+    environment_accounts     = optional(map(string), {})
+    environment_certificates = optional(map(string), {})
+    environment_secrets      = optional(map(list(string)), {})
     init_secrets = optional(object({
       environment = string
       account_id  = string
@@ -135,6 +137,18 @@ variable "deployments" {
   validation {
     condition     = alltrue([for d in values(var.deployments) : d.init_secrets == null || !contains(concat([d.environment], keys(d.environment_accounts)), try(d.init_secrets.environment, ""))])
     error_message = "A deployment's init-secrets job has a GitLab environment of its own: no other of its jobs becomes its account."
+  }
+  validation {
+    condition     = alltrue([for d in values(var.deployments) : length(setsubtract(concat(keys(d.environment_certificates), keys(d.environment_secrets)), keys(d.environment_accounts))) == 0])
+    error_message = "An environment's certificate or secrets are its environment account's: the environment has none."
+  }
+  validation {
+    condition     = length(flatten([for d in values(var.deployments) : concat([d.domain], values(d.environment_certificates))])) == length(distinct(flatten([for d in values(var.deployments) : concat([d.domain], values(d.environment_certificates))])))
+    error_message = "Each certificate, a deployment's or an environment's, has a domain of its own: its challenge zone is its account's alone."
+  }
+  validation {
+    condition     = length(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}"])])) == length(distinct(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}"])])))
+    error_message = "Each secret, a certificate's, an environment's or a fleet secret, is one account's alone: no two have one ID."
   }
 }
 

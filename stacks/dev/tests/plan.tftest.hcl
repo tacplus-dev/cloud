@@ -81,6 +81,11 @@ run "stack" {
     condition     = output.deployments["seatrials"].fleet_secrets.ca == "projects/tacplus-dev/secrets/fleet-ca-seatrials" && output.deployments["seatrials"].fleet_secrets.crypto == "projects/tacplus-dev/secrets/fleet-crypto-seatrials" && output.deployments["seatrials"].fleet_secrets.environment == "init-secrets"
     error_message = "The stack does not give seatrials its fleet secrets and the init-secrets job's account."
   }
+  # fleet-seatrials#27's names (#32).
+  assert {
+    condition     = output.deployments["seatrials"].environment_certificates["test-idp"].secrets == { tls = "projects/tacplus-dev/secrets/tls-test-idp", acme_account = "projects/tacplus-dev/secrets/acme-account-test-idp" } && output.deployments["seatrials"].environment_certificates["test-idp"].challenge_zone == "acme-challenge-idp-test-tacplus-dev" && output.deployments["seatrials"].environment_secrets == { test-idp = ["projects/tacplus-dev/secrets/test-idp-seeds"] }
+    error_message = "The stack does not give the test IdP its certificate secrets, its challenge zone and its seed secret."
+  }
   assert {
     condition     = output.gateway_address == { name = "gateway", address = "203.0.113.10" }
     error_message = "The stack does not give the Gateway its address's name and IP."
@@ -147,10 +152,12 @@ run "dev" {
     }
     deployments = {
       seatrials = {
-        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
-        images               = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
-        environment_accounts = { test-idp = "test-idp-deploy" }
-        init_secrets         = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
+        gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        images                   = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
+        environment_accounts     = { test-idp = "test-idp-deploy" }
+        environment_certificates = { test-idp = "idp.test.tacplus.dev" }
+        environment_secrets      = { test-idp = ["test-idp-seeds"] }
+        init_secrets             = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
       }
     }
     runner_token_adders = ["user:jody@example.com"]
@@ -245,16 +252,16 @@ run "dev" {
     error_message = "seatrials-deploy is not tacplus-dev/fleet-seatrials's alone."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret.certificate)) == toset(["tls-seatrials", "acme-account-seatrials"]) && alltrue([for s in google_secret_manager_secret.certificate : s.replication[0].user_managed[0].replicas[0].location == "us-central1"])
-    error_message = "The deployment's secrets are not tls-seatrials and acme-account-seatrials, in us-central1."
+    condition     = toset(keys(google_secret_manager_secret.certificate)) == toset(["tls-seatrials", "acme-account-seatrials", "tls-test-idp", "acme-account-test-idp"]) && alltrue([for s in google_secret_manager_secret.certificate : s.replication[0].user_managed[0].replicas[0].location == "us-central1"])
+    error_message = "The certificate secrets are not the deployment's tls-seatrials and acme-account-seatrials and the test IdP's tls-test-idp and acme-account-test-idp, in us-central1."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret_iam_binding.certificate)) == toset(["tls-seatrials/roles/secretmanager.secretVersionAdder", "tls-seatrials/roles/secretmanager.secretAccessor", "acme-account-seatrials/roles/secretmanager.secretVersionAdder", "acme-account-seatrials/roles/secretmanager.secretAccessor"])
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.certificate)) == toset(flatten([for s in ["tls-seatrials", "acme-account-seatrials", "tls-test-idp", "acme-account-test-idp"] : ["${s}/roles/secretmanager.secretVersionAdder", "${s}/roles/secretmanager.secretAccessor"]]))
     error_message = "The secrets' roles are not exactly adding versions and reading them."
   }
   assert {
-    condition     = alltrue([for b in google_secret_manager_secret_iam_binding.certificate : b.members == toset([google_service_account.deploy["seatrials"].member])])
-    error_message = "Someone besides the seatrials pipeline adds or reads its certificate secrets."
+    condition     = alltrue([for k, b in google_secret_manager_secret_iam_binding.certificate : b.members == toset([endswith(split("/", k)[0], "-test-idp") ? google_service_account.environment["seatrials/test-idp"].member : google_service_account.deploy["seatrials"].member])])
+    error_message = "Someone besides the seatrials pipeline adds or reads its certificate secrets, or besides test-idp-deploy the test IdP's."
   }
   assert {
     condition     = google_dns_managed_zone.acme_challenge["seatrials"].name == "acme-challenge-tacplus-dev" && google_dns_managed_zone.acme_challenge["seatrials"].dns_name == "_acme-challenge.tacplus.dev." && google_dns_managed_zone.acme_challenge["seatrials"].dnssec_config[0].state == "on"
@@ -263,6 +270,25 @@ run "dev" {
   assert {
     condition     = google_dns_managed_zone_iam_binding.acme_challenge["seatrials"].role == "roles/dns.admin" && google_dns_managed_zone_iam_binding.acme_challenge["seatrials"].members == toset([google_service_account.deploy["seatrials"].member])
     error_message = "Someone besides the seatrials pipeline administers its challenge zone, or the pipeline does not."
+  }
+  # The test IdP's certificate (#32, fleet-seatrials#27): idp.test.tacplus.dev, which *.tacplus.dev does not cover, by
+  # its own job's DNS-01, in a zone of its own that test-idp-deploy alone administers.
+  assert {
+    condition     = google_dns_managed_zone.acme_challenge["seatrials/test-idp"].name == "acme-challenge-idp-test-tacplus-dev" && google_dns_managed_zone.acme_challenge["seatrials/test-idp"].dns_name == "_acme-challenge.idp.test.tacplus.dev." && google_dns_managed_zone.acme_challenge["seatrials/test-idp"].dnssec_config[0].state == "on"
+    error_message = "The test IdP's challenge zone is not acme-challenge-idp-test-tacplus-dev for _acme-challenge.idp.test.tacplus.dev, with DNSSEC."
+  }
+  assert {
+    condition     = google_dns_managed_zone_iam_binding.acme_challenge["seatrials/test-idp"].role == "roles/dns.admin" && google_dns_managed_zone_iam_binding.acme_challenge["seatrials/test-idp"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "Someone besides test-idp-deploy administers the test IdP's challenge zone, or it does not."
+  }
+  # The test IdP's seeds (#32): in Secret Manager, not GitLab (gitlab.com Free has no project access tokens, as #28).
+  assert {
+    condition     = toset(keys(google_secret_manager_secret.environment)) == toset(["test-idp-seeds"]) && google_secret_manager_secret.environment["test-idp-seeds"].replication[0].user_managed[0].replicas[0].location == "us-central1" && length(google_secret_manager_secret.environment["test-idp-seeds"].replication[0].user_managed[0].replicas) == 1
+    error_message = "The test IdP's seed secret is not test-idp-seeds, in us-central1 alone."
+  }
+  assert {
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.environment)) == toset(["test-idp-seeds/roles/secretmanager.secretVersionAdder", "test-idp-seeds/roles/secretmanager.secretAccessor"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.environment : b.secret_id == "test-idp-seeds" && b.role == trimprefix(k, "test-idp-seeds/") && b.members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"])])
+    error_message = "Someone besides test-idp-deploy adds or reads the test IdP's seeds, or it does not both."
   }
   assert {
     condition     = google_compute_global_address.gateway.name == "gateway" && google_compute_global_address.gateway.address_type == "EXTERNAL" && google_compute_global_address.gateway.ip_version == "IPV4"
@@ -281,8 +307,8 @@ run "dev" {
     error_message = "The zone does not hold the copied records as they are."
   }
   assert {
-    condition     = toset(keys(google_dns_record_set.delegation)) == toset(["dev.tacplus.dev.", "_acme-challenge.tacplus.dev."]) && google_dns_record_set.delegation["dev.tacplus.dev."].rrdatas == google_dns_managed_zone.dev.name_servers && google_dns_record_set.delegation["_acme-challenge.tacplus.dev."].rrdatas == google_dns_managed_zone.acme_challenge["seatrials"].name_servers && alltrue([for r in google_dns_record_set.delegation : r.type == "NS" && r.managed_zone == "tacplus-dev"])
-    error_message = "The zone does not delegate dev.tacplus.dev and _acme-challenge.tacplus.dev to their zones' name servers."
+    condition     = toset(keys(google_dns_record_set.delegation)) == toset(["dev.tacplus.dev.", "_acme-challenge.tacplus.dev.", "_acme-challenge.idp.test.tacplus.dev."]) && google_dns_record_set.delegation["dev.tacplus.dev."].rrdatas == google_dns_managed_zone.dev.name_servers && google_dns_record_set.delegation["_acme-challenge.tacplus.dev."].rrdatas == google_dns_managed_zone.acme_challenge["seatrials"].name_servers && google_dns_record_set.delegation["_acme-challenge.idp.test.tacplus.dev."].rrdatas == google_dns_managed_zone.acme_challenge["seatrials/test-idp"].name_servers && alltrue([for r in google_dns_record_set.delegation : r.type == "NS" && r.managed_zone == "tacplus-dev"])
+    error_message = "The zone does not delegate dev.tacplus.dev, _acme-challenge.tacplus.dev and _acme-challenge.idp.test.tacplus.dev to their zones' name servers."
   }
   assert {
     condition     = output.zone.name_servers == google_dns_managed_zone.zone.name_servers && output.gateway_address.address == google_compute_global_address.gateway.address
@@ -326,7 +352,8 @@ run "dev" {
     error_message = "get-credentials on dev is not seatrials-deploy's and test-idp-deploy's."
   }
   # The test IdP's account (#20): its own, only fleet-seatrials' jobs in the environment test-idp on protected main
-  # become it, and it holds no role but get-credentials.
+  # become it, and it holds no role but get-credentials, its certificate's secrets and challenge zone, and its seeds
+  # (#32).
   assert {
     condition     = google_service_account.environment["seatrials/test-idp"].account_id == "test-idp-deploy" && google_service_account_iam_member.environment_wif["seatrials/test-idp"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.environment_wif["seatrials/test-idp"].member == "principalSet://iam.googleapis.com/projects/555/locations/global/workloadIdentityPools/gitlab-com/attribute.project_environment/tacplus-dev/fleet-seatrials:test-idp"
     error_message = "test-idp-deploy is not only tacplus-dev/fleet-seatrials' jobs in the environment test-idp."
@@ -337,7 +364,11 @@ run "dev" {
   }
   assert {
     condition     = alltrue(flatten([for r in [google_project_iam_member.deploy, google_project_iam_member.build, google_project_iam_member.cluster_viewer] : [for m in values(r) : m.member != "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" || m.role == "roles/container.clusterViewer"]])) && alltrue([for b in concat(values(google_artifact_registry_repository_iam_binding.deploy), values(google_storage_bucket_iam_binding.build), values(google_service_account_iam_binding.build_user)) : !contains(b.members, "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com")])
-    error_message = "test-idp-deploy holds a role besides get-credentials on dev."
+    error_message = "test-idp-deploy holds a role on the project besides get-credentials on dev, or one on the deployment's registry, bucket or builds' account."
+  }
+  assert {
+    condition     = toset(flatten([for b in concat(values(google_secret_manager_secret_iam_binding.certificate), values(google_secret_manager_secret_iam_binding.environment), values(google_secret_manager_secret_iam_binding.runner_token)) : [for m in b.members : "${b.secret_id} ${b.role}" if m == "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"]])) == toset(flatten([for s in ["tls-test-idp", "acme-account-test-idp", "test-idp-seeds"] : ["${s} roles/secretmanager.secretVersionAdder", "${s} roles/secretmanager.secretAccessor"]])) && toset([for b in values(google_dns_managed_zone_iam_binding.acme_challenge) : b.managed_zone if contains(b.members, "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com")]) == toset(["acme-challenge-idp-test-tacplus-dev"])
+    error_message = "test-idp-deploy's secrets are not exactly adding and reading tls-test-idp, acme-account-test-idp and test-idp-seeds, or its zone not exactly acme-challenge-idp-test-tacplus-dev."
   }
   # The deploy registry (#20): Docker, us-central1, seatrials; the builds' account writes it, the deployment's
   # identity and the nodes read it; no cleanup policy, so nothing deployed is deleted.
@@ -416,6 +447,10 @@ run "dev" {
   assert {
     condition     = output.deployments["seatrials"].fleet_secrets == { ca = "projects/tacplus-dev/secrets/fleet-ca-seatrials", crypto = "projects/tacplus-dev/secrets/fleet-crypto-seatrials", environment = "init-secrets", sa = "seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com" }
     error_message = "The module does not give the deployment's fleet secrets and the init-secrets job's account."
+  }
+  assert {
+    condition     = output.deployments["seatrials"].environment_certificates == { test-idp = { secrets = { tls = "projects/tacplus-dev/secrets/tls-test-idp", acme_account = "projects/tacplus-dev/secrets/acme-account-test-idp" }, challenge_zone = "acme-challenge-idp-test-tacplus-dev", name_servers = google_dns_managed_zone.acme_challenge["seatrials/test-idp"].name_servers } } && output.deployments["seatrials"].environment_secrets == { test-idp = ["projects/tacplus-dev/secrets/test-idp-seeds"] }
+    error_message = "The module does not give the test IdP's certificate secrets, challenge zone and seed secret."
   }
   # The public entry (#21): a TCP proxy per listener, on the address gateway, to the NEG its listener names.
   assert {
@@ -800,6 +835,214 @@ run "init_secrets_environment_shared_refused" {
         gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
         environment_accounts = { test-idp = "test-idp-deploy" }
         init_secrets         = { environment = "test-idp", account_id = "seatrials-init-secrets" }
+      }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_certificate_without_account_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    # A certificate for an environment that has no account of its own (#32): nobody would own it.
+    deployments = {
+      seatrials = {
+        gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_certificates = { test-idp = "idp.test.tacplus.dev" }
+      }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_certificate_shared_domain_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    # The test IdP's certificate on the deployment's domain (#32): two jobs would share one challenge zone.
+    deployments = {
+      seatrials = {
+        gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_accounts     = { test-idp = "test-idp-deploy" }
+        environment_certificates = { test-idp = "tacplus.dev" }
+      }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_secret_taken_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    # An environment's secret named as the deployment's certificate (#32): the test IdP's jobs would read it.
+    deployments = {
+      seatrials = {
+        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_accounts = { test-idp = "test-idp-deploy" }
+        environment_secrets  = { test-idp = ["tls-seatrials"] }
+      }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_secret_fleet_taken_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    # An environment's secret named as the deployment's fleet CA (#32, #28): the test IdP's jobs would read it.
+    deployments = {
+      seatrials = {
+        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_accounts = { test-idp = "test-idp-deploy" }
+        environment_secrets  = { test-idp = ["fleet-ca-seatrials"] }
+        init_secrets         = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
       }
     }
   }

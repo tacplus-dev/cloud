@@ -14,7 +14,11 @@
 #
 # Environment accounts: by GitLab environment, an account only the deployment's project's jobs in that environment, on
 # protected main, may become (its provider's condition, and the binding naming the project and the environment
-# together: the pool is shared by tacplus-dev's projects), with the cluster's credentials and no other role.
+# together: the pool is shared by tacplus-dev's projects), with the cluster's credentials, its certificate if it has
+# one (certificates.tf), and its secrets: by ID, secrets only it adds versions to and reads, made with none (#32: the
+# test IdP's seeds, in Secret Manager rather than GitLab, which on gitlab.com Free has no project access token to write
+# them with; as #28). Their values are only ever its jobs': none is in this repository, a plan or the state. It holds
+# no other role.
 
 locals {
   # The cluster as IAM conditions name it.
@@ -23,6 +27,8 @@ locals {
   environment_accounts = merge([for k, d in var.deployments : {
     for e, a in d.environment_accounts : "${k}/${e}" => { deployment = k, environment = e, account_id = a }
   }]...)
+  # Every environment account's secret, by its ID: the account's key.
+  environment_secrets = merge([for k, d in var.deployments : merge([for e, ids in d.environment_secrets : { for id in ids : id => "${k}/${e}" }]...)]...)
   registry_roles = {
     "roles/artifactregistry.writer" = "build"
     "roles/artifactregistry.reader" = "readers"
@@ -146,4 +152,28 @@ resource "google_storage_bucket_iam_binding" "build" {
   role     = each.value.role
   members = [local.build_bucket_roles[each.value.role] == "build" ? google_service_account.build[each.value.deployment].member :
   google_service_account.deploy[each.value.deployment].member]
+}
+
+resource "google_secret_manager_secret" "environment" {
+  for_each  = local.environment_secrets
+  project   = google_project.dev.project_id
+  secret_id = each.key
+  labels    = { managed-by = "tacplus-dev-cloud", deployment = local.environment_accounts[each.value].deployment }
+  replication {
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
+  }
+  depends_on = [terraform_data.iam_ready]
+}
+
+# Authoritative for each role: the environment account alone adds versions and reads them.
+resource "google_secret_manager_secret_iam_binding" "environment" {
+  for_each  = { for p in setproduct(keys(local.environment_secrets), local.certificate_roles) : "${p[0]}/${p[1]}" => { secret = p[0], role = p[1] } }
+  project   = google_project.dev.project_id
+  secret_id = google_secret_manager_secret.environment[each.value.secret].secret_id
+  role      = each.value.role
+  members   = [google_service_account.environment[local.environment_secrets[each.value.secret]].member]
 }

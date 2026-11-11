@@ -7,12 +7,24 @@
 # project's protected main alone, adds and reads the versions of its two secrets, and administers its _acme-challenge
 # zone, delegated from the domain's zone, so it never writes the domain's own records. Nobody else holds a role on
 # either (authoritative bindings). Its other roles, get-credentials and its images' builds, are deploy.tf's (#20).
+#
+# An environment account (deploy.tf) may have a certificate of its own, for a domain of its own (#32: the test IdP's
+# idp.test.tacplus.dev, which *.tacplus.dev does not cover): the same two secrets, named after its environment, and
+# challenge zone, the environment account's alone, the deployment's identity holding no role on them.
 
 locals {
-  # Every certificate secret, by its ID: the deployment it belongs to.
+  # Every certificate, by the key of its owner: a deployment's (its key) or an environment account's
+  # (<deployment>/<environment>), with its domain, its secrets' IDs and the member that alone owns it.
+  certificates = merge(
+    { for k, d in var.deployments : k => { deployment = k, tls = "tls-${k}", acme_account = "acme-account-${d.environment}", domain = d.domain, member = google_service_account.deploy[k].member, owner = "${d.gitlab_project}'s pipeline" } },
+    merge([for k, d in var.deployments : {
+      for e, domain in d.environment_certificates : "${k}/${e}" => { deployment = k, tls = "tls-${e}", acme_account = "acme-account-${e}", domain = domain, member = google_service_account.environment["${k}/${e}"].member, owner = "${d.gitlab_project}'s jobs in the environment ${e}" }
+    }]...),
+  )
+  # Every certificate secret, by its ID: the certificate it belongs to.
   certificate_secrets = merge(
-    { for k, d in var.deployments : "tls-${k}" => k },
-    { for k, d in var.deployments : "acme-account-${d.environment}" => k },
+    { for k, c in local.certificates : c.tls => k },
+    { for k, c in local.certificates : c.acme_account => k },
   )
   certificate_roles = ["roles/secretmanager.secretVersionAdder", "roles/secretmanager.secretAccessor"]
 }
@@ -60,7 +72,7 @@ resource "google_secret_manager_secret" "certificate" {
   for_each  = local.certificate_secrets
   project   = google_project.dev.project_id
   secret_id = each.key
-  labels    = { managed-by = "tacplus-dev-cloud", deployment = each.value }
+  labels    = { managed-by = "tacplus-dev-cloud", deployment = local.certificates[each.value].deployment }
   replication {
     user_managed {
       replicas {
@@ -76,18 +88,18 @@ resource "google_secret_manager_secret_iam_binding" "certificate" {
   project   = google_project.dev.project_id
   secret_id = google_secret_manager_secret.certificate[each.value.secret].secret_id
   role      = each.value.role
-  members   = [google_service_account.deploy[local.certificate_secrets[each.value.secret]].member]
+  members   = [local.certificates[local.certificate_secrets[each.value.secret]].member]
 }
 
 # The zone for _acme-challenge.<domain> alone: DNS-01 for <domain> and *.<domain> writes its TXT records here. Its
 # delegation is an NS record of the domain's zone (dns.tf), when this pipeline writes that zone.
 resource "google_dns_managed_zone" "acme_challenge" {
-  for_each    = var.deployments
+  for_each    = local.certificates
   project     = google_project.dev.project_id
   name        = "acme-challenge-${replace(each.value.domain, ".", "-")}"
   dns_name    = "_acme-challenge.${each.value.domain}."
-  description = "ACME DNS-01 challenges for ${each.value.domain}: ${each.value.gitlab_project}'s pipeline only (tacplus-dev/cloud)"
-  labels      = { managed-by = "tacplus-dev-cloud", deployment = each.key }
+  description = "ACME DNS-01 challenges for ${each.value.domain}: ${each.value.owner} only (tacplus-dev/cloud)"
+  labels      = { managed-by = "tacplus-dev-cloud", deployment = each.value.deployment }
   dnssec_config {
     state = "on"
   }
@@ -95,9 +107,9 @@ resource "google_dns_managed_zone" "acme_challenge" {
 }
 
 resource "google_dns_managed_zone_iam_binding" "acme_challenge" {
-  for_each     = var.deployments
+  for_each     = local.certificates
   project      = google_project.dev.project_id
   managed_zone = google_dns_managed_zone.acme_challenge[each.key].name
   role         = "roles/dns.admin"
-  members      = [google_service_account.deploy[each.key].member]
+  members      = [each.value.member]
 }

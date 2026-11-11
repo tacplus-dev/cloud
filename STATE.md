@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by the looper (#30).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by the looper (#32).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -168,6 +168,18 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by th
   (authoritative bindings; output `deployments` `fleet_secrets`). No GitLab token, no bot user, no `FLEET_INIT_TOKEN`
   (gitlab.com Free has no project access tokens). Tested with the dev stack's plan tests (mock providers); not applied
   yet: `apply:dev` on main does it, then fleet-seatrials#44's job adds the versions.
+- **The test IdP's certificate and seeds (#32; fleet-seatrials#27):** the `deployments` entry's environment account
+  `test-idp-deploy` gets, from `environment_certificates` (`test-idp = "idp.test.tacplus.dev"`, which `*.tacplus.dev`
+  does not cover), the secrets `tls-test-idp` and `acme-account-test-idp` (us-central1) and the zone
+  `acme-challenge-idp-test-tacplus-dev` for `_acme-challenge.idp.test.tacplus.dev.` (DNSSEC on), delegated from
+  `tacplus-dev` by NS, and, from `environment_secrets`, the secret `test-idp-seeds` (no `TEST_IDP_GITLAB_TOKEN`: as
+  #28); it alone adds and reads their versions and administers the zone (authoritative bindings), seatrials-deploy holds
+  nothing on them, and it holds no other role but get-credentials. The module refuses a certificate or secrets for an
+  environment with no account, two certificates on one domain and two secrets with one ID. Output
+  `deployments.seatrials.environment_certificates` and `environment_secrets` name them. The listener `test-idp` stays
+  `ready = false` until its NEG exists: the first test-idp run, which needs these, makes it. Tested with the dev stack's
+  plan tests (mock providers); not applied yet: `apply:dev` on main does it, and whether the job adds, reads and writes
+  its records shows in fleet-seatrials#27.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

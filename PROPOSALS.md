@@ -307,3 +307,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   whether `fleet-ca-<deployment>` and `fleet-crypto-<deployment>` get a version-destroy TTL or a rotation, and
   whether the drift job reports a secret with no version or more than one enabled. Why: the CA and crypto file are made
   once and never rotated today; a second version added by mistake would be read as `latest`.
+- **fleet-seatrials' test IdP on what #32 makes** (looper, #32, 2026-11-09). What: fleet-seatrials#27's `test-idp/apply.sh`
+  keeps its seeds in `test-idp-seeds` (`gcloud secrets versions access latest`, and `versions add` the first time),
+  not as GitLab variables written with `TEST_IDP_GITLAB_TOKEN`; orders `idp.test.tacplus.dev` by DNS-01 in
+  `acme-challenge-idp-test-tacplus-dev` into `tls-test-idp` (its ACME account key in `acme-account-test-idp`); and no
+  longer writes the A record of `idp.test.tacplus.dev`, nor needs `dns.admin` on the zone `tacplus-dev`: this pipeline
+  writes it (#13), and test-idp-deploy holds no role on that zone. `TEST_IDP_CLIENT_SEED`, which seatrials' own jobs read
+  too, would need `secretAccessor` for seatrials-deploy on a secret of its own: not in #32. Why: the issue names these
+  as the dev stack's, and the job is fleet-seatrials'; the names are the dev stack's output `deployments`.

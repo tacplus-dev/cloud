@@ -27,10 +27,11 @@ locals {
   copied      = { for r in var.zone.records : "${r.name} ${r.type}" => r }
   # Each deployment's hostnames in this zone: A to the gateway's address.
   hostnames = toset(flatten([for d in values(var.deployments) : [for h in d.hostnames : "${h}."]]))
-  # The zones under this one, delegated by NS records to their name servers.
+  # The zones under this one, delegated by NS records to their name servers: the dev zone, and each challenge zone
+  # whose domain is this zone's own (not the dev zone's).
   delegations = merge(
     endswith(var.dns.domain, ".${var.zone.domain}") ? { (var.dns.domain) = google_dns_managed_zone.dev.name_servers } : {},
-    { for k, d in var.deployments : "_acme-challenge.${d.domain}." => google_dns_managed_zone.acme_challenge[k].name_servers if d.domain == local.zone_domain },
+    { for k, c in local.certificates : "_acme-challenge.${c.domain}." => google_dns_managed_zone.acme_challenge[k].name_servers if(c.domain == local.zone_domain || endswith("${c.domain}.", ".${var.zone.domain}")) && !endswith("${c.domain}.", ".${var.dns.domain}") && "${c.domain}." != var.dns.domain },
   )
 }
 

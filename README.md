@@ -621,13 +621,23 @@ secret version, which the uni-config references. Nothing in a cluster holds it, 
   DNS-01 for `<domain>` and `*.<domain>` writes its TXT records. Only its identity holds `dns.admin` on it (an
   authoritative zone binding), so it cannot touch `<domain>`'s own zone. The zone is delegated from `<domain>`'s zone by
   NS records.
+- **An environment account's certificate** (`environment_certificates`, #32): by environment, a domain of its own, for a
+  job of the deployment that serves TLS on a name its certificate does not cover. The same, in that account's name:
+  `tls-<environment>` and `acme-account-<environment>`, and the zone `acme-challenge-<domain with dashes>`, delegated
+  from tacplus.dev's zone when the domain is in it; only the environment account holds a role on them, the
+  deployment's identity none. The module refuses two certificates on one domain and two secrets with one ID.
 
 | Deployment | GitLab project | Secrets | Challenge zone | Identity |
 |---|---|---|---|---|
 | `seatrials` | tacplus-dev/fleet-seatrials (environment `seatrials`) | `tls-seatrials`, `acme-account-seatrials` | `acme-challenge-tacplus-dev`, `_acme-challenge.tacplus.dev.` | `seatrials-deploy` |
+| `seatrials`, the test IdP | tacplus-dev/fleet-seatrials (environment `test-idp`) | `tls-test-idp`, `acme-account-test-idp` | `acme-challenge-idp-test-tacplus-dev`, `_acme-challenge.idp.test.tacplus.dev.` | `test-idp-deploy` |
+
+The test IdP (fleet-seatrials#27) serves `https://idp.test.tacplus.dev:8443` with its own certificate (TLS passed
+through, The public entry), which `*.tacplus.dev` does not cover: its job orders it by DNS-01 in its own zone.
 
 The dev stack's output `deployments` names each one's `GCP_WIF_PROVIDER`, service account, secrets, and the name servers
-of its zone.
+of its zone, and its environment accounts' (`environment_certificates`, by environment: `secrets`, `challenge_zone`,
+`name_servers`).
 
 ### Deployments: images, the cluster and environment accounts
 
@@ -655,14 +665,19 @@ from the same `deployments` entry:
   path has no `:`; a job without an environment maps to `<project>:`), and the account's `workloadIdentityUser`
   binding names `attribute.project_environment/<project>:<environment>`: the pool `gitlab-com` is shared by
   tacplus-dev's projects, so the environment alone would admit another project's job in an environment of that name.
-  An environment account is never the deployment's identity or its builds' account (the module refuses it).
+  An environment account is never the deployment's identity or its builds' account (the module refuses it). Besides,
+  it may own a certificate (above, Certificates) and **secrets of its own** (`environment_secrets`, #32): by environment,
+  secret IDs (us-central1, made with no version) whose versions only it adds and reads (`secretVersionAdder` and
+  `secretAccessor`, authoritative bindings); reading `latest` tells its job whether one exists yet. They replace GitLab
+  variables a job would write with a token: gitlab.com Free has no project access tokens (as #28). Their values are
+  never in this repository, a plan or the state.
 
 | Deployment | Registry | Build bucket, builds' account | Environment accounts |
 |---|---|---|---|
-| `seatrials` | `us-central1-docker.pkg.dev/tacplus-dev/seatrials` | `gs://tacplus-dev-seatrials-build` (7 days), `seatrials-build` | `test-idp`: `test-idp-deploy` (the test IdP, a pod in the cluster) |
+| `seatrials` | `us-central1-docker.pkg.dev/tacplus-dev/seatrials` | `gs://tacplus-dev-seatrials-build` (7 days), `seatrials-build` | `test-idp`: `test-idp-deploy` (the test IdP, a pod in the cluster), its certificate and its secret `test-idp-seeds` (the seeds its passwords are derived from, replacing `TEST_IDP_GITLAB_TOKEN`) |
 
-The output `deployments` names each one's `registry`, `build` (`bucket`, `sa`) and `environment_accounts` (by
-environment, the service account's email).
+The output `deployments` names each one's `registry`, `build` (`bucket`, `sa`), `environment_accounts` (by
+environment, the service account's email) and `environment_secrets` (by environment, the secrets' names).
 
 ### The fleet's CA and crypto file
 
