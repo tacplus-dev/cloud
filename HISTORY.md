@@ -27,3 +27,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-08 looper issue gitlab stack: tacplus-dev/build's BUILD_TRIGGER_TOKEN and one nightly build schedule per pinned repository (#26, 2c416e8; gates: full)
 - 2026-11-10 looper issue dev: fleet-seatrials' CA and crypto file in Secret Manager, written by its init-secrets job through WIF (no GitLab token) (#28, 636f2d6; gates: full)
 - 2026-11-11 looper issue gitlab stack: no nightly build schedule for tacplus-dev/website, which is pinned (build.lock on main since 325305c) (#31)
+- 2026-11-11 looper issue gitlab stack: tacplus-dev/build had group runners disabled, so no group runner ever took a build job; own the setting (#35)
