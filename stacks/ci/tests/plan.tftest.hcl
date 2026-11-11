@@ -231,6 +231,12 @@ run "ci" {
     condition     = alltrue([for g in google_compute_instance_group_manager.pool : g.target_size == 0])
     error_message = "A pool's instance group is not empty at rest."
   }
+  # A template change reaches every VM, one still creating included (#29): the group replaces them itself, never
+  # above the size the manager set.
+  assert {
+    condition     = alltrue([for g in google_compute_instance_group_manager.pool : length(g.update_policy) == 1 && g.update_policy[0].type == "PROACTIVE" && g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0 && g.update_policy[0].max_unavailable_fixed > 0])
+    error_message = "A pool's instance group does not replace its VMs proactively, with no surge, on a template change."
+  }
   # The workers' accounts hold no role: the manager is the only account with a project role.
   assert {
     condition     = alltrue([for m in google_project_iam_member.manager : m.member == google_service_account.manager.member])

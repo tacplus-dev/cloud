@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by the looper (#30).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#29).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -43,7 +43,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by th
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
-  after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
+  after 30 days. A pool's group replaces its VMs proactively on a template change, no surge, one still creating
+  included (#29). Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
   mock providers only.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab

@@ -126,6 +126,15 @@ resource "google_compute_instance_group_manager" "pool" {
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
   }
+  # A template change replaces every VM, one still creating on the old template included: OPPORTUNISTIC (the default)
+  # left two VMs retrying forever on a template the quota refused (#29). No surge, so never more VMs than the manager
+  # asked for (the quota holds max_instances); all may go at once, their jobs lost as with any replaced VM.
+  update_policy {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_surge_fixed       = 0
+    max_unavailable_fixed = max(1, each.value.max_instances)
+  }
   # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
   lifecycle {
     ignore_changes = [target_size]
