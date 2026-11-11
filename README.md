@@ -467,6 +467,28 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
   quotas, which vanilla COS does not have). A VM's disk is its jobs' shares plus 50 GB (30 for the on-demand pools)
   for the OS and the jobs' images; a job that fills it fails the jobs beside it (PROPOSALS.md, per-job disk limits).
 
+### The manager's binaries
+
+#40 (Jody's rule on #39: nothing the VMs run comes from upstream at boot). GitLab Runner and its googlecloud fleeting
+plugin are **our builds** of upstream's tags (v19.5.2, v1.3.1), not upstream's releases, which are built with go1.26.10
+(GO-2026-6859):
+
+- **The build.** `ci/runner.sh`, in the tools job (`bin/manager/`): each tag at its pinned commit, with go1.27.4,
+  x/net v0.62.0 and klauspost/compress v1.20.2 (every module checked against the Go checksum database), as upstream
+  builds it (`CGO_ENABLED=0`, its ldflags) with `-trimpath`, no VCS stamp and the commit's date as the build's, for
+  linux/arm64; the runner with Go's own crypto, not the frozen FIPS 140 module v1.0.0 its release has (which go1.27
+  would also turn on). It is reproducible: a build whose SHA-256 is not the one
+  `stacks/ci/main.tf`'s `runner` block pins is refused. A bump changes the version, branch, commit and SHA-256 there
+  (the build's SHA-256 is what `ci/runner.sh` prints when it refuses a build).
+- **The bucket.** `tacplus-ci-runner-bin` (`modules/projects/ci/runner-bin.tf`): uniform access, public access
+  prevention enforced, and `roles/storage.objectViewer` bound authoritatively to the manager's account alone, so no
+  VM's or job's account but the manager's reads it (the pipeline, which uploads the builds, and break-glass reach it
+  through their project roles). The ci stack uploads `bin/manager/` there, each object named by its SHA-256
+  (`gitlab-runner/<sha256>`): a new build is a new object, created before the old one is deleted, and refused unless
+  it is the pinned build.
+- **The manager** installs both from the bucket, by SHA-256, once #40's second step lands; until then it still
+  installs upstream's packages and plugin, by the `deb_sha256`, `helper_deb_sha256` and `upstream_plugin_sha256` pins.
+
 ## The build cache
 
 `decisions/builds-in-containers-2026-11-03.md`, #5: caches live outside the VMs, in `tacplus-ci`, keyed by content (a

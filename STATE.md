@@ -45,6 +45,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by th
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
   after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
   mock providers only.
+- **The manager's binaries, step 1 of 2 (#40):** GitLab Runner v19.5.2 and the fleeting plugin v1.3.1 built here with
+  go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2, reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the
+  tools job: `bin/manager/`), and uploaded by the ci stack to `gs://tacplus-ci-runner-bin`, which only the manager's
+  account reads among the VMs' and jobs' (README, The manager's binaries). The manager still installs upstream's packages
+  and plugin at boot until step 2 switches it to the bucket. Plan tests (mock providers) cover the bucket, its one
+  reader and the objects' names; the builds reproduced their pins here (linux/arm64 host).
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

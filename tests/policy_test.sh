@@ -56,6 +56,7 @@ refuses "a plan with member allUsers" "allUsers" plan "$fx/plans/public-member.j
 refuses "a plan with allAuthenticatedUsers in members" "allAuthenticatedUsers" plan "$fx/plans/public-members.json"
 refuses "a plan with allUsers in a policy document" "allUsers" plan "$fx/plans/public-policy.json"
 refuses "a plan with allUsers nested deep" "allUsers" plan "$fx/plans/public-nested.json"
+refuses "a plan opening the manager's binaries to allUsers (#40)" "allUsers" plan "$fx/plans/public-runner-bin.json"
 refuses "a clean plan and a bad one" "allUsers" plan "$fx/plans/clean.json" "$fx/plans/public-member.json"
 passes "a clean plan" plan "$fx/plans/clean.json"
 passes "a plan deleting a key" plan "$fx/plans/key-deleted.json"

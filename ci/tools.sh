@@ -20,6 +20,9 @@
 #   bin/providers     the gitlab and kubernetes providers, our own builds from their source for this platform
 #                     (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, pinned by commit and by the SHA-256 of the
 #                     build): OpenTofu installs them from there only (ci/tofurc.sh)
+#   bin/manager       GitLab Runner and its googlecloud fleeting plugin for the runner manager (linux arm64), our
+#                     builds (ci/runner.sh, pinned by commit and by the SHA-256 of the build in stacks/ci/main.tf),
+#                     which the ci stack uploads to the manager's bucket (#40)
 #
 # And with `security`, the security job's (ci/security.sh), only that job's (they are large):
 #
@@ -127,7 +130,7 @@ security() {
   f=$(fetch "https://gitlab-runner-downloads.s3.amazonaws.com/$runner/deb/gitlab-runner_arm64.deb" "$(pin deb_sha256)")
   dpkg-deb -x "$f" "$tmp/runner"
   install -m 0755 "$tmp/runner/usr/bin/gitlab-runner" "$bin/scan/gitlab-runner"
-  f=$(fetch "https://gitlab.com/api/v4/projects/gitlab-org%2Ffleeting%2Fplugins%2Fgooglecloud/packages/generic/releases/$plugin/fleeting-plugin-googlecloud-linux-arm64" "$(pin plugin_sha256)")
+  f=$(fetch "https://gitlab.com/api/v4/projects/gitlab-org%2Ffleeting%2Fplugins%2Fgooglecloud/packages/generic/releases/$plugin/fleeting-plugin-googlecloud-linux-arm64" "$(pin upstream_plugin_sha256)")
   install -m 0755 "$f" "$bin/scan/fleeting-plugin-googlecloud"
   echo "bin/: osv-scanner $osv_scanner_version, trivy $trivy_version, govulncheck $govulncheck_version; bin/scan/: the providers, GitLab Runner $runner, the fleeting plugin $plugin"
 }
@@ -150,5 +153,6 @@ gobuild github.com/zricethezav/gitleaks/v8 "$gitleaks_version" "$gitleaks_sum" g
 GOBIN=$bin GOFLAGS=-mod=mod go install "github.com/mikefarah/yq/v4@$yq_version"
 "$here/ci/gitlab-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/kubernetes-provider.sh" "$bin/providers" "linux_$arch"
+"$here/ci/runner.sh" "$bin/manager"
 chmod 0755 "$bin/tofu" "$bin/tflint" "$plugin/tflint-ruleset-google"
-echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab and kubernetes providers (providers/)"
+echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab and kubernetes providers (providers/), GitLab Runner and its fleeting plugin (manager/)"

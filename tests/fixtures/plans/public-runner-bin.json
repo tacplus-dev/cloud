@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"module.ci.google_storage_bucket_iam_binding.runner_bin","type":"google_storage_bucket_iam_binding","change":{"actions":["update"],"after":{"bucket":"tacplus-ci-runner-bin","members":["serviceAccount:runner-manager@tacplus-ci.iam.gserviceaccount.com","allUsers"],"role":"roles/storage.objectViewer"}}}]}

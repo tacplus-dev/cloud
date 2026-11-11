@@ -165,7 +165,7 @@ resource "google_compute_instance" "manager" {
     runner-deb-sha256        = var.runner.deb_sha256
     runner-helper-deb-sha256 = var.runner.helper_deb_sha256
     fleeting-plugin-version  = var.runner.plugin_version
-    fleeting-plugin-sha256   = var.runner.plugin_sha256
+    fleeting-plugin-sha256   = var.runner.upstream_plugin_sha256
     runner-pools             = join(" ", sort(keys(var.pools)))
     runner-config            = local.manager_config
   }

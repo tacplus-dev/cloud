@@ -156,13 +156,12 @@ run "ci" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin = "../../bin/manager"
     pools = {
       with-account = {
         machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 2, max_instances = 1, idle_count = 1, idle_time = "30m"
@@ -347,6 +346,24 @@ run "ci" {
     condition     = !google_artifact_registry_repository.cache.cleanup_policy_dry_run && length(google_artifact_registry_repository.cache.cleanup_policies) == 1 && one(google_artifact_registry_repository.cache.cleanup_policies).action == "DELETE" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].tag_state == "ANY" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].older_than == "2592000s"
     error_message = "The cache registry does not delete a version 30 days after it was pushed."
   }
+  # The manager's binaries (#40): our builds, in a private bucket only the manager's account reads, each object named
+  # by its pinned SHA-256 and uploaded from the tools job's bin/manager.
+  assert {
+    condition     = google_storage_bucket.runner_bin.name == "tacplus-ci-runner-bin" && google_storage_bucket.runner_bin.uniform_bucket_level_access && google_storage_bucket.runner_bin.public_access_prevention == "enforced" && google_storage_bucket.runner_bin.location == "US-CENTRAL1"
+    error_message = "The runner bucket is not tacplus-ci-runner-bin, uniform, private and in us-central1."
+  }
+  assert {
+    condition     = google_storage_bucket_iam_binding.runner_bin.bucket == google_storage_bucket.runner_bin.name && google_storage_bucket_iam_binding.runner_bin.role == "roles/storage.objectViewer" && google_storage_bucket_iam_binding.runner_bin.members == toset([google_service_account.manager.member])
+    error_message = "The runner bucket's objects are readable by someone other than the manager's account alone."
+  }
+  assert {
+    condition     = !anytrue([for m in google_storage_bucket_iam_binding.runner_bin.members : contains(["allUsers", "allAuthenticatedUsers"], m)])
+    error_message = "The runner bucket is granted to allUsers or allAuthenticatedUsers."
+  }
+  assert {
+    condition     = { for k, o in google_storage_bucket_object.runner_bin : k => [o.bucket, o.name, o.source] } == { gitlab-runner = [google_storage_bucket.runner_bin.name, "gitlab-runner/90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af", "../../bin/manager/gitlab-runner"], fleeting-plugin-googlecloud = [google_storage_bucket.runner_bin.name, "fleeting-plugin-googlecloud/429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb", "../../bin/manager/fleeting-plugin-googlecloud"] }
+    error_message = "The runner bucket's objects are not the two builds of bin/manager, each named by its pinned SHA-256."
+  }
   # The GitHub Apps' keys (#19): import-only RS256 keys with no version until their app's key is imported, software
   # (Cloud KMS's own: no external key manager holds them), in the key ring looper in us-central1. Cloud KMS never
   # exports a key's material: imported once, it never leaves.
@@ -457,13 +474,12 @@ run "one_job_per_vm_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin = "../../bin/manager"
     pools = {
       swap = {
         machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 1, max_instances = 1, idle_count = 1, idle_time = "30m"
@@ -494,18 +510,49 @@ run "unpinned_runner_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24"
     }
+    runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.runner]
+}
+
+# A file in bin/manager that is not the pinned build (#40): not uploaded.
+run "unpinned_build_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    apt_snapshot         = "20261024T000000Z"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  expect_failures = [google_storage_bucket_object.runner_bin]
 }
 
 
@@ -529,13 +576,12 @@ run "family_refused" {
     pool_image           = "projects/cos-cloud/global/images/family/cos-arm64-stable"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
@@ -564,13 +610,12 @@ run "no_importers" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
@@ -605,13 +650,12 @@ run "manager_signs_for_report_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin        = "../../bin/manager"
     pools             = {}
     build_cache       = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     github_apps       = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-report"] } } }
@@ -639,13 +683,12 @@ run "unknown_pool_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version           = "v19.5.2"
-      deb_sha256        = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b"
-      helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff"
-      plugin_version    = "v1.3.1"
-      plugin_sha256     = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
-      default_image     = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      deb_sha256     = "0d6764ed6e0fecd558a2aef222e04ba7ffdc304e0ac7f710ead64c790a848c8b", helper_deb_sha256 = "45cdd76518db487ddd942300ba651688ce8b6f075a893670a1a1da20d593e0ff", upstream_plugin_sha256 = "12d4ffcd154763b193889118bd44c264446d66b55078b1aa4c471d1f0e2fc9b5"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
+    runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, pools = { dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }, keys = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "elsewhere", gitlab_project = "tacplus-dev/fleet-seatrials" } } }, tacplus-looper = { import = true, namespace = false, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } } } } }
