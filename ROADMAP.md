@@ -32,6 +32,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - A spot overflow pool for looper reports (Jody, 2026-11-04): its own pool, separate from the build pool and tainted differently, on the cheapest Arm spot machine that fits the report pods (chosen with prices when it is built). Reports prefer the normal pool and land here only when it is full (the autoscaler adds a node for pending reports); the kicker and the managers never run here. Its maximum starts at 0 and is raised on Jody's word from the recap's wait numbers. Agent, at Jody's request.
 - dev: the secret google-signin-seatrials (no version; seatrials-deploy its only reader) for fleet-seatrials#46 (#37). Agent, at Jody's request, 2026-11-10.
 - ci: GitLab Runner and its fleeting plugin built here with go1.27.4, pinned by SHA-256, served to the manager from a private bucket; nothing the VMs run comes from upstream at boot (#40). Agent, at Jody's request, 2026-11-11 (cloud#39, option A).
+- dev: the test-idp listener ready once the NEG seatrials-test-idp exists (#42, split from #32). Agent, at Jody's request, 2026-11-11 (fleet-seatrials#27).
 
 ## Not doing
 - Importing jody1-328023: the new projects are built fresh.
