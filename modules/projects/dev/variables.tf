@@ -103,7 +103,7 @@ variable "cluster_pipeline" {
 }
 
 variable "deployments" {
-  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become; and, by environment of those accounts, its certificate's domain (certificates.tf: the secrets tls-<environment> and acme-account-<environment> and a challenge zone of its own, the account's alone) and the IDs of the secrets the account alone adds versions to and reads (deploy.tf); and its init_secrets (fleet-secrets.tf): the GitLab environment of its init-secrets job and the service account ID only its project's jobs in that environment, on protected main, may become, which adds the versions of its fleet secrets."
+  description = "The deployments whose pipelines own their certificates: each one's GitLab project (protected main only), GitLab environment, certificate domain, its hostnames (in the zone, behind the gateway's address), and its identity's service account ID and provider name; optionally its images (deploy.tf): its deploy registry's name, its build bucket's name (after the project ID), the service account ID its Cloud Build builds run as and the days the bucket keeps an object; and its environment accounts (deploy.tf): by GitLab environment, the service account ID only its project's jobs in that environment, on protected main, may become; and, by environment of those accounts, its certificate's domain (certificates.tf: the secrets tls-<environment> and acme-account-<environment> and a challenge zone of its own, the account's alone) and the IDs of the secrets the account alone adds versions to and reads (deploy.tf); and its init_secrets (fleet-secrets.tf): the GitLab environment of its init-secrets job and the service account ID only its project's jobs in that environment, on protected main, may become, which adds the versions of its fleet secrets; and google_signin (google-signin.tf): whether it has a Google sign-in client secret, google-signin-<deployment>, which its identity alone reads."
   type = map(object({
     gitlab_project = string
     environment    = string
@@ -124,6 +124,7 @@ variable "deployments" {
       environment = string
       account_id  = string
     }))
+    google_signin = optional(bool, false)
   }))
   default = {}
   validation {
@@ -158,6 +159,16 @@ variable "runner_token_adders" {
   default     = []
   validation {
     condition     = alltrue([for m in var.runner_token_adders : can(regex("^(user|group|serviceAccount):[^@]+@[^@]+$", m))])
+    error_message = "An adder is user:, group: or serviceAccount: and an email."
+  }
+}
+
+variable "google_signin_adders" {
+  description = "Who adds the versions of the deployments' Google sign-in client secrets (google-signin.tf), in the Console: secretVersionAdder on each google-signin-<deployment>, which adds versions and reads none. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for m in var.google_signin_adders : can(regex("^(user|group|serviceAccount):[^@]+@[^@]+$", m))])
     error_message = "An adder is user:, group: or serviceAccount: and an email."
   }
 }

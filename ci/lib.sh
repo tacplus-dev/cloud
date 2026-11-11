@@ -19,7 +19,9 @@ ci_here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # members comma-separated (user:, group:, serviceAccount: and an email), accounts of the host's directory, which this
 # repository never names either; unset or empty, nobody (README, The cluster pipeline); and the ci stack its
 # kms_key_importers (#19), from the protected variable GCP_KMS_KEY_IMPORTERS, alike: who imports the GitHub Apps' keys,
-# for the one run that imports them (README, The GitHub Apps' keys).
+# for the one run that imports them (README, The GitHub Apps' keys); and the dev stack its google_signin_adders (#37),
+# from the protected variable GCP_GOOGLE_SIGNIN_ADDERS, alike: who adds the Google sign-in clients' secrets, in the
+# Console (README, The Google sign-in client).
 ci_gcp() {
   : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
   : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (README, Before the first pipeline)}"
@@ -30,7 +32,8 @@ ci_gcp() {
   export TF_VAR_parent_folder=$GCP_PARENT_FOLDER
   TF_VAR_runner_token_adders=$(ci_members GCP_RUNNER_TOKEN_ADDERS "The cluster pipeline") || return 1
   TF_VAR_kms_key_importers=$(ci_members GCP_KMS_KEY_IMPORTERS "The GitHub Apps' keys") || return 1
-  export TF_VAR_runner_token_adders TF_VAR_kms_key_importers
+  TF_VAR_google_signin_adders=$(ci_members GCP_GOOGLE_SIGNIN_ADDERS "The Google sign-in client") || return 1
+  export TF_VAR_runner_token_adders TF_VAR_kms_key_importers TF_VAR_google_signin_adders
   export CLOUDSDK_CONFIG=$ci_tmp/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
   ( umask 077
     printf '%s' "$GCP_ID_TOKEN" > "$ci_tmp/oidc-token"

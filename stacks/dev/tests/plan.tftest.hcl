@@ -20,7 +20,9 @@
 # IdP's account, which only its project's jobs in the environment test-idp become, with no role but get-credentials,
 # and (#28) its fleet secrets fleet-ca-<deployment> and fleet-crypto-<deployment>, whose versions only its
 # init-secrets job's account adds (only its project's jobs in the environment init-secrets become it) and only its
-# identity reads.
+# identity reads, and (#37) its Google sign-in client's secret google-signin-<deployment>, made with no version, whose
+# versions only the listed people add (Jody, in the Console: Google has no API for a web client) and only its identity
+# reads.
 # (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -55,6 +57,8 @@ variables {
   parent_folder = "111111111111"
   # As GCP_RUNNER_TOKEN_ADDERS gives it: an account of the host's directory, which no file here names.
   runner_token_adders = ["user:jody@example.com"]
+  # As GCP_GOOGLE_SIGNIN_ADDERS gives it, alike.
+  google_signin_adders = ["user:jody@example.com"]
 }
 
 run "stack" {
@@ -85,6 +89,11 @@ run "stack" {
   assert {
     condition     = output.deployments["seatrials"].environment_certificates["test-idp"].secrets == { tls = "projects/tacplus-dev/secrets/tls-test-idp", acme_account = "projects/tacplus-dev/secrets/acme-account-test-idp" } && output.deployments["seatrials"].environment_certificates["test-idp"].challenge_zone == "acme-challenge-idp-test-tacplus-dev" && output.deployments["seatrials"].environment_secrets == { test-idp = ["projects/tacplus-dev/secrets/test-idp-seeds"] }
     error_message = "The stack does not give the test IdP its certificate secrets, its challenge zone and its seed secret."
+  }
+  # fleet-seatrials#46's name (#37).
+  assert {
+    condition     = output.deployments["seatrials"].google_signin == "projects/tacplus-dev/secrets/google-signin-seatrials"
+    error_message = "The stack does not give seatrials its Google sign-in client's secret."
   }
   assert {
     condition     = output.gateway_address == { name = "gateway", address = "203.0.113.10" }
@@ -158,9 +167,11 @@ run "dev" {
         environment_certificates = { test-idp = "idp.test.tacplus.dev" }
         environment_secrets      = { test-idp = ["test-idp-seeds"] }
         init_secrets             = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
+        google_signin            = true
       }
     }
-    runner_token_adders = ["user:jody@example.com"]
+    runner_token_adders  = ["user:jody@example.com"]
+    google_signin_adders = ["user:jody@example.com"]
     # The gateway's NEG made, the test IdP's not yet.
     load_balancer = {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
@@ -451,6 +462,25 @@ run "dev" {
   assert {
     condition     = output.deployments["seatrials"].environment_certificates == { test-idp = { secrets = { tls = "projects/tacplus-dev/secrets/tls-test-idp", acme_account = "projects/tacplus-dev/secrets/acme-account-test-idp" }, challenge_zone = "acme-challenge-idp-test-tacplus-dev", name_servers = google_dns_managed_zone.acme_challenge["seatrials/test-idp"].name_servers } } && output.deployments["seatrials"].environment_secrets == { test-idp = ["projects/tacplus-dev/secrets/test-idp-seeds"] }
     error_message = "The module does not give the test IdP's certificate secrets, challenge zone and seed secret."
+  }
+  # seatrials' Google sign-in client (#37, fleet-seatrials#46): one secret of the deployment, us-central1, no version
+  # (Jody adds them in the Console); the listed adders add versions, the deployment's identity alone reads them, nobody
+  # else holds a role (authoritative bindings).
+  assert {
+    condition     = keys(google_secret_manager_secret.google_signin) == ["seatrials"] && google_secret_manager_secret.google_signin["seatrials"].secret_id == "google-signin-seatrials" && google_secret_manager_secret.google_signin["seatrials"].replication[0].user_managed[0].replicas[0].location == "us-central1" && length(google_secret_manager_secret.google_signin["seatrials"].replication[0].user_managed[0].replicas) == 1 && google_secret_manager_secret.google_signin["seatrials"].labels["deployment"] == "seatrials" && google_secret_manager_secret.google_signin["seatrials"].labels["managed-by"] == "tacplus-dev-cloud"
+    error_message = "The deployment's Google sign-in secret is not google-signin-seatrials, in us-central1 alone."
+  }
+  assert {
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.google_signin)) == toset(["seatrials/roles/secretmanager.secretAccessor", "seatrials/roles/secretmanager.secretVersionAdder"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.google_signin : b.secret_id == "google-signin-seatrials" && b.role == trimprefix(k, "seatrials/")])
+    error_message = "The Google sign-in secret's roles are not exactly reading its versions and adding them."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretAccessor"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretVersionAdder"].members == toset(["user:jody@example.com"])
+    error_message = "Someone besides seatrials-deploy reads the Google sign-in secret, or someone besides the listed adders adds its versions."
+  }
+  assert {
+    condition     = output.deployments["seatrials"].google_signin == "projects/tacplus-dev/secrets/google-signin-seatrials"
+    error_message = "The module does not give the deployment's Google sign-in secret."
   }
   # The public entry (#21): a TCP proxy per listener, on the address gateway, to the NEG its listener names.
   assert {
@@ -1193,6 +1223,115 @@ run "copied_apex_ns_refused" {
   expect_failures = [var.zone]
 }
 
+
+run "google_signin_without_adders" {
+  # Without GCP_GOOGLE_SIGNIN_ADDERS: the secret, its reader, and nobody adding versions (no binding of the role); a
+  # deployment without google_signin has no such secret.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    deployments = {
+      seatrials = {
+        gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        google_signin  = true
+      }
+      other = {
+        gitlab_project = "tacplus-dev/fleet-other", environment = "other", domain = "other.tacplus.dev", hostnames = ["other.tacplus.dev"], account_id = "other-deploy", wif_provider = "tacplus-dev-fleet-other"
+      }
+    }
+    google_signin_adders = []
+  }
+  assert {
+    condition     = keys(google_secret_manager_secret.google_signin) == ["seatrials"] && keys(google_secret_manager_secret_iam_binding.google_signin) == ["seatrials/roles/secretmanager.secretAccessor"]
+    error_message = "Without adders, the Google sign-in secret has a binding besides its reader's, or a deployment without google_signin has the secret."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretAccessor"].members == toset([google_service_account.deploy["seatrials"].member]) && output.deployments["other"].google_signin == null
+    error_message = "The Google sign-in secret is not read by the deployment's identity alone, or a deployment without it is given one."
+  }
+}
+
+run "google_signin_adder_refused" {
+  # An adder that is not a member: user:, group: or serviceAccount: and an address.
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+    }
+    google_signin_adders = ["jody@example.com"]
+  }
+  expect_failures = [var.google_signin_adders]
+}
 
 run "runner_token_adder_refused" {
   # An adder that is not a member: user:, group: or serviceAccount: and an address.

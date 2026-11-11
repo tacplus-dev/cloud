@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by the looper (#32).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-11 by the looper (#37).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest (v2.6.1's, #22: the latest released line; one HIGH
@@ -180,6 +180,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-10 by th
   `ready = false` until its NEG exists: the first test-idp run, which needs these, makes it. Tested with the dev stack's
   plan tests (mock providers); not applied yet: `apply:dev` on main does it, and whether the job adds, reads and writes
   its records shows in fleet-seatrials#27.
+- **The Google sign-in client's secret (#37; Jody, fleet-seatrials#46):** the dev stack's `google-signin.tf`, from a
+  `deployments` entry's `google_signin`: the secret `google-signin-seatrials` (us-central1, no version), `secretAccessor`
+  for `seatrials-deploy` alone and `secretVersionAdder` for `google_signin_adders` alone, from the protected GitLab
+  variable `GCP_GOOGLE_SIGNIN_ADDERS` (`ci/lib.sh`, as the runners' token adders; Jody's account), who adds the client
+  JSON by hand in the Console (Google has no API for a web client): authoritative bindings; output `deployments`
+  `google_signin`. No project module or stack makes a secret version (`tests/secret_values_test.sh`). Tested with the
+  dev stack's plan tests (mock providers); not applied yet: the hub sets `GCP_GOOGLE_SIGNIN_ADDERS`, `apply:dev` on
+  main makes it, then Jody adds the first version.
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset, GitLab Runner and the fleeting plugin carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin

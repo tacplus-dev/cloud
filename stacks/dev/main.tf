@@ -18,6 +18,12 @@ variable "runner_token_adders" {
   default     = []
 }
 
+variable "google_signin_adders" {
+  description = "Who adds the versions of the deployments' Google sign-in client secrets, in the Console (#37): the protected GitLab variable GCP_GOOGLE_SIGNIN_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
+  type        = list(string)
+  default     = []
+}
+
 module "settings" {
   source        = "../../modules/settings"
   parent_folder = var.parent_folder
@@ -80,6 +86,8 @@ module "dev" {
   deployments = module.settings.deployments
   # Jody adds the runners' token versions (#18): the hub registers each runner and pipes its token in, as Jody.
   runner_token_adders = var.runner_token_adders
+  # Jody adds the Google sign-in clients' secrets (#37), in the Console: Google has no API that makes a web client.
+  google_signin_adders = var.google_signin_adders
   # The TCP proxy on the address gateway, to the NEGs the settings name (#21).
   load_balancer = module.settings.load_balancer
 }

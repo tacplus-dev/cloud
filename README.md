@@ -29,7 +29,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
     its `get-credentials` on the cluster, Cloud Build roles, deploy registry, build bucket and environment accounts
     (below, Deployments: images, the cluster and environment accounts), its fleet's CA and crypto file secrets, which
-    only its init-secrets job writes (below, The fleet's CA and crypto file),
+    only its init-secrets job writes (below, The fleet's CA and crypto file), its Google sign-in client's secret,
+    which Jody writes in the Console and only its identity reads (below, The Google sign-in client),
     the one public IP, the global address `gateway`, its TCP proxy load balancer passing TLS through to the NEGs of the
     gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
     The tacplus.dev cutover);
@@ -281,7 +282,8 @@ Today the host is seabeam.net's organization: the parent folder is its folder `t
 pipeline seabeam/cloud (GitLab), `tacplus-dev/roadmap:decisions/cloud-org-seabeam-2026-11-03.md`. Nothing here depends on
 it: another host is another folder ID. The runners' token adders (`GCP_RUNNER_TOKEN_ADDERS`, below, The cluster
 pipeline) are `user:jody@seabeam.net` today (#18), and so are the apps' key importers (`GCP_KMS_KEY_IMPORTERS`, below,
-The GitHub Apps' keys), for the one run that imports them (#19).
+The GitHub Apps' keys), for the one run that imports them (#19), and the Google sign-in client's adders
+(`GCP_GOOGLE_SIGNIN_ADDERS`, below, The Google sign-in client, #37).
 <!-- /hosting note -->
 
 ### What Jody runs, in order
@@ -326,7 +328,9 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    account (as tacplus-dev/cluster's, on `gitlab-runner-mgr`, until runners move).
 3. **Its variables** `GCP_PARENT_FOLDER` and `GCP_WIF_PROVIDER` (protected), the values the bootstrap printed, and
    `GCP_RUNNER_TOKEN_ADDERS` (protected): the account that adds the runners' token versions (below, The cluster pipeline);
-   `GCP_KMS_KEY_IMPORTERS` (protected), only while the apps' keys are imported (below, The GitHub Apps' keys). The gitlab stack adopts it and `main`'s
+   `GCP_KMS_KEY_IMPORTERS` (protected), only while the apps' keys are imported (below, The GitHub Apps' keys);
+   `GCP_GOOGLE_SIGNIN_ADDERS` (protected): the account that adds the Google sign-in client's secret versions, in the
+   Console (below, The Google sign-in client). The gitlab stack adopts it and `main`'s
    protection (its import blocks), and sets the reader's two variables from Secret Manager.
 4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write. This
    project's jobs sign with the KMS key `tacplus-reader` in `tacplus-ci` (the ci stack's binding, #30) once its version
@@ -705,9 +709,42 @@ Where each of a deployment's secrets lives, and who writes and reads it:
 | `acme-account-seatrials` | its ACME account's key | `seatrials-deploy` | `seatrials-deploy` |
 | `fleet-ca-seatrials` | the fleet's CA | `seatrials-init-secrets` (fleet-seatrials' jobs in `init-secrets`) | `seatrials-deploy` |
 | `fleet-crypto-seatrials` | the fleet's crypto file | `seatrials-init-secrets` (fleet-seatrials' jobs in `init-secrets`) | `seatrials-deploy` |
+| `google-signin-seatrials` | its Google sign-in (OAuth web) client: the client JSON the Console downloads | Jody, by hand in the Console (`GCP_GOOGLE_SIGNIN_ADDERS`): once when the client is made, the bootstrap step, and at each rotation; Google offers no API that makes a web client or its secret | `seatrials-deploy` (fleet-seatrials' `apply` and `signin-secrets` jobs) |
 
 The output `deployments` names each one's `fleet_secrets` (`ca`, `crypto`, the job's `environment` and its `sa`, the
 `GCP_SERVICE_ACCOUNT` its job impersonates through the deployment's `GCP_WIF_PROVIDER`).
+
+### The Google sign-in client
+
+#37 (Jody, 2026-11-09; fleet-seatrials#46): a deployment's Google sign-in (OAuth web) client is in `tacplus-dev`, and its
+secret in Secret Manager, which its deploy jobs read through WIF; never a GitLab variable. Google has no public API that
+makes a web client or its secret (IAP's OAuth Admin API was shut down on 2026-03-19), so a person adds its versions: no
+pipeline identity does. From the `deployments` entry's `google_signin` (`modules/projects/dev/google-signin.tf`):
+
+- **The secret** `google-signin-<deployment>`, us-central1, made with no version. Its value is never in this repository,
+  a plan or the state.
+- **Who adds versions:** the members of the protected GitLab variable `GCP_GOOGLE_SIGNIN_ADDERS` (comma-separated, as
+  `GCP_RUNNER_TOKEN_ADDERS`; `ci/lib.sh` gives them to the dev stack as `google_signin_adders` and refuses one that is
+  not a member), Jody's account today (the hosting note, above): `secretVersionAdder` on the secret alone, which adds
+  versions and reads none. Unset or empty, nobody adds them.
+- **The reader:** the deployment's identity alone holds `secretAccessor` (fleet-seatrials' `apply` and `signin-secrets`
+  jobs). Both bindings are authoritative: a grant added by hand is drift.
+
+**Jody's step**, once when the client is made (the bootstrap) and at each rotation: in the Console (APIs & Services,
+Credentials) make or rotate the web client, download its JSON, and add it as the secret's next version, in the Console's
+Secret Manager page of `google-signin-seatrials` (New version, upload the file) or with gcloud:
+
+```sh
+gcloud secrets versions add google-signin-seatrials --project=tacplus-dev --data-file=client_secret.json
+shred -u client_secret.json
+```
+
+Then fleet-seatrials' pipeline reads it, checks it with Google and installs it (its `docs/deploy-pipeline.md`, The Google
+sign-in client); its `signin-secrets` job's log says `google: the client secret from the secret google-signin-seatrials`.
+`secretVersionAdder` lists no secret and shows no version: the Console page is reached by its link
+(`https://console.cloud.google.com/security/secret-manager/secret/google-signin-seatrials/versions?project=tacplus-dev`)
+when the account holds no other role on `tacplus-dev`, and gcloud needs none. The output `deployments` names each one's
+`google_signin` (null without it).
 
 ### Interim: by hand in jody1-328023, until the cloud pipeline runs
 

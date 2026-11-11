@@ -315,3 +315,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   writes it (#13), and test-idp-deploy holds no role on that zone. `TEST_IDP_CLIENT_SEED`, which seatrials' own jobs read
   too, would need `secretAccessor` for seatrials-deploy on a secret of its own: not in #32. Why: the issue names these
   as the dev stack's, and the job is fleet-seatrials'; the names are the dev stack's output `deployments`.
+- **Jody's Console view of the Google sign-in secret** (looper, #37, 2026-11-11). What: once Jody has added the first
+  version of `google-signin-seatrials`, see whether the Console's Secret Manager page opened as
+  `GCP_GOOGLE_SIGNIN_ADDERS`' account, which holds only `secretVersionAdder` on the secret, lets it add a version; if
+  it does not, give the adders `roles/secretmanager.viewer` on that secret too (metadata, never a value), as the
+  init-secrets account's, or say gcloud is the way in the README. Why: #37 asked for `secretVersionAdder` alone, which
+  has no `secrets.get`, and the Console may need it to show the page; gcloud's `versions add` does not.

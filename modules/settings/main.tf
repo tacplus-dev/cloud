@@ -127,6 +127,9 @@ output "deployments" {
     and init_secrets (#28), the GitLab environment of its init-secrets job and the account only its project's jobs in
     that environment, on protected main, may become: it alone adds the versions of fleet-ca-<deployment> and
     fleet-crypto-<deployment> (the fleet's CA and crypto file; it sees their metadata, never a value), which its
+    identity alone reads; and google_signin (#37), true when it has a Google sign-in client: the secret
+    google-signin-<deployment> (the client JSON the Console downloads), whose versions the dev stack's
+    google_signin_adders add by hand, in the Console (Google has no API that makes a web client), and which its
     identity alone reads.
   EOT
   value = {
@@ -141,7 +144,8 @@ output "deployments" {
     # which owns the test IdP's certificate (idp.test.tacplus.dev: *.tacplus.dev does not cover it) and its seeds,
     # test-idp-seeds, in Secret Manager rather than GitLab variables (#32, fleet-seatrials#27; as #28). Its
     # init-secrets job, in the GitLab environment init-secrets, runs as seatrials-init-secrets (#28,
-    # fleet-seatrials#44).
+    # fleet-seatrials#44). Its Google sign-in client is in tacplus-dev, its secret google-signin-seatrials (#37,
+    # fleet-seatrials#46): Jody makes the client and adds the secret's versions in the Console.
     seatrials = {
       gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
       images                   = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
@@ -149,6 +153,7 @@ output "deployments" {
       environment_certificates = { test-idp = "idp.test.tacplus.dev" }
       environment_secrets      = { test-idp = ["test-idp-seeds"] }
       init_secrets             = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
+      google_signin            = true
     }
   }
 }

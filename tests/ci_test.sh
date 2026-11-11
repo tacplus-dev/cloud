@@ -12,7 +12,8 @@
 # does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
 # any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
 # GCP_PARENT_FOLDER, and refuses a job without a valid one, and the dev stack the runners' token adders from
-# GCP_RUNNER_TOKEN_ADDERS (#18), refusing one that is not a member. Needs bash and yq.
+# GCP_RUNNER_TOKEN_ADDERS (#18) and the Google sign-in secrets' adders from GCP_GOOGLE_SIGNIN_ADDERS (#37), refusing
+# one that is not a member. Needs bash and yq.
 #
 #   tests/ci_test.sh
 set -uo pipefail
@@ -202,6 +203,27 @@ adders() { # adders [GCP_RUNNER_TOKEN_ADDERS]: ci_gcp's TF_VAR_runner_token_adde
 [ "$(adders)" = '[]' ] && [ "$(adders '')" = '[]' ] && ok "ci_gcp gives no adder without GCP_RUNNER_TOKEN_ADDERS" || fail "ci_gcp without GCP_RUNNER_TOKEN_ADDERS: [$(adders)]"
 [ -z "$(adders a@example.com)" ] && grep -q GCP_RUNNER_TOKEN_ADDERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   [ -z "$(adders 'user:a@example.com"]')" ] && ok "ci_gcp refuses a GCP_RUNNER_TOKEN_ADDERS entry that is not a member" || fail "ci_gcp with a bad adder: $(cat "$work/gcp-err")"
+
+# ci_gcp gives the dev stack the Google sign-in secrets' adders (#37) from the protected variable
+# GCP_GOOGLE_SIGNIN_ADDERS alone, as the runners' token adders: an HCL list, none when it is unset or empty, a refusal
+# of one that is not a member before any gcloud.
+signin_adders() { # signin_adders [GCP_GOOGLE_SIGNIN_ADDERS]: ci_gcp's TF_VAR_google_signin_adders, or its refusal
+  (
+    unset GCP_GOOGLE_SIGNIN_ADDERS TF_VAR_google_signin_adders GCP_RUNNER_TOKEN_ADDERS
+    [ $# = 0 ] || export GCP_GOOGLE_SIGNIN_ADDERS=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=y GCP_DEPLOY_SA=z GCP_PARENT_FOLDER=111111111111 ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud ran" >&2; }
+    ci_gcp >/dev/null 2>"$work/gcp-err" && echo "${TF_VAR_google_signin_adders-unset} ${TF_VAR_runner_token_adders-unset}"
+  )
+}
+[ "$(signin_adders user:a@example.com)" = '["user:a@example.com"] []' ] && [ "$(signin_adders 'user:a@example.com, group:b@example.com')" = '["user:a@example.com","group:b@example.com"] []' ] &&
+  ok "ci_gcp gives the dev stack GCP_GOOGLE_SIGNIN_ADDERS as google_signin_adders, and nobody else" || fail "ci_gcp's google_signin_adders: [$(signin_adders 'user:a@example.com, group:b@example.com')] $(cat "$work/gcp-err")"
+[ "$(signin_adders)" = '[] []' ] && [ "$(signin_adders '')" = '[] []' ] && ok "ci_gcp gives no Google sign-in adder without GCP_GOOGLE_SIGNIN_ADDERS" || fail "ci_gcp without GCP_GOOGLE_SIGNIN_ADDERS: [$(signin_adders)]"
+[ -z "$(signin_adders a@example.com)" ] && grep -q GCP_GOOGLE_SIGNIN_ADDERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  ok "ci_gcp refuses a GCP_GOOGLE_SIGNIN_ADDERS entry that is not a member" || fail "ci_gcp with a bad Google sign-in adder: $(cat "$work/gcp-err")"
 
 # ci_gcp gives the ci stack the apps' key importers (#19) from the protected variable GCP_KMS_KEY_IMPORTERS alone, as
 # the adders: an HCL list, none when it is unset or empty, a refusal of one that is not a member before any gcloud.
