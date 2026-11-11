@@ -107,8 +107,14 @@ import {
 # The cluster pool's runner on tacplus-dev/cloud, which the hub enabled by hand on 2026-11-10 while jody1-328023's
 # runner for this repository stopped taking jobs: adopted, from then on this stack's. GitLab refuses to enable a
 # locked runner on a second project, so the adoption is how this one stays locked.
+variable "adopt_cluster_enablement" {
+  description = "Adopt the hand-made enablement above. False only where the cluster runner is not yet in state (tests/gitlab_plan_test.sh plans from empty state), since the import's ID is the runner's."
+  type        = bool
+  default     = true
+}
+
 import {
-  for_each = var.import_existing ? toset(["cluster:tacplus-dev/cloud"]) : toset([])
+  for_each = var.import_existing && var.adopt_cluster_enablement ? toset(["cluster:tacplus-dev/cloud"]) : toset([])
   to       = module.gitlab.gitlab_project_runner_enablement.also[each.key]
   id       = "${module.gitlab.project_ids[local.cloud]}:${module.gitlab.runner_ids["cluster"]}"
 }

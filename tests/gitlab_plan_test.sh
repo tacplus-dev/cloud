@@ -51,6 +51,9 @@ provider "gitlab" {
   token    = "stub"
   base_url = "$api/api/v4/"
 }
+variable "adopt_cluster_enablement" {
+  default = false
+}
 EOF
 plan() { (cd "$stack" && rm -f p.tfplan && tofu plan -input=false -no-color -out=p.tfplan > "$work/plan.txt" 2>&1); }
 (cd "$stack" && tofu init -input=false -lockfile=readonly -no-color > "$work/init.txt" 2>&1) ||
