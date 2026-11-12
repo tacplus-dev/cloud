@@ -30,3 +30,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-11 looper issue gitlab stack: tacplus-dev/build had group runners disabled, so no group runner ever took a build job; own the setting (#35)
 - 2026-11-11 looper issue dev: the secret google-signin-seatrials (seatrials' Google sign-in client), seatrials-deploy its only reader (fleet-seatrials#46) (#37, de77565; gates: full)
 - 2026-11-12 looper issue security: GO-2026-6859 (net/http, CVE-2026-97054) in all 13 pinned binaries (govulncheck -mode=binary, bin/ and bin/scan/), no exception: the security job will fail (#39, 07d4638; gates: full)
+- 2026-11-12 looper issue security: the CI image's OpenEXR (16 CVEs, Debian 13) fails the security job; move to the first build:2.6 without it (tacplus#554) (#43, bed57ec; gates: full)
