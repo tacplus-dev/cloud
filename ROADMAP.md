@@ -33,6 +33,8 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: the secret google-signin-seatrials (no version; seatrials-deploy its only reader) for fleet-seatrials#46 (#37). Agent, at Jody's request, 2026-11-10.
 - ci: GitLab Runner and its fleeting plugin built here with go1.27.4, pinned by SHA-256, served to the manager from a private bucket; nothing the VMs run comes from upstream at boot (#40). Agent, at Jody's request, 2026-11-11 (cloud#39, option A).
 - dev: the test-idp listener ready once the NEG seatrials-test-idp exists (#42, split from #32). Agent, at Jody's request, 2026-11-11 (fleet-seatrials#27).
+- ci: cloud#40's GitLab Runner build and helper pin move to v19.5.3, in step with tacplus-dev/cluster (#44). Agent, at Jody's request, 2026-11-12 (cluster#21, hub under Jody's security delegation).
+- dev: a private Artifact Registry repository ci-images for cluster's own GitLab Runner images, cluster-admin-pipeline its only writer (#45). Agent, at Jody's request, 2026-11-12 (cluster#21).
 
 ## Not doing
 - Importing jody1-328023: the new projects are built fresh.
