@@ -1,0 +1,67 @@
+= init
+= thinking_tokens
+= thinking_tokens
+> Bash git status --short | head; gh issue view 49 --repo tacplus-dev/cloud --comments --json comments --jq '.comments[-3:][] | "\(.author.login) \(.authorAssociation) \(.createdAt)\n\(.body[0:400])\n---"'; gcloud auth list 2>&1 | head -3
+< specify only one of --comments or --json  Display the title, body, and other information about an issue.  When `--comments` is used, terminal output includes the issue details and comments. When output is piped or redirected, only the comments are printed.  With `--web` flag, open the issue in a web...
+> Bash git status --short | head; git log --oneline -1 origin/main; gh issue view 49 --repo tacplus-dev/cloud --json comments,state,labels --jq '.state, [.labels[].name], (.comments[-3:][] | "\(.author.login) \(.authorAssociation) \(.createdAt)\n\(.body[0:300])\n---")'
+< 8e92ac8 ci: pin the spread pool's group name, and say why it is runner-<pool>-region (#49) OPEN ["bug","approved","looper:in-progress","priority:high"] tacplus-looper NONE 2026-11-12T21:07:19Z Looper, outcome so far. **Not closing yet:** the issue says to close when the apply is verified, and I can'...
+= thinking_tokens
+= thinking_tokens
+> Bash for c in c9dc2bc 8e92ac8; do echo "== $c"; gh api repos/tacplus-dev/cloud/commits/$c/statuses --jq '.[] | "\(.context) \(.state) \(.target_url) \(.created_at)"' | head; gh api repos/tacplus-dev/cloud/commits/$c/check-runs --jq '.check_runs[] | "\(.name) \(.conclusion) \(.html_url)"' | head; done; en...
+< == c9dc2bc == 8e92ac8 tacplus-dev/build success https://gitlab.com/tacplus-dev/build/-/pipelines/3061635722 2026-11-12T21:04:08Z tacplus-dev/build pending https://gitlab.com/tacplus-dev/build/-/pipelines/3061635722 2026-11-12T20:41:24Z GITLAB_USER_ID=... CI_SERVER_NAME=... GITLAB_USER_EMAIL=... CI_R...
+= thinking_tokens
+= thinking_tokens
+> Bash curl -s "https://gitlab.com/api/v4/projects/tacplus-dev%2Fcloud/pipelines?per_page=8" | head -c 1500; echo; grep -rn "gitlab.com" /builds/looper/cloud/issues/49/README.md | head -5
+< {"message":"404 Project Not Found"} 71:  (pool `gitlab-com`, provider `tacplus-dev-cloud` in `tacplus-bootstrap`, condition: `tacplus-dev/cloud`, a protected 91:| `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent fold...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash gh label list --repo tacplus-dev/cloud --limit 50 --json name,description --jq '.[] | "\(.name): \(.description)"'
+< accessibility: Barrier affecting people with disabilities bug: Something isn't working documentation: Improvements or additions to documentation duplicate: This issue or pull request already exists enhancement: New feature or request good first issue: Good for newcomers help wanted: Extra attention ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash gh issue comment 49 --repo tacplus-dev/cloud --body "Looper (run 3): nothing new to do. All of #49 is on main (580d4ca, c9dc2bc, c6e2899, 8e92ac8; build verdict green, tacplus-dev/build pipeline 3061635722). Your 18:45Z comment says to close this once the apply is verified. I can't verify it from he...
+= task_started
+= task_notification
+< https://github.com/tacplus-dev/cloud/issues/49#issuecomment-6836022289 https://github.com/tacplus-dev/cloud/issues/49 [2026-11-12T21:09:51Z] checkpoint of #49 (a step) pushed to looper/cloud-49:  2 files changed, 246 insertions(+)
+= thinking_tokens
+= thinking_tokens
+I've left #49 open and labelled it `needs-decision`. The fix is complete, but I can't verify the apply, which is the issue's condition for closing.
+
+- **What's done:** all four commits of the fix are on main (580d4ca, c9dc2bc, c6e2899, 8e92ac8). The last land ran the full gates and the build came back green (tacplus-dev/build pipeline 3061635722).
+- **What I couldn't check:**
+  - whether `apply:ci` of the pinned commit succeeded;
+  - whether `runner-build-region` exists and the old zonal `runner-build` is gone;
+  - whether `runner-reap` is running on the manager.
+
+  This runner has no Google Cloud credentials, cloud's pipeline isn't publicly visible, and GitHub shows no apply status for those commits.
+- **What I did:** commented on #49 asking the hub to either close it once those three are confirmed, or paste the results and remove the label so the next run closes it. I recommended closing it themselves, since only the infrastructure check is left. The label stops the looper from starting this issue again just to wait.
+- **Commits:** none this run; there was nothing to change.
+- **Checkpoint:** I wrote one recording this state. Its push reported "2 files changed, 246 insertions" even though the checkout had no changes when I started, and I didn't check which files those were.
+= success: I've left #49 open and labelled it `needs-decision`. The fix is complete, but I can't verify the apply, which is the issue's condition for closing.
+
+- **What's done:** all four commits of the fix are on main (580d4ca, c9dc2bc, c6e2899, 8e92ac8). The last land ran the full gates and the build came back green (tacplus-dev/build pipeline 3061635722).
+- **What I couldn't check:**
+  - whether `apply:ci` of the pinned commit succeeded;
+  - whether `runner-build-region` exists and the old zonal `runner-build` is gone;
+  - whether `runner-reap` is running on the manager.
+
+  This runner has no Google Cloud credentials, cloud's pipeline isn't publicly visible, and GitHub shows no apply status for those commits.
+- **What I did:** commented on #49 asking the hub to either close it once those three are confirmed, or paste the results and remove the label so the next run closes it. I recommended closing it themselves, since only the infrastructure check is left. The label stops the looper from starting this issue again just to wait.
+- **Commits:** none this run; there was nothing to change.
+- **Checkpoint:** I wrote one recording this state. Its push reported "2 files changed, 246 insertions" even though the checkout had no changes when I started, and I didn't check which files those were.
