@@ -29,3 +29,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-11 looper issue gitlab stack: no nightly build schedule for tacplus-dev/website, which is pinned (build.lock on main since 325305c) (#31)
 - 2026-11-11 looper issue gitlab stack: tacplus-dev/build had group runners disabled, so no group runner ever took a build job; own the setting (#35)
 - 2026-11-11 looper issue dev: the secret google-signin-seatrials (seatrials' Google sign-in client), seatrials-deploy its only reader (fleet-seatrials#46) (#37, de77565; gates: full)
+- 2026-11-12 looper issue security: GO-2026-6859 (net/http, CVE-2026-97054) in all 13 pinned binaries (govulncheck -mode=binary, bin/ and bin/scan/), no exception: the security job will fail (#39, 07d4638; gates: full)
