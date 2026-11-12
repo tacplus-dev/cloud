@@ -19,6 +19,8 @@
 #
 #   tests/ci_test.sh
 set -uo pipefail
+# The pipeline sets the bootstrap rule's IDs as its own variables (#34); the scenarios below set them, or not, each.
+unset ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_SERVICE_ACCOUNT_ID
 here=$(cd "$(dirname "$0")/.." && pwd)
 src=$here/ci/gitlab-project.gitlab-ci.yml
 work=$(mktemp -d)
