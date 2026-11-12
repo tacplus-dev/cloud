@@ -518,7 +518,8 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   the zone) replaces the manager `create_before_destroy`, after its objects are in the bucket: its name is the build's
   hash (`runner-manager-<8 hex>`), so the new one is up before the old one goes. The jobs the old one was running are
   lost with it, `apply:ci`'s too (it runs through that manager): the next pipeline finishes what it left (a deposed
-  old manager is deleted then; a state lock left behind needs `tofu force-unlock`). `ci/policy.sh` refuses any plan
+  old manager is deleted then, and `tests/ci_plan_test.sh` plans from such a state, #47; a state lock left behind
+  needs `tofu force-unlock`). `ci/policy.sh` refuses any plan
   that would destroy the manager before making its replacement, and the plan tests pin both (a config change keeps
   the name, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at INFO) is in the
   apply job's artifacts, `plans/<stack>.apply.log`.

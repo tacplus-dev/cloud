@@ -380,3 +380,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   the VMs the old one made in the same managed instance groups during the overlap (adopted, or removed as unknown),
   and if it removes busy ones, give a new build its own groups or pause the old runners first. Why: the overlap is
   a minute or two, but it is new with #46.
+- **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). What: once an `apply:ci`
+  of it has succeeded (the state no longer holds the resource), delete the block in `modules/projects/ci/runners.tf`
+  and the half of `tests/ci_plan_test.sh` that needs it. Why: it is a no-op after that apply, kept only until the one
+  state that holds the resource has forgotten it.
+- **A plan test from the live state's shape, for every removal** (looper, #47). What: when a change removes a
+  resource that others depend on (a `replace_triggered_by`, a `depends_on`), plan it from a state that still holds the
+  old dependencies, as `tests/ci_plan_test.sh` does for the manager: `removed` (forget) for what has no remote object.
+  Why: the stacks' tests plan from an empty state, where a removed resource's destroy is no node, and #46's removal
+  reached main and failed only on `plan:ci` against the real state.

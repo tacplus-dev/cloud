@@ -1,0 +1,117 @@
+{
+  "GET /rm/v3/folders": {
+    "folders": [
+      {
+        "name": "folders/222",
+        "displayName": "ci",
+        "parent": "folders/111111111111",
+        "state": "ACTIVE"
+      }
+    ]
+  },
+  "GET /rm/v1/projects/tacplus-bootstrap": {
+    "projectNumber": "123456789012",
+    "projectId": "tacplus-bootstrap",
+    "lifecycleState": "ACTIVE",
+    "name": "tacplus-bootstrap",
+    "parent": {
+      "type": "folder",
+      "id": "1"
+    }
+  },
+  "GET /billing/v1/projects/tacplus-bootstrap/billingInfo": {
+    "name": "projects/tacplus-bootstrap/billingInfo",
+    "projectId": "tacplus-bootstrap",
+    "billingAccountName": "billingAccounts/000000-111111-222222",
+    "billingEnabled": true
+  },
+  "GET /rm/v1/projects/tacplus-dev": {
+    "projectNumber": "444",
+    "projectId": "tacplus-dev",
+    "lifecycleState": "ACTIVE",
+    "name": "tacplus-dev",
+    "parent": {
+      "type": "folder",
+      "id": "333"
+    }
+  },
+  "GET /billing/v1/projects/tacplus-dev/billingInfo": {
+    "name": "projects/tacplus-dev/billingInfo",
+    "projectId": "tacplus-dev",
+    "billingAccountName": "billingAccounts/000000-111111-222222",
+    "billingEnabled": true
+  },
+  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager": {
+    "kind": "compute#instance",
+    "id": "1000000000000000001",
+    "name": "runner-manager",
+    "status": "RUNNING",
+    "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b",
+    "machineType": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/machineTypes/t2a-standard-1",
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager",
+    "tags": {
+      "items": [
+        "runner-manager"
+      ],
+      "fingerprint": "f"
+    },
+    "labels": {
+      "managed-by": "tacplus-dev-cloud"
+    },
+    "labelFingerprint": "l",
+    "metadata": {
+      "fingerprint": "m",
+      "items": [
+        {
+          "key": "runner-pools",
+          "value": "build cluster deploy shared"
+        }
+      ]
+    },
+    "disks": [
+      {
+        "boot": true,
+        "autoDelete": true,
+        "deviceName": "persistent-disk-0",
+        "mode": "READ_WRITE",
+        "type": "PERSISTENT",
+        "interface": "SCSI",
+        "source": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager",
+        "diskSizeGb": "20"
+      }
+    ],
+    "networkInterfaces": [
+      {
+        "name": "nic0",
+        "networkIP": "10.10.0.2",
+        "network": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/global/networks/runners",
+        "subnetwork": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/regions/us-central1/subnetworks/runners"
+      }
+    ],
+    "serviceAccounts": [
+      {
+        "email": "runner-manager@tacplus-ci.iam.gserviceaccount.com",
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      }
+    ],
+    "scheduling": {
+      "automaticRestart": true,
+      "onHostMaintenance": "MIGRATE",
+      "preemptible": false,
+      "provisioningModel": "STANDARD"
+    }
+  },
+  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager": {
+    "kind": "compute#disk",
+    "id": "1000000000000000002",
+    "name": "runner-manager",
+    "sizeGb": "20",
+    "status": "READY",
+    "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b",
+    "type": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/diskTypes/pd-balanced",
+    "sourceImage": "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024",
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager"
+  }
+}

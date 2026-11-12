@@ -209,3 +209,14 @@ locals {
     runner-config          = local.manager_config
   }
 }
+
+# The config's hash, the manager's replace_triggered_by until #46, which removed it: forgotten, not destroyed (#47). It
+# has no remote object, and its destroy, which a manager made before #46 waits for (its stored dependencies name it),
+# needs the pools' templates and groups, which the new manager's config needs: with a deposed manager in the state (the
+# crashed apply of 2026-11-12), the plan had a cycle. A forget is no node of the graph.
+removed {
+  from = terraform_data.manager_config
+  lifecycle {
+    destroy = false
+  }
+}

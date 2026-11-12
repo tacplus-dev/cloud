@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#46).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#47).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -70,7 +70,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   apply's OpenTofu log is in its job's artifacts. Tested: the policy, the startup script and its watcher (stubs), the
   plan (mock providers: a config change keeps the name, a build changes it). Not yet seen live: the first apply of
   it replaces the manager once (new name), and that apply's own job dies when the old manager goes (README, Never
-  without a manager).
+  without a manager). Its first `plan:ci` failed with a cycle (#47): the crashed apply of 2026-11-12 left a deposed
+  manager, and the old manager's stored dependencies name `terraform_data.manager_config`, which #46 removed; its
+  destroy, the deposed manager's and the pools' templates and groups closed a loop. A `removed` block now forgets it
+  (no remote object) instead of destroying it; `tests/ci_plan_test.sh` plans the stack with its real provider against
+  a stub API from that state (no cycle; the cycle without the block). Not yet seen live: `plan:ci` and `apply:ci` on
+  main from the real state.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
