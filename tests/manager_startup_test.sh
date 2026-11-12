@@ -25,7 +25,7 @@ stub=$work/stub root=$work/root
 mkdir -p "$stub/objects/gitlab-runner" "$stub/objects/fleeting-plugin-googlecloud" "$stub/attributes"
 cat > "$work/gitlab-runner" <<EOF
 #!/usr/bin/env bash
-[ "\${1:-}" = --version ] && { echo 'Version:      19.5.2'; exit 0; }
+[ "\${1:-}" = --version ] && { echo 'Version:      19.5.3'; exit 0; }
 echo "gitlab-runner \$*" >> "$stub/log"
 EOF
 printf 'plugin build\n' > "$work/plugin"

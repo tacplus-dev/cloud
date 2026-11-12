@@ -40,7 +40,7 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Track and bump the pins with known vulnerabilities** (looper, #3, 2026-11-03). What: move each to the first
   upstream release that fixes its `security-exceptions.yaml` entries, and remove them: OpenTofu past 1.13.2 (x/net
   >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), the `google` provider past 8.9.0 and tflint past
-  0.65.0 with its ruleset past 0.41.0 (x/net >= v0.62.0, x/crypto), GitLab Runner past v19.5.2 and
+  0.65.0 with its ruleset past 0.41.0 (x/net >= v0.62.0, x/crypto), GitLab Runner past v19.5.3 and
   fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
   GO-2025-3922, accepted until 2026-12-04, #10), and OpenTofu, Trivy past 0.76.2 and GitLab Runner to a release with
   klauspost/compress >= v1.20.2 (GO-2026-6865, accepted until 2026-12-06, #24), and the CI image to a build:2.6 digest
@@ -337,7 +337,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   today), and `runner.helper_image` that digest; `bin/scan/` scans the helper too. Why: #40 keeps upstream's helper
   (go1.26.10, GO-2026-6859), pulled by digest from registry.gitlab.com at each job's start: nothing from upstream at the
   manager's boot, but the job containers still run upstream's Go. It needs an image build in this pipeline (Cloud
-  Build, or the cluster's builds, #20).
+  Build, or the cluster's builds, #20). Since #44 (2026-11-12): tacplus-dev/cluster#21 builds the v19.5.3 helper (the
+  hub's decision, its `runner-images` job, into `ci-images` in tacplus-dev); once it is published, `runner.helper_image`
+  is its digest, and this entry is that move.
 - **Drop the runner's and the plugin's Go and module bumps** (looper, #40, 2026-11-11). What: when a GitLab Runner and
   a fleeting-plugin-googlecloud release are built with a fixed Go and require x/net >= v0.62.0 and klauspost/compress
   >= v1.20.2, move `stacks/ci/main.tf`'s `runner` pins to them and drop `ci/runner.sh`'s `go get`s (keep building them

@@ -174,6 +174,16 @@ else
       ok "bin/$b is built with klauspost/compress >= v1.20.2 and brotli >= v1.2.7" ||
       fail "bin/$b: $(go version -m "$p" | grep -E 'klauspost/compress|andybalholm/brotli' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
   done
+  # The manager's binaries (ci/runner.sh, #40), as built: with the fixed x/net, klauspost/compress and go-jose
+  # (CVE-2026-116587, in step with tacplus-dev/cluster's runner build, #44), not their upstreams'.
+  for b in gitlab-runner fleeting-plugin-googlecloud; do
+    p=$here/bin/manager/$b
+    [ -f "$p" ] || { fail "no bin/manager/$b (ci/tools.sh)"; continue; }
+    fixed "$p" golang.org/x/net v0.62.0 && fixed "$p" github.com/klauspost/compress v1.20.2 &&
+      fixed "$p" github.com/go-jose/go-jose/v4 v4.1.6 &&
+      ok "bin/manager/$b is built with x/net >= v0.62.0, klauspost/compress >= v1.20.2 and go-jose >= v4.1.6" ||
+      fail "bin/manager/$b: $(go version -m "$p" | grep -E 'x/net|klauspost/compress|go-jose' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
+  done
 fi
 
 [ "$failed" = 0 ] && echo "security: all passed" || { echo "security: FAILED"; exit 1; }

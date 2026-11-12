@@ -197,8 +197,8 @@ moves to the first upstream release with the fix (#3):
   streams), checked against the Go checksum database, until their releases require them. **Accepted until
   2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2 and Trivy 0.76.1, which decode only
   pinned, trusted inputs; each pin moves when its upstream ships the fix.
-- **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0
-  and klauspost/compress v1.20.2, so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
+- **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
+  klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
 - **The CI image is build:2.6.10 by digest** (#43): its `gh` has x/net >= v0.62.0 (CVE-2026-78661, #27) and its
   zlib the fix (CVE-2026-85091), so their exceptions are gone, and it has no OpenEXR (tacplus-dev/tacplus#554: 16 CVEs
   in Debian 13's, from buildpack-deps' imagemagick). Its `gh`'s x/crypto/openpgp is GO-2026-5932's, above.
@@ -486,16 +486,19 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 ### The manager's binaries
 
 #40 (Jody's rule on #39: nothing the VMs run comes from upstream at boot). GitLab Runner and its googlecloud fleeting
-plugin are **our builds** of upstream's tags (v19.5.2, v1.3.1), not upstream's releases, which are built with go1.26.10
+plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's releases, which are built with go1.26.10
 (GO-2026-6859):
 
 - **The build.** `ci/runner.sh`, in the tools job (`bin/manager/`): each tag at its pinned commit, with go1.27.4,
-  x/net v0.62.0 and klauspost/compress v1.20.2 (every module checked against the Go checksum database), as upstream
+  x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6 (every module checked against the Go checksum database;
+  `tests/security_test.sh` checks the builds' modules), as upstream
   builds it (`CGO_ENABLED=0`, its ldflags) with `-trimpath`, no VCS stamp and the commit's date as the build's, for
   linux/arm64; the runner with Go's own crypto, not the frozen FIPS 140 module v1.0.0 its release has (which go1.27
   would also turn on). It is reproducible: a build whose SHA-256 is not the one
   `stacks/ci/main.tf`'s `runner` block pins is refused. A bump changes the version, branch, commit and SHA-256 there
-  (the build's SHA-256 is what `ci/runner.sh` prints when it refuses a build).
+  (the build's SHA-256 is what `ci/runner.sh` prints when it refuses a build). **One release with tacplus-dev/cluster**
+  (cluster#21, #44): its runner and helper images are built from the same commit with the same Go and modules, so a
+  bump here names the cluster issue that moves its pins, and the other way round.
 - **The bucket.** `tacplus-ci-runner-bin` (`modules/projects/ci/runner-bin.tf`): uniform access, public access
   prevention enforced, and `roles/storage.objectViewer` bound authoritatively to the manager's account alone, so no
   VM's or job's account but the manager's reads it (the pipeline, which uploads the builds, and break-glass reach it
@@ -508,10 +511,11 @@ plugin are **our builds** of upstream's tags (v19.5.2, v1.3.1), not upstream's r
   upstream's package's post-install sets it up (the `gitlab-runner` user, `gitlab-runner install`). At boot it asks
   only the metadata server, the bucket and Secret Manager. A new build, like a new config or script, replaces the
   manager (`replace_triggered_by` follows every metadata value), after its objects are in the bucket.
-- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.2, pinned by digest in
+- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a
-  registry only the workers read, is a follow-up (PROPOSALS.md).
+  registry only the workers read, is a follow-up (PROPOSALS.md); `runner.helper_image` moves to the helper
+  tacplus-dev/cluster builds (cluster#21) once it is published.
 - **If a new manager does not come up**, no runner is left to run the pipeline that would revert it (`apply:ci` runs on
   the `cluster` pool, through this manager): revert the commit and apply the ci stack from a workstation (Break-glass).
   #40 landed in two steps for this reason: the builds and the bucket first, the switch second, so the revert of the

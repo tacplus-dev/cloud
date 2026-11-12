@@ -16,7 +16,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   `ci/kubernetes-provider.sh`, #18, x/net v0.62.0 and kin-openapi v0.152.0, its `manifest/openapi` ported by
   `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0; and `ippontech/anthropic` v1.92.0,
   the `anthropic` stack's, `ci/anthropic-provider.sh`, #34), installed only from
-  `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.5.2 and
+  `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.5.3 and
   the fleeting plugin v1.3.1 are built here with go1.27.4 too (`ci/runner.sh`, #40): GO-2026-6859 has no exception.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
@@ -51,8 +51,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
   after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
   mock providers only.
-- **The manager's binaries (#40):** GitLab Runner v19.5.2 and the fleeting plugin v1.3.1 built here with go1.27.4,
-  x/net v0.62.0 and klauspost/compress v1.20.2, reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the tools job:
+- **The manager's binaries (#40):** GitLab Runner v19.5.3 (#44, the release tacplus-dev/cluster runs, cluster#21) and
+  the fleeting plugin v1.3.1 built here with go1.27.4, x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6,
+  reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the tools job:
   `bin/manager/`, which `bin/scan/` scans), uploaded by the ci stack to `gs://tacplus-ci-runner-bin`, which only the
   manager's account reads among the VMs' and jobs' (README, The manager's binaries); the manager installs both from
   there by SHA-256, with no package, no apt and nothing from upstream at boot. The jobs' helper image is still

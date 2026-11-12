@@ -3,15 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # GitLab Runner and its googlecloud fleeting plugin, the runner manager's two binaries, built from their source (#40).
-# Upstream's releases (v19.5.2, v1.3.1) are built with go1.26.10 (GO-2026-6859, net/http), x/net v0.58.0 and v0.59.0,
-# and the runner with klauspost/compress v1.20.0 (GO-2026-6603 to 6617, 6865). This builds the same releases, their
-# tags at the pinned commits, with go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2, every module checked against
-# the Go checksum database, as upstream builds them (CGO_ENABLED=0, its ldflags) but with -trimpath, no VCS stamp and
+# Upstream's releases (v19.5.3, v1.3.1) are built with go1.26.10 (GO-2026-6859, net/http), x/net v0.58.0 and v0.59.0,
+# and the runner with klauspost/compress v1.20.0 (GO-2026-6603 to 6617, 6865) and go-jose v4.1.4 (CVE-2026-116587).
+# This builds the same releases, their tags at the pinned commits, with go1.27.4, x/net v0.62.0, klauspost/compress
+# v1.20.2 and go-jose v4.1.6, every module checked against the Go checksum database, as upstream builds them (CGO_ENABLED=0, its ldflags) but with -trimpath, no VCS stamp and
 # the commit's date as the build's, so the build is reproducible: each one is refused unless its SHA-256 is the pinned
 # one. linux/arm64 only, the manager's; a cross-build, so on any host. The versions, commits and SHA-256s are
 # stacks/ci/main.tf's runner block; the ci stack serves the builds to the manager from a bucket only it reads
 # (modules/projects/ci/runner-bin.tf): nothing it runs comes from upstream at boot. Drop the Go and module bumps for
-# the first upstream releases built with them (PROPOSALS.md).
+# the first upstream releases built with them (PROPOSALS.md). The runner's release and recipe are tacplus-dev/cluster's
+# too, whose runner and helper images are built from the same commit (cluster#21, #44): a bump here names it there.
 #
 #   ci/runner.sh DIR   # gitlab-runner and fleeting-plugin-googlecloud into DIR. Needs git, sed and go (the
 #                      # toolchain is GOTOOLCHAIN's, fetched by the go command).
@@ -20,7 +21,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 die() { echo "runner.sh: $*" >&2; exit 1; }
 
 go_version=go1.27.4
-deps=(golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.20.2)
+deps=(golang.org/x/net@v0.62.0 github.com/klauspost/compress@v1.20.2 github.com/go-jose/go-jose/v4@v4.1.6)
 main=$here/stacks/ci/main.tf
 pin() { sed -n "s/^    $1 *= *\"\(.*\)\"$/\1/p" "$main"; }
 

@@ -155,9 +155,9 @@ run "ci" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin = "../../bin/manager"
@@ -265,7 +265,7 @@ run "ci" {
         "  limit = ${pool.limit}",
         "  [runners.docker]",
         "    image = \"alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a\"",
-        "    helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90\"",
+        "    helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564\"",
         "    privileged = false",
         "    disable_cache = true",
         "    volumes = []",
@@ -361,12 +361,12 @@ run "ci" {
     error_message = "The runner bucket is granted to allUsers or allAuthenticatedUsers."
   }
   assert {
-    condition     = { for k, o in google_storage_bucket_object.runner_bin : k => [o.bucket, o.name, o.source] } == { gitlab-runner = [google_storage_bucket.runner_bin.name, "gitlab-runner/90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af", "../../bin/manager/gitlab-runner"], fleeting-plugin-googlecloud = [google_storage_bucket.runner_bin.name, "fleeting-plugin-googlecloud/429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb", "../../bin/manager/fleeting-plugin-googlecloud"] }
+    condition     = { for k, o in google_storage_bucket_object.runner_bin : k => [o.bucket, o.name, o.source] } == { gitlab-runner = [google_storage_bucket.runner_bin.name, "gitlab-runner/b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34", "../../bin/manager/gitlab-runner"], fleeting-plugin-googlecloud = [google_storage_bucket.runner_bin.name, "fleeting-plugin-googlecloud/429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb", "../../bin/manager/fleeting-plugin-googlecloud"] }
     error_message = "The runner bucket's objects are not the two builds of bin/manager, each named by its pinned SHA-256."
   }
   # The manager installs them from there, by SHA-256, and nothing from upstream or a package archive at boot.
   assert {
-    condition     = google_compute_instance.manager.metadata["runner-bucket"] == google_storage_bucket.runner_bin.name && google_compute_instance.manager.metadata["runner-sha256"] == "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af" && google_compute_instance.manager.metadata["fleeting-plugin-sha256"] == "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+    condition     = google_compute_instance.manager.metadata["runner-bucket"] == google_storage_bucket.runner_bin.name && google_compute_instance.manager.metadata["runner-sha256"] == "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34" && google_compute_instance.manager.metadata["fleeting-plugin-sha256"] == "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
     error_message = "The manager's metadata does not name the runner bucket and the two builds' pinned SHA-256s."
   }
   assert {
@@ -379,7 +379,7 @@ run "ci" {
     error_message = "The manager's replacement does not follow every metadata value (the builds' SHA-256s among them)."
   }
   assert {
-    condition     = length(regexall("helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    condition     = length(regexall("helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564\"", google_compute_instance.manager.metadata["runner-config"])) == 2
     error_message = "Each runner's helper image is not the runner version's, by digest."
   }
   # The GitHub Apps' keys (#19): import-only RS256 keys with no version until their app's key is imported, software
@@ -491,9 +491,9 @@ run "one_job_per_vm_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin = "../../bin/manager"
@@ -526,9 +526,9 @@ run "unpinned_runner_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24"
     }
     runner_bin  = "../../bin/manager"
@@ -557,9 +557,9 @@ run "unpinned_build_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -590,9 +590,9 @@ run "family_refused" {
     pool_image           = "projects/cos-cloud/global/images/family/cos-arm64-stable"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -623,9 +623,9 @@ run "no_importers" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"
@@ -662,9 +662,9 @@ run "manager_signs_for_report_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin        = "../../bin/manager"
@@ -694,9 +694,9 @@ run "unknown_pool_refused" {
     pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
     manager_machine_type = "t2a-standard-1"
     runner = {
-      version        = "v19.5.2", branch = "19-5-stable", commit = "66ad5002d9249fc178e8f9edf3dd7d58223213ce", runner_sha256 = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
       plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
       default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
     }
     runner_bin  = "../../bin/manager"

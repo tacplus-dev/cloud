@@ -7,7 +7,7 @@
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
 # ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are GitLab Runner and its fleeting plugin,
-# built from source with go1.27.4, x/net v0.62.0 and klauspost/compress v1.20.2 (ci/runner.sh, #40); nor are the Go
+# built from source with go1.27.4, x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6 (ci/runner.sh, #40, #44); nor are the Go
 # standard library findings of what we build (the tools, the scanners and the four providers, ci/tools.sh: GO-2026-6859
 # among them, #39), fixed by building them with the latest Go, nor is the google provider's x/net, built with v0.62.0
 # (ci/google-provider.sh, #39), nor gitleaks' and

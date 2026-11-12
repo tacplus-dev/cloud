@@ -53,16 +53,17 @@ module "ci" {
   manager_machine_type = "t2a-standard-1"
   # GitLab Runner and the fleeting plugin, our builds of upstream's tags (ci/runner.sh, #40): each commit, and each
   # build's SHA-256, which the build is refused without and the manager installs by.
+  # One release with tacplus-dev/cluster (cluster#21, #44): a runner bump here names the cluster issue that moves its pins.
   runner = {
-    version        = "v19.5.2"
+    version        = "v19.5.3"
     branch         = "19-5-stable"
-    commit         = "66ad5002d9249fc178e8f9edf3dd7d58223213ce"
-    runner_sha256  = "90d179f55e8eb8e4a601e37c5124f9362f27e27323f287520958da8e5fddd1af"
+    commit         = "33227fd48c5b411d0b49a74e129d187728abcc3b"
+    runner_sha256  = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
     plugin_version = "v1.3.1"
     plugin_commit  = "31ea56d71b16c75e37999262293b273be509f13d"
     plugin_sha256  = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
     # The helper image of the runner's version, by digest: upstream's, which the pools pull at a job's start.
-    helper_image  = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.2@sha256:949bf46bd853ca9bc3374e4da867d54b2da4a0b3a1e554ef67479ba94158ac90"
+    helper_image  = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
     default_image = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
   }
   # The tools job's artifact (ci/tools.sh), which plan:ci and apply:ci get: relative, so a plan applies in another job.
