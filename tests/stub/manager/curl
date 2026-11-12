@@ -5,13 +5,15 @@
 # A stub curl for tests/manager_startup_test.sh: the GETs modules/projects/ci/files/manager-startup.sh makes, answered
 # from STUB_MANAGER: the metadata server (attributes/<key>, the project tacplus-ci, the VM's token vm-token), the
 # bucket's objects (objects/<name>/<sha256>) and Secret Manager's runner-token-<pool> (glrt-<pool>-token), the last two
-# only with the VM's token. An unknown URL or a missing object fails, as curl -f does (22). Each call is logged to
-# STUB_MANAGER/calls: GET URL, and the bearer token it sent.
+# only with the VM's token; and the attributes directory's ETag (-D), the next line of STUB_MANAGER/etags each time,
+# as the metadata server answers a wait_for_change (#46). An unknown URL or a missing object fails, as curl -f does
+# (22). Each call is logged to STUB_MANAGER/calls: GET URL, and the bearer token it sent.
 set -euo pipefail
-out=/dev/stdout url='' auth=''
+out=/dev/stdout url='' auth='' headers=''
 while [ $# -gt 0 ]; do
   case $1 in
     -o) out=$2; shift ;;
+    -D) headers=$2; shift ;;
     -H) [[ $2 == @* ]] && auth=$(sed -n 's/^Authorization: Bearer //p' "${2#@}"); shift ;;
     --retry) shift ;;
     -*) ;;
@@ -22,6 +24,10 @@ done
 echo "GET $url${auth:+ Bearer $auth}" >> "$STUB_MANAGER/calls"
 md=http://metadata.google.internal/computeMetadata/v1
 case $url in
+  "$md/instance/attributes/?recursive=true"*)
+    [ -n "$headers" ] && [ -s "$STUB_MANAGER/etags" ] || exit 22
+    e=$(head -n1 "$STUB_MANAGER/etags"); sed -i 1d "$STUB_MANAGER/etags"
+    printf 'HTTP/1.1 200 OK\r\nETag: %s\r\n\r\n' "$e" > "${headers/#-//dev/stdout}"; printf '{}' > "$out" ;;
   "$md/project/project-id") printf tacplus-ci > "$out" ;;
   "$md/instance/service-accounts/default/token") printf '{"access_token": "vm-token", "expires_in": 3599}' > "$out" ;;
   "$md/instance/attributes/"*) f=$STUB_MANAGER/attributes/${url#"$md/instance/attributes/"}; [ -f "$f" ] || exit 22; cat "$f" > "$out" ;;

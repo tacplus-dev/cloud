@@ -4,7 +4,8 @@
 #
 # Tests ci/tofu.sh against a stub tofu (tests/stub/tofu): plan inits with the lock file read-only, saves the plan
 # and its JSON, text and SHA-256, and is refused, with no SHA-256 to apply, when ci/policy.sh refuses the plan;
-# apply applies exactly the saved plan (no other argument that could change it), and refuses a missing plan or one
+# apply applies exactly the saved plan (no other argument that could change it), its log in plans/ (OpenTofu's core
+# at DEBUG, the providers at INFO: what a provider that stops answering did, #46), and refuses a missing plan or one
 # changed since the plan job; drift never saves, locks or applies, and lists what differs, a failing check too (#34),
 # with no change or with some; plan says a failing check; an unknown stack is refused. Needs bash, jq, sha256sum.
 #
@@ -44,6 +45,8 @@ grep -q '1 change(s)' "$work/out" && ok "the plan's changes are counted (reads a
 if run apply folder; then ok "apply folder"; else fail "apply folder: $(cat "$work/out")"; fi
 [ "$(grep ' apply ' "$STUB_LOG")" = "folder apply -input=false -lock-timeout=10m -no-color $PLANS/folder.tfplan" ] &&
   ok "apply applies the saved plan, and only it" || fail "apply ran: $(grep apply "$STUB_LOG")"
+[ "$(cat "$PLANS/folder.apply.log" 2>/dev/null)" = "TF_LOG= TF_LOG_CORE=DEBUG TF_LOG_PROVIDER=INFO" ] &&
+  ok "apply logs OpenTofu's core at DEBUG, the providers at INFO, to plans/<stack>.apply.log (#46)" || fail "apply log: $(cat "$PLANS/folder.apply.log" 2>&1)"
 
 echo "changed" >> "$PLANS/folder.tfplan"
 if run apply folder; then fail "apply of a changed plan ran"; else

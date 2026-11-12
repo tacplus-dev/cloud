@@ -373,10 +373,11 @@ run "ci" {
     condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
     error_message = "The manager's metadata still pins an upstream download or a package archive."
   }
-  # A new build replaces the manager, as a new config does: the startup script reads the metadata at boot only.
+  # Never without a manager (#46): its name is its build's, so a new build makes the new one before the old one goes.
+  # This build's (these inputs and files/manager-startup.sh): a commit that changes it replaces the manager.
   assert {
-    condition     = terraform_data.manager_config.input == sha256(jsonencode(google_compute_instance.manager.metadata))
-    error_message = "The manager's replacement does not follow every metadata value (the builds' SHA-256s among them)."
+    condition     = google_compute_instance.manager.name == "runner-manager-19769182" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
+    error_message = "The manager's name is not runner-manager-<its build's hash>, or its build changed: then this test's name, knowingly (a new build replaces the manager)."
   }
   assert {
     condition     = length(regexall("helper_image = \"registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564\"", google_compute_instance.manager.metadata["runner-config"])) == 2
@@ -705,4 +706,104 @@ run "unknown_pool_refused" {
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, pools = { dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }, keys = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "elsewhere", gitlab_project = "tacplus-dev/fleet-seatrials" } } }, tacplus-looper = { import = true, namespace = false, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } } } } }
   }
   expect_failures = [var.github_apps]
+}
+
+# A config change (a pool raised: its capacity, its VMs, its idle ones) is pushed to the running manager, an in-place
+# metadata update: the same VM, its name unchanged (#46). A change to the manager's build (its image here) replaces
+# it under a new name, so the new one is made before the old one goes (create_before_destroy; ci/policy.sh refuses a
+# plan that would destroy it first).
+run "manager_config_pushed" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      with-account = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 4, max_instances = 2, idle_count = 2, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = true
+      }
+      no-account = {
+        machine_type = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 3, max_instances = 2, idle_count = 0, idle_time = "30m"
+        job          = { cpus = "1", memory = "4g", memory_swap = "4g", disk_gb = 20, security_opt = ["no-new-privileges"] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = {
+      key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }
+      pools    = { bootstrap = "projects/111/locations/global/workloadIdentityPools/gitlab-com", dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }
+      keys     = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, projects = [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } }
+    }
+    # As GCP_KMS_KEY_IMPORTERS gives it: an account of the host's directory, which no file here names.
+    kms_key_importers = ["user:jody@example.com"]
+  }
+  assert {
+    condition     = google_compute_instance.manager.name == "runner-manager-19769182" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
+    error_message = "A config change renames the manager: it would replace it, every runner down until the new one boots."
+  }
+}
+
+run "manager_build_replaced" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261101"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      with-account = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 2, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = true
+      }
+      no-account = {
+        machine_type = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 3, max_instances = 2, idle_count = 0, idle_time = "30m"
+        job          = { cpus = "1", memory = "4g", memory_swap = "4g", disk_gb = 20, security_opt = ["no-new-privileges"] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = {
+      key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }
+      pools    = { bootstrap = "projects/111/locations/global/workloadIdentityPools/gitlab-com", dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }
+      keys     = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, projects = [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } }
+    }
+    # As GCP_KMS_KEY_IMPORTERS gives it: an account of the host's directory, which no file here names.
+    kms_key_importers = ["user:jody@example.com"]
+  }
+  assert {
+    condition     = google_compute_instance.manager.name != "runner-manager-19769182" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
+    error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
+  }
 }

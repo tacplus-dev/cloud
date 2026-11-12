@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # A stub tofu for tests/tofu_test.sh: logs each call (STUB_LOG, one line: the directory's name and the arguments);
-# plan writes its -out file ("plan of <stack>") and exits STUB_PLAN_RC (0); show -json prints STUB_PLAN_JSON.
+# plan writes its -out file ("plan of <stack>") and exits STUB_PLAN_RC (0); show -json prints STUB_PLAN_JSON; apply
+# writes its log levels to TF_LOG_PATH, where one is set, as tofu writes its log there.
 set -euo pipefail
 echo "$(basename "$PWD") $*" >> "$STUB_LOG"
 case $1 in
-  init|apply) exit 0 ;;
+  init) exit 0 ;;
+  apply) [ -z "${TF_LOG_PATH:-}" ] || echo "TF_LOG=${TF_LOG:-} TF_LOG_CORE=${TF_LOG_CORE:-} TF_LOG_PROVIDER=${TF_LOG_PROVIDER:-}" > "$TF_LOG_PATH" ;;
   plan)
     for a in "$@"; do [[ $a == -out=* ]] && echo "plan of $(basename "$PWD")" > "${a#-out=}"; done
     exit "${STUB_PLAN_RC:-0}" ;;

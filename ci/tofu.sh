@@ -9,7 +9,7 @@
 #
 #   ci/tofu.sh plan STACK     # plans/STACK.tfplan, and beside it .json (tofu show -json), .txt (what a person
 #                             # reads), .sha256; refused if ci/policy.sh refuses the plan
-#   ci/tofu.sh apply STACK    # applies plans/STACK.tfplan
+#   ci/tofu.sh apply STACK    # applies plans/STACK.tfplan, its log in plans/STACK.apply.log
 #   ci/tofu.sh drift STACK    # plans without saving or locking; what differs appended to $PLAN_SUMMARY; exit 0
 #
 # A check the plan finds failing (a check block's assert, a condition: the anthropic stack's bootstrap rule, #34) does
@@ -61,7 +61,11 @@ case $cmd in
     (cd "$plans" && sha256sum -c --quiet "$stack.tfplan.sha256") || die "plans/$stack.tfplan is not the plan the plan job saved"
     init
     echo "tofu.sh: applying plans/$stack.tfplan ($(cut -c1-16 "$plan.sha256")), the plan job's"
-    tofu apply -input=false -lock-timeout=10m -no-color "$plan"
+    # Its log beside the plan, in the apply job's artifacts (#46): OpenTofu's core at DEBUG, which says how a provider
+    # that stops answering ended (a panic, a signal), and the providers at INFO, not DEBUG, which would log every
+    # request's body (the gitlab stack's are secret values).
+    TF_LOG_CORE=DEBUG TF_LOG_PROVIDER=INFO TF_LOG_PATH="$plans/$stack.apply.log" \
+      tofu apply -input=false -lock-timeout=10m -no-color "$plan"
     ;;
   drift)
     : "${PLAN_SUMMARY:?PLAN_SUMMARY is not set}"

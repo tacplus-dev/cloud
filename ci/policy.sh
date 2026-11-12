@@ -31,6 +31,8 @@
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
 #     organization role is not developer: the one org:admin rule and admin account are the bootstrap, made by hand;
+#   - the runner manager (#46): in the source, its instance without create_before_destroy; in a plan, a VM tagged
+#     runner-manager replaced destroy-first: the fleet would have no manager, and every runner would go offline;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -69,6 +71,13 @@ source_check() {
       done < <(awk '/^resource "google_compute_global_address" "/ { n = FNR; a = $3; gsub(/"/, "", a); p = 0 }
         n && /^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
         n && /^}/ { if (!p) print n ": google_compute_global_address." a; n = 0 }' "$f")
+      # The runner manager's instance says create_before_destroy = true (#46): a replacement never leaves the fleet
+      # without a manager.
+      while IFS= read -r line; do
+        [ -n "$line" ] && refuse "$f:$line is not create_before_destroy: its replacement would leave the fleet with no runner manager"
+      done < <(awk '/^resource "google_compute_instance" "manager"/ { n = FNR; p = 0 }
+        n && /^[[:space:]]*create_before_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
+        n && /^}/ { if (!p) print n ": google_compute_instance.manager"; n = 0 }' "$f")
     done < <(find "$dir" -type d -name .terraform -prune -o -type f \( -name '*.tf' -o -name '*.tftpl' \) -print0 | sort -z)
   done
 }
@@ -109,7 +118,11 @@ plan_check() {
           and (if any($unknown[]; . == "ip_address") then any(refs($rc; "ip_address")[]; startswith("google_compute_global_address.gateway"))
                else ($after.ip_address // "") as $ip | ($ip | test("(^|/)global/addresses/gateway$")) or any($gateway_ips[]; . == $ip) end);
       .resource_changes[]
-      | select(.change.actions | any(. == "create" or . == "update"))
+      # The runner manager (a VM tagged runner-manager) replaced destroy-first: the fleet would have none (#46).
+      | (select(.type == "google_compute_instance" and .change.actions == ["delete", "create"]
+           and any(.change.before.tags[]?; . == "runner-manager"))
+         | "\(.address) destroys the runner manager before its replacement exists: every runner would go offline (create_before_destroy)"),
+      (select(.change.actions | any(. == "create" or . == "update"))
       | . as $rc | .address as $a | (.change.after // {}) as $after
       | [.change.after_unknown // {} | paths(. == true) | map(tostring) | join(".")] as $unknown
       | (select(.type == "google_service_account_key") | "\($a) creates a service-account key"),
@@ -168,7 +181,7 @@ plan_check() {
         (select(.type == "google_container_node_pool")
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
-            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)"))' --arg pipeline "serviceAccount:$pipeline_sa" "$p") ||
+            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done

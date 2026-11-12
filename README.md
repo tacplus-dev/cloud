@@ -509,8 +509,19 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   Google Access), by the SHA-256s in its metadata, refusing any object that is not that build, and installs them with
   no package and no apt: `/usr/bin/gitlab-runner`, `/usr/local/bin/fleeting-plugin-googlecloud`, and the service as
   upstream's package's post-install sets it up (the `gitlab-runner` user, `gitlab-runner install`). At boot it asks
-  only the metadata server, the bucket and Secret Manager. A new build, like a new config or script, replaces the
-  manager (`replace_triggered_by` follows every metadata value), after its objects are in the bucket.
+  only the metadata server, the bucket and Secret Manager.
+- **Never without a manager (#46).** Every runner of the fleet is the manager's, `apply:ci`'s own among them. A **new
+  config** (a pool raised, a tag moved: `runner-config`, `runner-pools`) is an in-place metadata update of the running
+  manager: its watcher (`runner-config-watch`, which the startup script installs) sees the metadata change and runs
+  the startup script again, which rewrites `config.toml`; gitlab-runner reloads it by itself, with no restart and no
+  job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk or
+  the zone) replaces the manager `create_before_destroy`, after its objects are in the bucket: its name is the build's
+  hash (`runner-manager-<8 hex>`), so the new one is up before the old one goes. The jobs the old one was running are
+  lost with it, `apply:ci`'s too (it runs through that manager): the next pipeline finishes what it left (a deposed
+  old manager is deleted then; a state lock left behind needs `tofu force-unlock`). `ci/policy.sh` refuses any plan
+  that would destroy the manager before making its replacement, and the plan tests pin both (a config change keeps
+  the name, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at INFO) is in the
+  apply job's artifacts, `plans/<stack>.apply.log`.
 - **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a

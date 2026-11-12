@@ -2,5 +2,8 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# A stub systemctl for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log.
+# A stub systemctl for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log; is-active answers
+# whether STUB_MANAGER/active exists (gitlab-runner running).
 echo "systemctl $*" >> "$STUB_MANAGER/log"
+[ "${1:-}" = is-active ] && { [ -f "$STUB_MANAGER/active" ]; exit; }
+exit 0

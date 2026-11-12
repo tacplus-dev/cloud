@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#43).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#46).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -61,6 +61,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   bucket, its one reader, the objects and the manager's metadata; `tests/manager_startup_test.sh` the startup against
   stubs; the builds reproduced their pins here (linux/arm64 host). Not applied yet: the first boot from the bucket
   shows on the `apply:ci` of the commit the GitLab project pins (step 1's commit first, then step 2's).
+- **Never without a runner manager (#46):** `apply:ci` replaced the manager destroy-first, and the destroy took the
+  manager away from under the apply job itself (it runs on the `cluster` pool, through that manager): the job died
+  ("Plugin did not respond", 2026-11-10 and 2026-11-12) and the fleet had no manager. Now a config change is an
+  in-place metadata update that the running manager applies by itself (its watcher re-runs the startup script, which
+  rewrites `config.toml`; gitlab-runner reloads it, no restart), and a new build replaces it `create_before_destroy`
+  under the build's name (`runner-manager-<hash>`); `ci/policy.sh` refuses a plan that would destroy it first; each
+  apply's OpenTofu log is in its job's artifacts. Tested: the policy, the startup script and its watcher (stubs), the
+  plan (mock providers: a config change keeps the name, a build changes it). Not yet seen live: the first apply of
+  it replaces the manager once (new name), and that apply's own job dies when the old manager goes (README, Never
+  without a manager).
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

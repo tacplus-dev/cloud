@@ -18,7 +18,9 @@
 # ingress from a public range but Google's proxies' and health checkers'; and roles/owner or roles/container.admin to a
 # service account (#18), in a member, a member list or a policy document, or to a member known only after apply, the
 # pipeline's own owner alone excepted; and in the Anthropic organization (#34), an identity adopted with a change, a
-# rule of another scope than workspace:developer or workspace:inference, an account of another role than developer.
+# rule of another scope than workspace:developer or workspace:inference, an account of another role than developer;
+# and the runner manager (#46): in the source, its instance without create_before_destroy, and in a plan, its
+# replacement destroy-first (a VM tagged runner-manager), which would leave the fleet with no manager.
 # Needs bash and jq.
 #
 #   tests/policy_test.sh
@@ -49,6 +51,7 @@ refuses "a module with an image at :latest" ":latest" source "$fx/policy/latest"
 refuses "a module booting an image family" "an image family" source "$fx/policy/family"
 refuses "the repository and a bad module together" "google_service_account_key" source "$here/modules" "$fx/policy/key"
 refuses "a global address without prevent_destroy" "google_compute_global_address.gateway has no prevent_destroy" source "$fx/policy/unprotected-address"
+refuses "the runner manager without create_before_destroy" "google_compute_instance.manager is not create_before_destroy" source "$fx/policy/manager-destroy-first"
 passes "a clean module" source "$fx/policy/clean"
 passes "this repository's modules and stacks" source "$here/modules" "$here/stacks"
 refuses "a missing directory" "no such directory" source "$fx/policy/none"
@@ -106,6 +109,9 @@ passes "a plan with the TCP proxy on gateway, Google's ranges and private ones" 
 passes "a plan building the TCP proxy and the address together" plan "$fx/plans/lb-first-build.json"
 passes "a plan keeping the network rules" plan "$fx/plans/network-clean.json"
 passes "a plan deleting an SSH rule" plan "$fx/plans/ssh-deleted.json"
+# The runner manager (#46): never destroyed before its replacement is up, so the fleet always has one.
+refuses "a plan destroying the runner manager before creating its replacement" "module.ci.google_compute_instance.manager destroys the runner manager before its replacement exists" plan "$fx/plans/manager-destroy-first.json"
+passes "a plan replacing the manager create-before-destroy, updating it in place, and replacing another VM" plan "$fx/plans/manager-clean.json"
 
 refuses "a plan granting a service account container.admin" "grants roles/container.admin to serviceAccount:cluster-admin-pipeline@tacplus-dev" plan "$fx/plans/admin-project-member.json"
 refuses "a plan with a service account in an owner binding" "grants roles/owner to serviceAccount:gke-nodes@tacplus-dev" plan "$fx/plans/admin-owner-binding.json"

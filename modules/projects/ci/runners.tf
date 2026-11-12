@@ -134,18 +134,18 @@ resource "google_compute_instance_group_manager" "pool" {
 
 resource "google_compute_instance" "manager" {
   project                   = google_project.ci.project_id
-  name                      = "runner-manager"
+  name                      = local.manager_name
   zone                      = var.zone
-  machine_type              = var.manager_machine_type
+  machine_type              = local.manager_build.machine_type
   tags                      = ["runner-manager"]
   labels                    = { managed-by = "tacplus-dev-cloud" }
   allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {
-      image = var.image
-      size  = 20
-      type  = "pd-balanced"
+      image = local.manager_build.image
+      size  = local.manager_build.disk_gb
+      type  = local.manager_build.disk_type
     }
   }
 
@@ -160,11 +160,13 @@ resource "google_compute_instance" "manager" {
 
   metadata = local.manager_metadata
 
-  # The startup script reads the metadata at boot only, so a change to any of it (the config: a pool raised, a tag
-  # moved; a build; the script) replaces the manager; an in-place metadata update would change nothing until a reboot
-  # (2026-11-08).
+  # Never without a manager (#46): every runner of the fleet is its, and the apply that replaces it runs on one of them.
+  # A new build replaces it, the new manager up before the old one goes (its name is the build's, so both can be);
+  # a new config (a pool raised, a tag moved) is an in-place metadata update, which the running manager's watcher
+  # applies (files/manager-startup.sh) with no restart and no job lost. ci/policy.sh refuses a plan that would
+  # destroy it first.
   lifecycle {
-    replace_triggered_by = [terraform_data.manager_config]
+    create_before_destroy = true
   }
 
   # Its builds are in the bucket, and readable by it, before it boots.
@@ -181,19 +183,29 @@ locals {
   })
 }
 
-# What the manager boots from: GitLab Runner and the fleeting plugin from the bucket by SHA-256 (#40), the config.
+# The manager's build: what it is made of and boots from, the VM (its image, machine type, disk and zone; a stop
+# for an update would take every runner down with it, as a replacement would), the startup script, and GitLab Runner
+# and the fleeting plugin from the bucket by SHA-256 (#40). A change to any of it replaces the manager, and its name,
+# the build's hash, lets the new one be made before the old one goes (#46). The config, the rest of its metadata, is
+# not the build: it is pushed to the running manager.
 locals {
-  manager_metadata = {
+  manager_build = {
+    image                  = var.image
+    machine_type           = var.manager_machine_type
+    disk_gb                = 20
+    disk_type              = "pd-balanced"
+    zone                   = var.zone
     startup-script         = file("${path.module}/files/manager-startup.sh")
-    runner-bucket          = google_storage_bucket.runner_bin.name
     runner-sha256          = var.runner.runner_sha256
     fleeting-plugin-sha256 = var.runner.plugin_sha256
+  }
+  manager_name = "runner-manager-${substr(sha256(jsonencode(local.manager_build)), 0, 8)}"
+  manager_metadata = {
+    startup-script         = local.manager_build.startup-script
+    runner-bucket          = google_storage_bucket.runner_bin.name
+    runner-sha256          = local.manager_build.runner-sha256
+    fleeting-plugin-sha256 = local.manager_build.fleeting-plugin-sha256
     runner-pools           = join(" ", sort(keys(var.pools)))
     runner-config          = local.manager_config
   }
-}
-
-resource "terraform_data" "manager_config" {
-  input      = sha256(jsonencode(local.manager_metadata))
-  depends_on = [terraform_data.iam_ready]
 }

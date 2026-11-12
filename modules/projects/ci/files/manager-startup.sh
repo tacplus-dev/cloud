@@ -11,6 +11,11 @@
 # stack replaces it when it re-registers a runner), and gitlab-runner restarted. Until a pool's token exists (the
 # gitlab stack has not run yet), it waits for it. Nothing here prints a token.
 #
+# The config is pushed to the running manager, not by replacing it (#46): the ci stack updates the metadata in place,
+# and runner-config-watch, a unit this script installs, re-runs this script (google-startup-scripts.service) when the
+# metadata changes. That run rewrites config.toml, which gitlab-runner reloads by itself, its jobs untouched: it is
+# restarted only on a new build, or when it is not running.
+#
 # MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /.
 set -Eeuo pipefail
 root=${MANAGER_ROOT:-}
@@ -27,7 +32,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # get NAME SHA256 PATH: the bucket's object NAME/SHA256 installed at PATH, refused unless its SHA-256 is SHA256; nothing
-# fetched if PATH already is that build (a reboot).
+# fetched if PATH already is that build (a reboot, a config pushed). installed is set when it installs one.
+installed=''
 get() {
   [[ $2 =~ ^[0-9a-f]{64}$ ]] || die "no SHA-256 pinned for $1"
   if [ -f "$root$3" ] && echo "$2  $root$3" | sha256sum -c --quiet - >/dev/null 2>&1; then return; fi
@@ -35,6 +41,7 @@ get() {
     "https://storage.googleapis.com/storage/v1/b/$bucket/o/$1%2F$2?alt=media" || die "cannot download $1/$2 from gs://$bucket"
   echo "$2  $tmp/$1" | sha256sum -c --quiet - || die "gs://$bucket/$1/$2 is not the pinned build"
   install -D -m 0755 "$tmp/$1" "$root$3"
+  installed=1
   say "$1 installed, SHA-256 $2"
 }
 get gitlab-runner "$(attr runner-sha256)" /usr/bin/gitlab-runner
@@ -45,6 +52,46 @@ id -u gitlab-runner >/dev/null 2>&1 ||
   useradd --system --shell /bin/bash --comment 'GitLab Runner' --create-home --skel /dev/null gitlab-runner
 [ -f "$root/etc/systemd/system/gitlab-runner.service" ] ||
   "$root/usr/bin/gitlab-runner" install --user=gitlab-runner --working-directory=/home/gitlab-runner
+
+# The watcher (#46): each change of the metadata runs this script again. The guest agent's metadata server answers a
+# wait_for_change when the attributes' ETag differs from the last one seen, or at its timeout with the same one.
+install -d "$root/usr/local/sbin" "$root/etc/systemd/system"
+cat > "$root/usr/local/sbin/runner-config-watch" <<'WATCH'
+#!/bin/bash
+# The runner manager's metadata watcher (tacplus-dev/cloud modules/projects/ci/files/manager-startup.sh, #46): when the
+# metadata changes (the ci stack pushes a config in place), the startup script again, which rewrites config.toml.
+# RUNNER_WATCH_ROUNDS, empty on the VM, is how many waits tests/manager_startup_test.sh lets it make.
+set -uo pipefail
+url='http://metadata.google.internal/computeMetadata/v1/instance/attributes/?recursive=true'
+etag() { curl -fsS -o /dev/null -D - -H Metadata-Flavor:Google "$1" | tr -d '\r' | sed -n 's/^[Ee][Tt][Aa][Gg]: *//p'; }
+rounds=${RUNNER_WATCH_ROUNDS:-0} n=0
+until last=$(etag "$url") && [ -n "$last" ]; do sleep 10; done
+while [ "$rounds" = 0 ] || [ "$n" -lt "$rounds" ]; do
+  n=$((n + 1))
+  now=$(etag "$url&wait_for_change=true&last_etag=$last&timeout_sec=3600") && [ -n "$now" ] || { sleep 10; continue; }
+  [ "$now" = "$last" ] && continue
+  last=$now
+  echo "runner-config-watch: the metadata changed: the startup script again"
+  systemctl restart google-startup-scripts.service || echo "runner-config-watch: the startup script failed (its journal says why)" >&2
+done
+WATCH
+chmod 0755 "$root/usr/local/sbin/runner-config-watch"
+cat > "$root/etc/systemd/system/runner-config-watch.service" <<'UNIT'
+[Unit]
+Description=Re-run the runner manager's startup script when its metadata changes (tacplus-dev/cloud#46)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/sbin/runner-config-watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now runner-config-watch.service
 
 # token POOL: the pool's runner token on stdout, or nothing yet.
 token() {
@@ -68,6 +115,12 @@ open(path, "w").write(text.replace(mark, value))
 PY
 done
 install -d -m 0700 "$root/etc/gitlab-runner"
-install -m 0600 "$tmp/config.toml" "$root/etc/gitlab-runner/config.toml"
-systemctl restart gitlab-runner
+# Whole or not at all: gitlab-runner reloads config.toml when it changes, and must never read half of one.
+install -m 0600 "$tmp/config.toml" "$root/etc/gitlab-runner/.config.toml.new"
+mv -f "$root/etc/gitlab-runner/.config.toml.new" "$root/etc/gitlab-runner/config.toml"
+if [ -n "$installed" ] || ! systemctl is-active --quiet gitlab-runner; then
+  systemctl restart gitlab-runner
+else
+  say "config.toml rewritten: gitlab-runner reloads it, its running jobs untouched"
+fi
 say "gitlab-runner $("$root/usr/bin/gitlab-runner" --version | sed -n 's/^Version: *//p') running the pools: $(attr runner-pools)"

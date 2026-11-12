@@ -157,6 +157,12 @@ security:
   environment: { name: $STACK, action: start }
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci/tofu.sh apply "$STACK"
+  # OpenTofu's log of the apply (ci/tofu.sh, #46), kept when it fails: for project members only, as the plans are.
+  artifacts:
+    when: always
+    access: developer
+    paths: [src/plans/*.apply.log]
+    expire_in: 30 days
 
 plan:folder:
   extends: .plan

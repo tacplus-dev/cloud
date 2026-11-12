@@ -370,3 +370,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   its discovery document; once it does, set `jwks_polling_disabled = false` on the llmproxy issuers so that a paused
   poller is re-enabled by the next apply. Why: Anthropic pauses polling after repeated failures, and today nothing
   turns it back on.
+- **Drain the old runner manager before it goes** (looper, #46, 2026-11-12). What: on a new build, the old manager
+  stops taking jobs and finishes its running ones before it is deleted: a shutdown that sends gitlab-runner SIGQUIT
+  (graceful) rather than SIGTERM (which aborts its jobs), or a step between the create and the delete (a
+  `terraform_data` the old instance's destroy depends on, waiting until it has no job). Why: `create_before_destroy`
+  keeps the fleet up, but the jobs on the old manager are still lost, `apply:ci`'s own among them, which can leave
+  the state locked (README, Never without a manager).
+- **Two managers on the same groups, briefly** (looper, #46). What: check how the new manager's autoscaler treats
+  the VMs the old one made in the same managed instance groups during the overlap (adopted, or removed as unknown),
+  and if it removes busy ones, give a new build its own groups or pause the old runners first. Why: the overlap is
+  a minute or two, but it is new with #46.

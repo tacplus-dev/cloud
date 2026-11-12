@@ -8,6 +8,9 @@
 # with the VM's token, each by the SHA-256 its metadata pins; it refuses an object whose SHA-256 is not that one,
 # installing nothing; it asks nothing of any other host (no upstream download, no apt); it installs the service as
 # upstream's package does; on a reboot with the same pins it fetches nothing; and config.toml gets each pool's token.
+# A config pushed to the running manager (#46): its watcher, installed and enabled, re-runs the startup script when
+# the metadata changes, and that run rewrites config.toml without restarting gitlab-runner (which reloads it), so no
+# job is lost; a new build, or a runner not running, is restarted.
 # Needs bash, python3 and sha256sum.
 #
 #   tests/manager_startup_test.sh
@@ -56,6 +59,10 @@ grep -qxF 'useradd --system --shell /bin/bash --comment GitLab Runner --create-h
   grep -qxF 'gitlab-runner install --user=gitlab-runner --working-directory=/home/gitlab-runner' "$stub/log" &&
   grep -qxF 'systemctl restart gitlab-runner' "$stub/log" && ok "the service set up as upstream's package does, and restarted" ||
   fail "service: $(cat "$stub/log")"
+watch=$root/usr/local/sbin/runner-config-watch
+[ -x "$watch" ] && grep -qxF "ExecStart=/usr/local/sbin/runner-config-watch" "$root/etc/systemd/system/runner-config-watch.service" &&
+  grep -qxF 'systemctl enable --now runner-config-watch.service' "$stub/log" && ok "the metadata watcher installed and enabled" ||
+  fail "watcher: $(ls -lR "$root" 2>&1; cat "$stub/log")"
 [ "$(cat "$root/etc/gitlab-runner/config.toml")" = "$(printf 'concurrent = 1\ntoken = "glrt-shared-token"\ntoken = "glrt-deploy-token"')" ] &&
   [ "$(stat -c %a "$root/etc/gitlab-runner/config.toml")" = 600 ] && ok "config.toml with each pool's token, 0600" ||
   fail "config: $(cat "$root/etc/gitlab-runner/config.toml")"
@@ -66,6 +73,33 @@ touch "$stub/user"; mkdir -p "$root/etc/systemd/system" && touch "$root/etc/syst
 run && ! grep -q storage.googleapis.com "$stub/calls" && ! grep -qE '^(useradd|gitlab-runner install)' "$stub/log" &&
   grep -qxF 'systemctl restart gitlab-runner' "$stub/log" && ok "a reboot with the same pins fetches and installs nothing again" ||
   fail "reboot: $(cat "$work/out" "$stub/calls" "$stub/log")"
+
+# A config pushed to the running manager (#46): the same pins, gitlab-runner running: config.toml rewritten, nothing
+# fetched, gitlab-runner not restarted (it reloads config.toml; its jobs go on).
+touch "$stub/active"
+printf 'concurrent = 2\ntoken = "@TOKEN:shared@"\ntoken = "@TOKEN:deploy@"\n' > "$stub/attributes/runner-config"
+run && [ "$(cat "$root/etc/gitlab-runner/config.toml")" = "$(printf 'concurrent = 2\ntoken = "glrt-shared-token"\ntoken = "glrt-deploy-token"')" ] &&
+  [ "$(stat -c %a "$root/etc/gitlab-runner/config.toml")" = 600 ] && ! grep -q storage.googleapis.com "$stub/calls" &&
+  ! grep -q 'restart gitlab-runner' "$stub/log" && ok "a config pushed to the running manager: config.toml rewritten, gitlab-runner not restarted" ||
+  fail "config push: $(cat "$work/out" "$stub/log")"
+
+# A new build on a running manager: installed and restarted.
+cp "$work/gitlab-runner" "$work/gitlab-runner-2" && echo '# 2' >> "$work/gitlab-runner-2"
+runner2_sha=$(sha256sum "$work/gitlab-runner-2" | cut -c1-64)
+cp "$work/gitlab-runner-2" "$stub/objects/gitlab-runner/$runner2_sha"
+attrs "$runner2_sha" "$plugin_sha"
+run && cmp -s "$root/usr/bin/gitlab-runner" "$work/gitlab-runner-2" && grep -qxF 'systemctl restart gitlab-runner' "$stub/log" &&
+  ok "a new build on a running manager: installed and restarted" || fail "new build: $(cat "$work/out" "$stub/log")"
+rm -f "$stub/active"
+
+# The watcher: on a change of the metadata (a new ETag), the startup script again; on none (a wait that times out
+# with the same ETag), nothing; each wait from the last ETag seen.
+printf 'e1\ne2\ne2\n' > "$stub/etags"; : > "$stub/calls"; : > "$stub/log"
+md='http://metadata.google.internal/computeMetadata/v1/instance/attributes/?recursive=true'
+PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub RUNNER_WATCH_ROUNDS=2 timeout 20 "$watch" > "$work/out" 2>&1 &&
+  [ "$(grep -c . "$stub/log")" = 1 ] && grep -qxF 'systemctl restart google-startup-scripts.service' "$stub/log" &&
+  [ "$(cat "$stub/calls")" = "$(printf 'GET %s\nGET %s\nGET %s' "$md" "$md&wait_for_change=true&last_etag=e1&timeout_sec=3600" "$md&wait_for_change=true&last_etag=e2&timeout_sec=3600")" ] &&
+  ok "the watcher re-runs the startup script once per change of the metadata" || fail "watch: $(cat "$work/out" "$stub/calls" "$stub/log")"
 
 # An object that is not the build its name pins: refused, nothing installed, no service started.
 rm -rf "$root" "$stub/user"
