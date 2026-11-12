@@ -101,6 +101,43 @@ PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub RUNNER_WATCH_ROUNDS=2 tim
   [ "$(cat "$stub/calls")" = "$(printf 'GET %s\nGET %s\nGET %s' "$md" "$md&wait_for_change=true&last_etag=e1&timeout_sec=3600" "$md&wait_for_change=true&last_etag=e2&timeout_sec=3600")" ] &&
   ok "the watcher re-runs the startup script once per change of the metadata" || fail "watch: $(cat "$work/out" "$stub/calls" "$stub/log")"
 
+# The reaper (#49): installed and enabled; each round it lists the groups runner-groups names and deletes a VM creating
+# on a capacity or quota error once it has been seen stuck for RUNNER_REAP_AFTER seconds, nothing else: not a VM still
+# creating with no error, one failing for another reason, or one running.
+reap=$root/usr/local/sbin/runner-reap
+[ -x "$reap" ] && grep -qxF "ExecStart=/usr/local/sbin/runner-reap" "$root/etc/systemd/system/runner-reap.service" &&
+  ok "the reaper installed" || fail "reaper: $(ls -lR "$root" 2>&1)"
+vm() { printf 'https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/%s/instances/%s' "$1" "$2"; }
+mi() { # mi ZONE NAME ACTION [CODE]: a managed instance, as listManagedInstances gives it
+  local attempt=''
+  [ -z "${4:-}" ] || attempt=$(printf ', "lastAttempt": {"errors": {"errors": [{"code": "%s", "message": "..."}]}}' "$4")
+  printf '{"instance": "%s", "currentAction": "%s"%s}' "$(vm "$1" "$2")" "$3" "$attempt"
+}
+mkdir -p "$stub/compute"
+printf 'regions/us-central1/instanceGroupManagers/runner-build zones/us-central1-b/instanceGroupManagers/runner-shared' > "$stub/attributes/runner-groups"
+printf '{"managedInstances": [%s, %s, %s]}' "$(mi us-central1-b runner-build-a CREATING ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS)" \
+  "$(mi us-central1-a runner-build-b CREATING)" "$(mi us-central1-f runner-build-c NONE)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
+printf '{"managedInstances": [%s, %s]}' "$(mi us-central1-b runner-shared-d CREATING QUOTA_EXCEEDED)" \
+  "$(mi us-central1-b runner-shared-e CREATING CONDITION_NOT_MET)" > "$stub/compute/zones_us-central1-b_instanceGroupManagers_runner-shared.json"
+reaping() { : > "$stub/calls"; PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub RUNNER_REAP_STATE=$work/reap RUNNER_REAP_ROUNDS=1 timeout 20 "$reap" > "$work/out" 2>&1; }
+compute=https://compute.googleapis.com/compute/v1/projects/tacplus-ci
+reaping && grep -qxF "POST $compute/regions/us-central1/instanceGroupManagers/runner-build/listManagedInstances Bearer vm-token" "$stub/calls" &&
+  grep -qxF "POST $compute/zones/us-central1-b/instanceGroupManagers/runner-shared/listManagedInstances Bearer vm-token" "$stub/calls" &&
+  ! grep -q deleteInstances "$stub/calls" && ok "a VM just seen stuck creating is left to its group a while" || fail "first round: $(cat "$work/out" "$stub/calls")"
+# The build's stuck VM, first seen long ago: deleted; the shared pool's, seen a round ago only, not yet.
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d={k: 0 for k in d}; json.dump(d, open(p, "w"))' "$work/reap/regions_us-central1_instanceGroupManagers_runner-build"
+reaping && [ "$(grep -c deleteInstances "$stub/calls")" = 1 ] &&
+  grep -qxF "POST $compute/regions/us-central1/instanceGroupManagers/runner-build/deleteInstances Bearer vm-token" "$stub/calls" &&
+  grep -qxF "{\"instances\": [\"$(vm us-central1-b runner-build-a)\"], \"skipInstancesOnValidationError\": true}" "$stub/calls" &&
+  grep -qF "runner-reap: deleting from regions/us-central1/instanceGroupManagers/runner-build" "$work/out" &&
+  ok "a VM stuck creating on a capacity error is deleted, and nothing else" || fail "reap: $(cat "$work/out" "$stub/calls")"
+# Gone from its group: forgotten. And a round that cannot list a group goes on to the next.
+printf '{"managedInstances": [%s]}' "$(mi us-central1-f runner-build-c NONE)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
+rm "$stub/compute/zones_us-central1-b_instanceGroupManagers_runner-shared.json"
+reaping && [ "$(cat "$work/reap/regions_us-central1_instanceGroupManagers_runner-build")" = '{}' ] && ! grep -q deleteInstances "$stub/calls" &&
+  grep -qF "runner-reap: cannot list zones/us-central1-b/instanceGroupManagers/runner-shared" "$work/out" &&
+  ok "a VM gone from its group is forgotten; a group it cannot list is skipped" || fail "forget: $(cat "$work/out" "$stub/calls")"
+
 # An object that is not the build its name pins: refused, nothing installed, no service started.
 rm -rf "$root" "$stub/user"
 cp "$work/plugin" "$stub/objects/gitlab-runner/$runner_sha"

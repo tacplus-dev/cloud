@@ -15,7 +15,7 @@ shutdown_timeout = 0
 %{ for name, pool in pools ~}
 
 [[runners]]
-  name = "tacplus-ci ${name} (runner-manager, MIG ${pool.group})"
+  name = "tacplus-ci ${name} (runner-manager, MIG ${pool.group.name})"
   url = "https://gitlab.com"
   token = "@TOKEN:${name}@"
   executor = "docker-autoscaler"
@@ -37,9 +37,9 @@ shutdown_timeout = 0
     max_instances = ${pool.max_instances}
     instance_ready_command = "timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'"
     [runners.autoscaler.plugin_config]
-      name = "${pool.group}"
+      name = "${pool.group.name}"
       project = "${project}"
-      zone = "${zone}"
+      ${pool.group.scope} = "${pool.group.location}"
     [runners.autoscaler.connector_config]
       username = "runner"
       use_external_addr = false

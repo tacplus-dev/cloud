@@ -389,3 +389,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   old dependencies, as `tests/ci_plan_test.sh` does for the manager: `removed` (forget) for what has no remote object.
   Why: the stacks' tests plan from an empty state, where a removed resource's destroy is no node, and #46's removal
   reached main and failed only on `plan:ci` against the real state.
+- **Spread the shared pool over the region's zones too** (looper, #49, 2026-11-12). What: `zones` on `shared` (and
+  `deploy`, `cluster`), as on `build`. Why: on-demand t2a in us-central1-b ran out the same day (the shared pool came
+  back about 18:05Z); #49 spread only the build pool, as asked. A regional group's VMs are in other zones than the
+  manager's, which changes nothing for the runners (one regional subnet, NAT and firewall by tag), but replaces the
+  always-on VMs once, so it wants its own apply window.
+- **Another arm64 shape for the build pool** (looper, #49). What: the regional group's instance flexibility (t2a and
+  c4a, both arm64, the same COS image), so a stockout of one series still makes a VM. Why: all three zones can run out
+  of spot t2a at once. c4a takes Hyperdisk only, not pd-standard: the template's disk changes with it, and the quota.
+- **A creation timeout in fleeting upstream** (looper, #49). What: propose to gitlab-org/fleeting that an instance
+  creating longer than a set time be removed (the provisioner keeps it forever today), and drop `runner-reap` once our
+  build has it. Why: every googlecloud (and other) plugin user meets a VM stuck on a stockout; the reaper does it from
+  outside the runner, by polling.

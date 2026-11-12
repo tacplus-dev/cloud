@@ -6,14 +6,18 @@
 # from STUB_MANAGER: the metadata server (attributes/<key>, the project tacplus-ci, the VM's token vm-token), the
 # bucket's objects (objects/<name>/<sha256>) and Secret Manager's runner-token-<pool> (glrt-<pool>-token), the last two
 # only with the VM's token; and the attributes directory's ETag (-D), the next line of STUB_MANAGER/etags each time,
-# as the metadata server answers a wait_for_change (#46). An unknown URL or a missing object fails, as curl -f does
-# (22). Each call is logged to STUB_MANAGER/calls: GET URL, and the bearer token it sent.
+# as the metadata server answers a wait_for_change (#46); and, for the reaper (#49), the Compute API's
+# listManagedInstances of a group (compute/<its path, / as _>.json) and deleteInstances, with the VM's token only. An
+# unknown URL or a missing object fails, as curl -f does (22). Each call is logged to STUB_MANAGER/calls: its method
+# and URL, and the bearer token it sent; a POST's body on the next line.
 set -euo pipefail
-out=/dev/stdout url='' auth='' headers=''
+out=/dev/stdout url='' auth='' headers='' method=GET data=''
 while [ $# -gt 0 ]; do
   case $1 in
     -o) out=$2; shift ;;
     -D) headers=$2; shift ;;
+    -X) method=$2; shift ;;
+    --data) data=$2; shift ;;
     -H) [[ $2 == @* ]] && auth=$(sed -n 's/^Authorization: Bearer //p' "${2#@}"); shift ;;
     --retry) shift ;;
     -*) ;;
@@ -21,7 +25,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-echo "GET $url${auth:+ Bearer $auth}" >> "$STUB_MANAGER/calls"
+echo "$method $url${auth:+ Bearer $auth}" >> "$STUB_MANAGER/calls"
+[ "$method" = GET ] || echo "$data" >> "$STUB_MANAGER/calls"
 md=http://metadata.google.internal/computeMetadata/v1
 case $url in
   "$md/instance/attributes/?recursive=true"*)
@@ -39,5 +44,12 @@ case $url in
     [ "$auth" = vm-token ] || exit 22
     p=${url#*/secrets/runner-token-}; p=${p%%/*}
     printf '{"payload": {"data": "%s"}}' "$(printf 'glrt-%s-token' "$p" | base64 -w0)" > "$out" ;;
+  https://compute.googleapis.com/compute/v1/projects/tacplus-ci/*/listManagedInstances)
+    [ "$auth" = vm-token ] && [ "$method" = POST ] || exit 22
+    g=${url#https://compute.googleapis.com/compute/v1/projects/tacplus-ci/}; g=${g%/listManagedInstances}
+    f=$STUB_MANAGER/compute/${g//\//_}.json; [ -f "$f" ] || exit 22; cat "$f" > "$out" ;;
+  https://compute.googleapis.com/compute/v1/projects/tacplus-ci/*/deleteInstances)
+    [ "$auth" = vm-token ] && [ "$method" = POST ] || exit 22
+    printf '{"status": "RUNNING"}' > "$out" ;;
   *) exit 22 ;;
 esac

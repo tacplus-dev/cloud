@@ -14,7 +14,8 @@
 # The config is pushed to the running manager, not by replacing it (#46): the ci stack updates the metadata in place,
 # and runner-config-watch, a unit this script installs, re-runs this script (google-startup-scripts.service) when the
 # metadata changes. That run rewrites config.toml, which gitlab-runner reloads by itself, its jobs untouched: it is
-# restarted only on a new build, or when it is not running.
+# restarted only on a new build, or when it is not running. Beside it, runner-reap (#49) deletes a pool's VM stuck
+# creating on a capacity or quota error, so that the group's next one goes where there is room.
 #
 # MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /.
 set -Eeuo pipefail
@@ -90,8 +91,76 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
+# The reaper (#49): a VM the pools' groups cannot make, for lack of capacity or quota, stays CREATING, retried by the
+# group forever, and the autoscaler counts it as coming: every job waiting on it waits with it (spot t2a in
+# us-central1-b, 2026-11-12, #29). Each minute it lists the groups the metadata names (runner-groups, each a group's
+# path in the Compute API: config, re-read each round), and deletes a VM creating on a capacity or quota error for
+# RUNNER_REAP_AFTER seconds (5 minutes) or more; the autoscaler then asks for another, which a group spread over the
+# region's zones makes where there is room. It deletes nothing else.
+cat > "$root/usr/local/sbin/runner-reap" <<'REAP'
+#!/bin/bash
+# The runner manager's reaper (tacplus-dev/cloud modules/projects/ci/files/manager-startup.sh, #49): deletes a pool's
+# VM stuck creating on a capacity or quota error, rather than letting its group retry it forever.
+# RUNNER_REAP_ROUNDS, empty on the VM, is how many rounds tests/manager_startup_test.sh lets it make, RUNNER_REAP_SLEEP
+# its wait between them, and RUNNER_REAP_STATE where it keeps when it first saw each VM stuck.
+set -uo pipefail
+md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
+access() { md instance/service-accounts/default/token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'; }
+api() { curl -fsS -X POST -H @<(printf 'Authorization: Bearer %s\n' "$token") -H 'Content-Type: application/json' --data "${2:-}" "https://compute.googleapis.com/compute/v1/projects/$project/$1"; }
+after=${RUNNER_REAP_AFTER:-300} state=${RUNNER_REAP_STATE:-/var/lib/runner-reap} rounds=${RUNNER_REAP_ROUNDS:-0} n=0
+# The managed VMs (stdin) creating on a capacity or quota error for AFTER seconds or more, one per line; when each
+# was first seen stuck is kept in STATE, the group's file.
+stuck='
+import json, re, sys
+path, after, now = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+try:
+    seen = json.load(open(path))
+except (OSError, ValueError):
+    seen = {}
+capacity = re.compile(r"RESOURCE_POOL_EXHAUSTED|QUOTA_EXCEEDED|STOCKOUT")
+stuck = {}
+for m in json.load(sys.stdin).get("managedInstances", []):
+    codes = [e.get("code", "") for e in m.get("lastAttempt", {}).get("errors", {}).get("errors", [])]
+    if m.get("currentAction") == "CREATING" and m.get("instance") and any(capacity.search(c) for c in codes):
+        stuck[m["instance"]] = seen.get(m["instance"], now)
+json.dump(stuck, open(path, "w"))
+for vm, since in sorted(stuck.items()):
+    if now - since >= after:
+        print(vm)
+'
+mkdir -p "$state"
+while [ "$rounds" = 0 ] || [ "$n" -lt "$rounds" ]; do
+  n=$((n + 1))
+  [ "$n" = 1 ] || sleep "${RUNNER_REAP_SLEEP:-60}"
+  project=$(md project/project-id) && groups=$(md instance/attributes/runner-groups) && token=$(access) || continue
+  for group in $groups; do
+    list=$(api "$group/listManagedInstances") || { echo "runner-reap: cannot list $group" >&2; continue; }
+    mapfile -t vms < <(python3 -c "$stuck" "$state/${group//\//_}" "$after" "$(date +%s)" <<<"$list")
+    [ "${#vms[@]}" -gt 0 ] || continue
+    echo "runner-reap: deleting from $group, stuck creating on a capacity or quota error: ${vms[*]}"
+    body=$(python3 -c 'import json,sys; print(json.dumps({"instances": sys.argv[1:], "skipInstancesOnValidationError": True}))' "${vms[@]}")
+    api "$group/deleteInstances" "$body" >/dev/null || echo "runner-reap: cannot delete from $group" >&2
+  done
+done
+REAP
+chmod 0755 "$root/usr/local/sbin/runner-reap"
+cat > "$root/etc/systemd/system/runner-reap.service" <<'UNIT'
+[Unit]
+Description=Delete a runner pool's VM stuck creating on a capacity or quota error (tacplus-dev/cloud#49)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/sbin/runner-reap
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 systemctl daemon-reload
 systemctl enable --now runner-config-watch.service
+systemctl enable --now runner-reap.service
 
 # token POOL: the pool's runner token on stdout, or nothing yet.
 token() {

@@ -459,7 +459,7 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
 | `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **three, always on** (`idle_count = 3`, `max_instances = 3`): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
-| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 2`): t2a-standard-8, 450 GB pd-standard | 4 builds a VM (8 at once), each may use 4 CPUs and 14g |
+| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 2`): t2a-standard-8, 450 GB pd-standard, in whichever of us-central1-a, -b and -f has the capacity (#49) | 4 builds a VM (8 at once), each may use 4 CPUs and 14g |
 | `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, also tacplus-dev/cloud's own pipeline, protected; tags `cluster`, `cloud` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 70 GB | 2: 2 CPUs, 7g, 20 GB |
 
@@ -471,6 +471,19 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
   (GitLab does not share an instance group between `[[runners]]` entries), so these jobs share one set of container
   settings: the build jobs' (`jobs.build` in `modules/settings`, today the same as the agents'). If builds need
   settings agents must not get (rootless BuildKit, tacplus-dev/tacplus#315), the split is a `build` pool of its own.
+- **A zone out of capacity (#49).** On 2026-11-12 spot t2a ran out in us-central1-b: the build pool's VM stayed
+  `CREATING` (`ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`) for hours, and every build waited on it. The build pool is
+  therefore spread over the region's three zones with t2a (`zones` in `runner_pools`): its group is a regional one,
+  target shape `ANY`, which makes each new VM in a zone that has the capacity and never moves one to even the zones out
+  (redistribution off), and the plugin is pointed at the region. Spread, not an on-demand fallback: on-demand t2a in
+  us-central1-b was out too that day (the shared pool came back about 18:05Z), and a second, on-demand runner on the
+  same tags would take half the builds even while spot has room, and, from zero, take jobs it has no VM for. The other
+  pools stay in us-central1-b, the manager's zone. A VM already stuck creating is not moved by its group, which
+  retries it in its zone forever, and the autoscaler counts it as coming: the manager's **reaper** (`runner-reap`,
+  which the startup script installs beside the watcher) lists every pool's group each minute (`runner-groups` in its
+  metadata) and deletes a VM that has been creating on a capacity or quota error for five minutes; the autoscaler then
+  asks for another, which a spread pool makes where there is room (a zonal pool, in its zone again, five minutes
+  later). It deletes nothing else.
 - **Scaling.** Moving the shared VM to t2a-standard-16, four jobs at once, is one line (`shared_machine_type`), on
   Jody's word; so is raising `max_instances`. Scaling down needs no ask.
 - **Deploy and cluster** are protected and on demand: their credentials never share a VM with agents, and they cost
@@ -511,7 +524,7 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   upstream's package's post-install sets it up (the `gitlab-runner` user, `gitlab-runner install`). At boot it asks
   only the metadata server, the bucket and Secret Manager.
 - **Never without a manager (#46).** Every runner of the fleet is the manager's, `apply:ci`'s own among them. A **new
-  config** (a pool raised, a tag moved: `runner-config`, `runner-pools`) is an in-place metadata update of the running
+  config** (a pool raised, a tag moved: `runner-config`, `runner-pools`, `runner-groups`) is an in-place metadata update of the running
   manager: its watcher (`runner-config-watch`, which the startup script installs) sees the metadata change and runs
   the startup script again, which rewrites `config.toml`; gitlab-runner reloads it by itself, with no restart and no
   job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk or

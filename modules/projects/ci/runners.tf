@@ -116,8 +116,9 @@ resource "google_compute_instance_template" "pool" {
   }
 }
 
+# A pool in the stack's zone.
 resource "google_compute_instance_group_manager" "pool" {
-  for_each           = var.pools
+  for_each           = { for k, p in var.pools : k => p if length(p.zones) == 0 }
   project            = google_project.ci.project_id
   name               = "runner-${each.key}"
   zone               = var.zone
@@ -125,6 +126,36 @@ resource "google_compute_instance_group_manager" "pool" {
   target_size        = 0
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
+  }
+  # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
+  lifecycle {
+    ignore_changes = [target_size]
+  }
+}
+
+# A pool spread over the region's zones (#49): a zone out of capacity (spot t2a in us-central1-b, 2026-11-12) stalls
+# none of its jobs. Target shape ANY makes each new VM in a zone that has the capacity, and never deletes one to even
+# the zones out (redistribution off, which ANY requires, as the plugin does to suspend). A VM already stuck creating in
+# a zone out of capacity is not moved: the manager's reaper deletes it (files/manager-startup.sh), and the autoscaler's
+# next one goes where there is room. No surge: the group never grows past what the manager asked for, inside the quota.
+resource "google_compute_region_instance_group_manager" "pool" {
+  for_each                         = { for k, p in var.pools : k => p if length(p.zones) > 0 }
+  project                          = google_project.ci.project_id
+  name                             = "runner-${each.key}"
+  region                           = var.region
+  distribution_policy_zones        = each.value.zones
+  distribution_policy_target_shape = "ANY"
+  base_instance_name               = "runner-${each.key}"
+  target_size                      = 0
+  version {
+    instance_template = google_compute_instance_template.pool[each.key].self_link_unique
+  }
+  update_policy {
+    type                         = "OPPORTUNISTIC"
+    minimal_action               = "REPLACE"
+    instance_redistribution_type = "NONE"
+    max_surge_fixed              = 0
+    max_unavailable_fixed        = length(each.value.zones)
   }
   # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
   lifecycle {
@@ -174,12 +205,16 @@ resource "google_compute_instance" "manager" {
 }
 
 locals {
+  # Each pool's group: its name, and where it is (the plugin's region or zone, and its path in the Compute API).
+  groups = merge(
+    { for k, g in google_compute_instance_group_manager.pool : k => { name = g.name, scope = "zone", location = var.zone, path = "zones/${var.zone}/instanceGroupManagers/${g.name}" } },
+    { for k, g in google_compute_region_instance_group_manager.pool : k => { name = g.name, scope = "region", location = var.region, path = "regions/${var.region}/instanceGroupManagers/${g.name}" } },
+  )
   manager_config = templatefile("${path.module}/files/config.toml.tftpl", {
     project       = google_project.ci.project_id
-    zone          = var.zone
     default_image = var.runner.default_image
     helper_image  = var.runner.helper_image
-    pools         = { for k, p in var.pools : k => merge(p, { group = google_compute_instance_group_manager.pool[k].name }) }
+    pools         = { for k, p in var.pools : k => merge(p, { group = local.groups[k] }) }
   })
 }
 
@@ -206,6 +241,7 @@ locals {
     runner-sha256          = local.manager_build.runner-sha256
     fleeting-plugin-sha256 = local.manager_build.fleeting-plugin-sha256
     runner-pools           = join(" ", sort(keys(var.pools)))
+    runner-groups          = join(" ", [for k in sort(keys(var.pools)) : local.groups[k].path])
     runner-config          = local.manager_config
   }
 }

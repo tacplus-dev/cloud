@@ -100,7 +100,14 @@ variable "pools" {
     # Spot VMs (Jody, 2026-11-10: "builds run on the spot instances"): GCP may reclaim one at any time, and the job on
     # it fails and is retried; the always-on nodes are never spot.
     spot = optional(bool, false)
+    # The zones of the region the pool spreads over (#49): its group is regional, and makes each VM in whichever of
+    # them has the capacity. Empty: a zonal group in zone.
+    zones = optional(list(string), [])
   }))
+  validation {
+    condition     = alltrue([for p in values(var.pools) : length(p.zones) == 0 || (length(p.zones) > 1 && length(distinct(p.zones)) == length(p.zones) && alltrue([for z in p.zones : can(regex("^${var.region}-[a-z]$", z))]))])
+    error_message = "A pool spreads over two zones or more of the region, each once (one zone is the stack's zone's job)."
+  }
   validation {
     condition     = alltrue([for p in values(var.pools) : p.capacity > 1 && p.idle_count <= p.max_instances && can(regex("^[0-9.]+$", p.job.cpus)) && can(regex("^[0-9]+[mg]$", p.job.memory)) && p.job.memory_swap == p.job.memory && p.job.disk_gb > 0])
     error_message = "Every pool runs more than one job per VM, keeps no more idle VMs than its maximum, and limits each job's CPUs, memory (no swap: memory_swap the same) and disk share."

@@ -291,7 +291,8 @@ output "runner_pools" {
     are discarded (decisions/looper-job-per-issue-2026-11-03.md, #5). idle_count VMs are kept running, never more
     than max_instances: raising max_instances is a commit, on Jody's word. A VM's disk is capacity times a job's
     share, plus os_disk_gb for the OS and the jobs' images. A pool with service_account = true runs as an account of
-    its own with no role; false, with no account and no scopes at all. Registered paused: moving the runners off
+    its own with no role; false, with no account and no scopes at all. A pool with zones is a regional group over
+    them, each VM made in whichever has the capacity (#49); without, a zonal group in the stack's zone. Registered paused: moving the runners off
     jody1-328023 is a later issue, which unpauses them.
   EOT
   value = {
@@ -316,12 +317,18 @@ output "runner_pools" {
     # Up to two spot t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
     # 14g (they share the VM like processes): eight builds at once (Jody, 2026-11-11, "Yes": two builds at a time left
     # 13 queued and every manager timing out). 16 CPUs at peak, inside CPUS_ALL_REGIONS 48. tacplus-dev/build's jobs only.
+    # Spread over every zone of the region with t2a (#49): on 2026-11-12 spot t2a ran out in us-central1-b, its VM
+    # stuck creating for hours and every build with it, while on-demand t2a there was out too until 18:05Z. So an
+    # on-demand fallback in the same zone would have stalled as well, and a second, on-demand runner on the same tags
+    # would take half the builds even while spot has room (and, from zero, take jobs it has no VM for): the group is
+    # regional instead, and makes each VM in whichever of these zones has the capacity, still spot.
     build = {
       machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
       capacity        = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
       job             = local.jobs.build
       service_account = false
       spot            = true
+      zones           = ["us-central1-a", "us-central1-b", "us-central1-f"]
       runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.

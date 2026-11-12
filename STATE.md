@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#47).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#49).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -76,6 +76,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   (no remote object) instead of destroying it; `tests/ci_plan_test.sh` plans the stack with its real provider against
   a stub API from that state (no cycle; the cycle without the block). Not yet seen live: `plan:ci` and `apply:ci` on
   main from the real state.
+- **A zone out of capacity stalls no build (#49):** on 2026-11-12 spot t2a ran out in us-central1-b and the build pool's
+  one VM stayed `CREATING` for hours, every build behind it. The build pool is now a regional group over us-central1-a,
+  -b and -f (the zones with t2a), target shape `ANY` (each new VM where there is capacity; redistribution off), the
+  plugin pointed at the region; still spot. Spread rather than an on-demand fallback (README, The pools: on-demand t2a
+  in -b was out too that day). The manager's reaper (`runner-reap`, beside the watcher) deletes any pool's VM creating
+  on a capacity or quota error for five minutes, so the autoscaler's next one is made where there is room, instead of
+  the group retrying it forever. Tested: the plan (mock providers: the regional group, its zones and shape, the
+  plugin's region, the reaper's groups in the metadata), the reaper against stubs. Not yet seen live: the first
+  `apply:ci` replaces the zonal `runner-build` group (and its stuck VM) with the regional one, and the manager (a new
+  startup script: a new build); whether GCP deletes a VM still creating on a stockout, as the reaper asks, shows only
+  then.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

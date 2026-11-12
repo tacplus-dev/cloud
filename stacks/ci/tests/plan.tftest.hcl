@@ -110,6 +110,12 @@ run "settings" {
     condition     = output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
     error_message = "Builds do not run only on spot, from zero, a few at a time, apart from the always-on nodes."
   }
+  # A zone out of spot t2a stalls no build (#49): the build pool spreads over every us-central1 zone with t2a, and the
+  # other pools stay in the stack's zone.
+  assert {
+    condition     = output.runner_pools.build.zones == ["us-central1-a", "us-central1-b", "us-central1-f"] && alltrue([for k in ["shared", "deploy", "cluster"] : length(try(output.runner_pools[k].zones, [])) == 0])
+    error_message = "The build pool does not spread over us-central1-a, -b and -f (the zones with t2a), or another pool leaves the stack's zone."
+  }
   assert {
     condition     = alltrue([for k in ["deploy", "cluster"] : output.runner_pools[k].runner.protected && output.runner_pools[k].runner.type == "project_type" && output.runner_pools[k].idle_count == 0 && output.runner_pools[k].max_instances == 1])
     error_message = "deploy and cluster are not protected project runners, on demand."
@@ -169,6 +175,7 @@ run "ci" {
       no-account = {
         machine_type = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 3, max_instances = 2, idle_count = 0, idle_time = "30m"
         job          = { cpus = "1", memory = "4g", memory_swap = "4g", disk_gb = 20, security_opt = ["no-new-privileges"] }, service_account = false
+        spot         = true, zones = ["us-central1-a", "us-central1-b", "us-central1-f"]
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
@@ -226,8 +233,30 @@ run "ci" {
     error_message = "A pool's VMs are not arm64, on the pinned Container-Optimized OS, with no external address."
   }
   assert {
-    condition     = alltrue([for g in google_compute_instance_group_manager.pool : g.target_size == 0])
+    condition     = alltrue([for g in concat(values(google_compute_instance_group_manager.pool), values(google_compute_region_instance_group_manager.pool)) : g.target_size == 0])
     error_message = "A pool's instance group is not empty at rest."
+  }
+  # A zone out of capacity stalls no pool spread over the region's zones (#49): its group is regional, over its zones,
+  # and makes each new VM in a zone that has the capacity (target shape ANY, which never moves a VM to even the zones
+  # out: redistribution off). The plugin is pointed at the region. A pool with no zones of its own stays in the stack's.
+  assert {
+    condition     = keys(google_compute_region_instance_group_manager.pool) == ["no-account"] && keys(google_compute_instance_group_manager.pool) == ["with-account"] && google_compute_instance_group_manager.pool["with-account"].zone == "us-central1-b"
+    error_message = "The spread pool's group is not regional, or the other pool's not zonal in the stack's zone."
+  }
+  assert {
+    condition     = google_compute_region_instance_group_manager.pool["no-account"].region == "us-central1" && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_zones == toset(["us-central1-a", "us-central1-b", "us-central1-f"]) && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_target_shape == "ANY" && google_compute_region_instance_group_manager.pool["no-account"].update_policy[0].instance_redistribution_type == "NONE"
+    error_message = "The spread pool's group does not make its VMs in whichever of its zones has the capacity (us-central1-a, -b, -f, shape ANY, no redistribution)."
+  }
+  assert {
+    condition     = strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-no-account\"\n      project = \"tacplus-ci\"\n      region = \"us-central1\"\n") && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-with-account\"\n      project = \"tacplus-ci\"\n      zone = \"us-central1-b\"\n")
+    error_message = "The plugin is not pointed at the spread pool's region, or at the other pool's zone."
+  }
+  # An instance stuck creating on a capacity error is deleted, not retried forever (#49, #29): the manager's reaper
+  # (files/manager-startup.sh) reads every pool's group from its metadata, so the autoscaler's next VM goes where there
+  # is capacity.
+  assert {
+    condition     = google_compute_instance.manager.metadata["runner-groups"] == "regions/us-central1/instanceGroupManagers/runner-no-account zones/us-central1-b/instanceGroupManagers/runner-with-account"
+    error_message = "The manager's reaper does not watch every pool's group, by its region or zone."
   }
   # The workers' accounts hold no role: the manager is the only account with a project role.
   assert {
@@ -370,13 +399,13 @@ run "ci" {
     error_message = "The manager's metadata does not name the runner bucket and the two builds' pinned SHA-256s."
   }
   assert {
-    condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
+    condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-groups runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
     error_message = "The manager's metadata still pins an upstream download or a package archive."
   }
   # Never without a manager (#46): its name is its build's, so a new build makes the new one before the old one goes.
   # This build's (these inputs and files/manager-startup.sh): a commit that changes it replaces the manager.
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-19769182" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
+    condition     = google_compute_instance.manager.name == "runner-manager-e66cee62" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
     error_message = "The manager's name is not runner-manager-<its build's hash>, or its build changed: then this test's name, knowingly (a new build replaces the manager)."
   }
   assert {
@@ -502,6 +531,79 @@ run "one_job_per_vm_refused" {
       swap = {
         machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 1, max_instances = 1, idle_count = 1, idle_time = "30m"
         job          = { cpus = "4", memory = "14g", memory_swap = "28g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  expect_failures = [var.pools]
+}
+
+# A pool spread over a zone outside the region, or over one zone (which is the stack's zone's job), is refused (#49).
+run "zone_outside_region_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      spread = {
+        machine_type = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50, capacity = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+        spot         = true, zones = ["us-central1-a", "us-east1-b"]
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  expect_failures = [var.pools]
+}
+
+run "one_zone_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      spread = {
+        machine_type = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50, capacity = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+        spot         = true, zones = ["us-central1-a"]
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
@@ -755,7 +857,7 @@ run "manager_config_pushed" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-19769182" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
+    condition     = google_compute_instance.manager.name == "runner-manager-e66cee62" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
     error_message = "A config change renames the manager: it would replace it, every runner down until the new one boots."
   }
 }
@@ -803,7 +905,7 @@ run "manager_build_replaced" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name != "runner-manager-19769182" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
+    condition     = google_compute_instance.manager.name != "runner-manager-e66cee62" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
   }
 }
