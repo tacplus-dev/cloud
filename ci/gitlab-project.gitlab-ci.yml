@@ -58,7 +58,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web|api|schedule)$/
 
 default:
-  image: ghcr.io/tacplus-dev/tacplus/build:2.6.8@sha256:4a0f203fcb61326be4849bcfaf2e9a1b892ab7ee5ff4a167d525209de437d56c
+  image: ghcr.io/tacplus-dev/tacplus/build:2.6.10@sha256:828add1a92dbe5788c6d0b300141c2a57ef5864cbba79abccf66c7457795f85b
   tags: [cloud]
   interruptible: false
   before_script:
