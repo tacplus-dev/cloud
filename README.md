@@ -199,10 +199,9 @@ moves to the first upstream release with the fix (#3):
   pinned, trusted inputs; each pin moves when its upstream ships the fix.
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0
   and klauspost/compress v1.20.2, so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
-- **Accepted until 2026-12-06** (the hub's decision on #27, Jody's delegation): CVE-2026-78661 (x/net/html, a denial of
-  service on crafted HTML; Trivy) in the CI image's `gh` (build:2.6, v2.6.1's digest), built with x/net v0.60.0. `gh`
-  parses only GitHub API responses over TLS, never untrusted HTML. tacplus-dev/tacplus#350 rebuilds it with x/net
-  >= v0.62.0 in the build images; when that ships, the CI image's digest moves to it and the exception goes.
+- **The CI image is build:2.6.10 by digest** (#43): its `gh` has x/net >= v0.62.0 (CVE-2026-78661, #27) and its
+  zlib the fix (CVE-2026-85091), so their exceptions are gone, and it has no OpenEXR (tacplus-dev/tacplus#554: 16 CVEs
+  in Debian 13's, from buildpack-deps' imagemagick). Its `gh`'s x/crypto/openpgp is GO-2026-5932's, above.
 
 The `security` job enforces it (below), on every pipeline.
 

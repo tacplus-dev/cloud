@@ -12,7 +12,8 @@
 # among them, #39), fixed by building them with the latest Go, nor is the google provider's x/net, built with v0.62.0
 # (ci/google-provider.sh, #39), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
-# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest but for its gh's x/net (CVE-2026-78661, #27).
+# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest (build:2.6.10, #43: its gh's x/net, its zlib
+# and, without OpenEXR, tacplus-dev/tacplus#554), but for its gh's x/crypto/openpgp (GO-2026-5932).
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
 # binaries, by pin:
 #
@@ -21,8 +22,7 @@
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-5932 6860 6865 6866
-#   the CI image build:2.6, v2.6.1's digest: its gh       CVE-2026-78661 (Trivy; tacplus-dev/tacplus#350 rebuilds it)
-#   the CI image build:2.6, its zlib1g                    CVE-2026-85091 76844 (Trivy; the image rebuild, cluster#16)
+#   the CI image build:2.6.10 (#43): its gh               GO-2026-5932 (Trivy)
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."
@@ -76,15 +76,3 @@ exceptions:
     reason: "github.com/ulikunitz/xz v0.5.12 in gitleaks v8.30.1 (the security job's secrets scan): memory leaks decoding corrupted LZMA archives. gitleaks decodes no archive here (--max-archive-depth is not set: archives are not scanned), and what it reads is this repository's tree and history. Fixed in xz v0.5.15; no gitleaks release with it yet."
     decided_by: "jodydadescott (tacplus-dev/cloud#10, 2026-11-04: accept what has no fixed release, 30 days)"
     expires: 2026-12-04
-  - id: CVE-2026-78661
-    reason: "golang.org/x/net/html DoS via crafted HTML input, x/net v0.60.0 in the CI image's usr/local/bin/gh (ghcr.io/tacplus-dev/tacplus/build:2.6, v2.6.1's digest): gh parses only GitHub API responses over TLS, never untrusted HTML. Fixed in x/net v0.62.0; no build image with a gh built on it yet (tacplus-dev/tacplus#350): move the CI image's digest when one ships, and drop this entry."
-    decided_by: "hub (Jody's delegation, 2026-11-07; tacplus-dev/cloud#27)"
-    expires: 2026-12-06
-  - id: CVE-2026-85091
-    reason: "zlib gz_vacate() heap overflow, zlib1g/zlib1g-dev 1:1.3.dfsg+really1.3.1-1+b1 in the CI image (ghcr.io/tacplus-dev/tacplus/build:2.6, Debian 13.7): no job here decompresses untrusted gzip input (tools and providers come by SHA-256 or lock-file hash). No Debian fix in the image yet: move the CI image's digest when a rebuilt one ships (tacplus-dev/tacplus#283's rebuild), and drop this entry."
-    decided_by: "hub (Jody's delegation, 2026-11-07; tacplus-dev/cluster#16, the same finding)"
-    expires: 2026-12-06
-  - id: CVE-2026-76844
-    reason: "Reported by Trivy against zlib1g/zlib1g-dev in the CI image (build:2.6, Debian 13.7), with a webpack-dev-middleware path-traversal title: no webpack and no dev server in the image or any job here. Drop when the CI image's digest moves to a rebuilt image."
-    decided_by: "hub (Jody's delegation, 2026-11-07; tacplus-dev/cluster#16, the same finding)"
-    expires: 2026-12-06

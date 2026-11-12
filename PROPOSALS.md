@@ -44,8 +44,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
   GO-2025-3922, accepted until 2026-12-04, #10), and OpenTofu, Trivy past 0.76.2 and GitLab Runner to a release with
   klauspost/compress >= v1.20.2 (GO-2026-6865, accepted until 2026-12-06, #24), and the CI image to a build:2.6 digest
-  whose `gh` has x/net >= v0.62.0 (CVE-2026-78661, accepted until 2026-12-06, #27; tacplus-dev/tacplus#350):
-  `default.image` and `build.lock`; `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`.
+  whose `gh` has x/crypto past v0.58.0 (GO-2026-5932; its x/net is fixed in build:2.6.10, #43): `default.image` and
+  `build.lock`; `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`. GO-2026-5932's reason does not name
+  the CI image's `gh` yet (found by #43's scan): add it when the entry is next renewed.
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
 - **The fixed dependencies in the tools we now build** (looper, #39, 2026-11-11). What: OpenTofu, tflint, its google
