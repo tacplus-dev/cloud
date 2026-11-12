@@ -34,3 +34,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-12 looper issue ci: build GitLab Runner and its fleeting plugin here with go1.27.4 and serve them to the manager from a private bucket (GO-2026-6859's exception expires 2026-11-25) (#40)
 - 2026-11-12 looper issue ci: move cloud#40's GitLab Runner build and helper pin to v19.5.3, in step with tacplus-dev/cluster (cluster#21) (#44, e40e196; gates: full)
 - 2026-11-12 looper issue apply:ci destroys the runner manager before recreating it, and the provider crashes mid-destroy: the fleet loses every runner (twice) (#46, b15a1c9; gates: full)
+- 2026-11-12 looper issue ci: plan:ci cycle after #46: a deposed runner manager plus the removed terraform_data.manager_config (manager swap blocked) (#47)
