@@ -474,6 +474,8 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 - **A zone out of capacity (#49).** On 2026-11-12 spot t2a ran out in us-central1-b: the build pool's VM stayed
   `CREATING` (`ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`) for hours, and every build waited on it. The build pool is
   therefore spread over the region's three zones with t2a (`zones` in `runner_pools`): its group is a regional one,
+  `runner-build-region` (not `runner-build`: a regional group makes a zonal group of its name in each zone, which
+  collided with the old zonal one, 409, on the first apply),
   target shape `ANY`, which makes each new VM in a zone that has the capacity and never moves one to even the zones out
   (redistribution off), and the plugin is pointed at the region. Spread, not an on-demand fallback: on-demand t2a in
   us-central1-b was out too that day (the shared pool came back about 18:05Z), and a second, on-demand runner on the

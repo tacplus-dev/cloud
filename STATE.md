@@ -84,7 +84,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   on a capacity or quota error for five minutes, so the autoscaler's next one is made where there is room, instead of
   the group retrying it forever. Tested: the plan (mock providers: the regional group, its zones and shape, the
   plugin's region, the reaper's groups in the metadata), the reaper against stubs. Not yet seen live: the first
-  `apply:ci` replaces the zonal `runner-build` group (and its stuck VM) with the regional one, and the manager (a new
+  `apply:ci` replaces the zonal `runner-build` group (and its stuck VM) with the regional `runner-build-region` (its
+  first try, of 580d4ca, failed 409: the regional group's per-zone groups took the zonal one's name; c9dc2bc renamed
+  it), and the manager (a new
   startup script: a new build); whether GCP deletes a VM still creating on a stockout, as the reaper asks, shows only
   then.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own

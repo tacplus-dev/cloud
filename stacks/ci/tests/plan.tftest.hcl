@@ -243,8 +243,10 @@ run "ci" {
     condition     = keys(google_compute_region_instance_group_manager.pool) == ["no-account"] && keys(google_compute_instance_group_manager.pool) == ["with-account"] && google_compute_instance_group_manager.pool["with-account"].zone == "us-central1-b"
     error_message = "The spread pool's group is not regional, or the other pool's not zonal in the stack's zone."
   }
+  # Not runner-<pool>: a regional group makes a zonal instance group of its name in each of its zones, which would
+  # collide with the pool's zonal group while it still exists (apply:ci of 580d4ca, 409 alreadyExists).
   assert {
-    condition     = google_compute_region_instance_group_manager.pool["no-account"].region == "us-central1" && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_zones == toset(["us-central1-a", "us-central1-b", "us-central1-f"]) && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_target_shape == "ANY" && google_compute_region_instance_group_manager.pool["no-account"].update_policy[0].instance_redistribution_type == "NONE"
+    condition     = google_compute_region_instance_group_manager.pool["no-account"].name == "runner-no-account-region" && google_compute_region_instance_group_manager.pool["no-account"].region == "us-central1" && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_zones == toset(["us-central1-a", "us-central1-b", "us-central1-f"]) && google_compute_region_instance_group_manager.pool["no-account"].distribution_policy_target_shape == "ANY" && google_compute_region_instance_group_manager.pool["no-account"].update_policy[0].instance_redistribution_type == "NONE"
     error_message = "The spread pool's group does not make its VMs in whichever of its zones has the capacity (us-central1-a, -b, -f, shape ANY, no redistribution)."
   }
   assert {
