@@ -139,9 +139,11 @@ resource "google_compute_instance_group_manager" "pool" {
 # a zone out of capacity is not moved: the manager's reaper deletes it (files/manager-startup.sh), and the autoscaler's
 # next one goes where there is room. No surge: the group never grows past what the manager asked for, inside the quota.
 resource "google_compute_region_instance_group_manager" "pool" {
-  for_each                         = { for k, p in var.pools : k => p if length(p.zones) > 0 }
-  project                          = google_project.ci.project_id
-  name                             = "runner-${each.key}"
+  for_each = { for k, p in var.pools : k => p if length(p.zones) > 0 }
+  project  = google_project.ci.project_id
+  # Not runner-<pool>: a regional group makes a zonal instance group of its name in each of its zones, and the pool's
+  # zonal group (runner-<pool> in the stack's zone) still exists while this one is created (2026-11-12, 409).
+  name                             = "runner-${each.key}-region"
   region                           = var.region
   distribution_policy_zones        = each.value.zones
   distribution_policy_target_shape = "ANY"
