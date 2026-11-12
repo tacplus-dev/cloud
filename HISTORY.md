@@ -32,3 +32,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-12 looper issue security: GO-2026-6859 (net/http, CVE-2026-97054) in all 13 pinned binaries (govulncheck -mode=binary, bin/ and bin/scan/), no exception: the security job will fail (#39, 07d4638; gates: full)
 - 2026-11-12 looper issue security: the CI image's OpenEXR (16 CVEs, Debian 13) fails the security job; move to the first build:2.6 without it (tacplus#554) (#43, bed57ec; gates: full)
 - 2026-11-12 looper issue ci: build GitLab Runner and its fleeting plugin here with go1.27.4 and serve them to the manager from a private bucket (GO-2026-6859's exception expires 2026-11-25) (#40)
+- 2026-11-12 looper issue ci: move cloud#40's GitLab Runner build and helper pin to v19.5.3, in step with tacplus-dev/cluster (cluster#21) (#44, e40e196; gates: full)
