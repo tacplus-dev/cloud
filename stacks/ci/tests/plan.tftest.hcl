@@ -248,14 +248,14 @@ run "ci" {
     error_message = "The spread pool's group does not make its VMs in whichever of its zones has the capacity (us-central1-a, -b, -f, shape ANY, no redistribution)."
   }
   assert {
-    condition     = strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-no-account\"\n      project = \"tacplus-ci\"\n      region = \"us-central1\"\n") && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-with-account\"\n      project = \"tacplus-ci\"\n      zone = \"us-central1-b\"\n")
+    condition     = strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-no-account-region\"\n      project = \"tacplus-ci\"\n      region = \"us-central1\"\n") && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-with-account\"\n      project = \"tacplus-ci\"\n      zone = \"us-central1-b\"\n")
     error_message = "The plugin is not pointed at the spread pool's region, or at the other pool's zone."
   }
   # An instance stuck creating on a capacity error is deleted, not retried forever (#49, #29): the manager's reaper
   # (files/manager-startup.sh) reads every pool's group from its metadata, so the autoscaler's next VM goes where there
   # is capacity.
   assert {
-    condition     = google_compute_instance.manager.metadata["runner-groups"] == "regions/us-central1/instanceGroupManagers/runner-no-account zones/us-central1-b/instanceGroupManagers/runner-with-account"
+    condition     = google_compute_instance.manager.metadata["runner-groups"] == "regions/us-central1/instanceGroupManagers/runner-no-account-region zones/us-central1-b/instanceGroupManagers/runner-with-account"
     error_message = "The manager's reaper does not watch every pool's group, by its region or zone."
   }
   # The workers' accounts hold no role: the manager is the only account with a project role.
@@ -288,8 +288,8 @@ run "ci" {
   # (no cache volume kept); no job is privileged or gets the host's Docker socket.
   assert {
     condition = alltrue([for pool in [
-      { name = "with-account", capacity = 2, limit = 2, max = 1, idle = 1, cpus = "4", memory = "14g", security_opt = "[]" },
-      { name = "no-account", capacity = 3, limit = 6, max = 2, idle = 0, cpus = "1", memory = "4g", security_opt = "[\"no-new-privileges\"]" },
+      { name = "with-account", group = "runner-with-account", capacity = 2, limit = 2, max = 1, idle = 1, cpus = "4", memory = "14g", security_opt = "[]" },
+      { name = "no-account", group = "runner-no-account-region", capacity = 3, limit = 6, max = 2, idle = 0, cpus = "1", memory = "4g", security_opt = "[\"no-new-privileges\"]" },
       ] : strcontains(google_compute_instance.manager.metadata["runner-config"], join("\n", [
         "  limit = ${pool.limit}",
         "  [runners.docker]",
@@ -307,7 +307,7 @@ run "ci" {
         "    capacity_per_instance = ${pool.capacity}",
         "    max_use_count = 0",
         "    max_instances = ${pool.max}",
-      ])) && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"runner-${pool.name}\"")
+      ])) && strcontains(google_compute_instance.manager.metadata["runner-config"], "name = \"${pool.group}\"")
     ])
     error_message = "A pool does not run its capacity of jobs per reused VM, each limited in CPU and memory without swap, discarded with its volumes, unprivileged."
   }
