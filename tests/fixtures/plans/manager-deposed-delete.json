@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"module.ci.google_compute_instance.manager","deposed":"01338cc8","type":"google_compute_instance","change":{"actions":["delete"],"before":{"name":"runner-manager","tags":["runner-manager"]},"after":null,"after_unknown":{}}}]}

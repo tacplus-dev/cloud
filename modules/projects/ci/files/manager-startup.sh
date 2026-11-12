@@ -17,9 +17,19 @@
 # restarted only on a new build, or when it is not running. Beside it, runner-reap (#49) deletes a pool's VM stuck
 # creating on a capacity or quota error, so that the group's next one goes where there is room.
 #
-# MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /.
+# A new build is a new manager, and the old one drains before the new one starts (#48): the ci stack never deletes a
+# manager (it forgets the old one), and a new manager's gitlab-runner would remove every pool VM it did not create,
+# jobs and all ("no data on pre-existing instance so removing for safety": it cannot resume another's jobs). So before
+# gitlab-runner starts, this script tells each older manager to retire (its metadata runner-successor, and this
+# script as its startup-script, which its watcher then runs) and waits until none is left; then it empties the pools'
+# groups (runner-groups), stuck creations too (#29), and gitlab-runner starts on empty groups. A manager told to
+# retire (runner-successor) starts runner-retire: gitlab-runner stops gracefully (SIGQUIT: it takes no new job and
+# finishes its running ones, with no time limit), then the VM deletes itself.
+#
+# MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /; RUNNER_POLL, 30 on the
+# VM, is the seconds between its waits' checks.
 set -Eeuo pipefail
-root=${MANAGER_ROOT:-}
+root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30}
 md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
 attr() { md "instance/attributes/$1"; }
 say() { echo "manager-startup: $*"; }
@@ -91,6 +101,43 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+# The retirement (#48): run once a newer manager names this one's successor, not before.
+cat > "$root/usr/local/sbin/runner-retire" <<'RETIRE'
+#!/bin/bash
+# The runner manager's retirement (tacplus-dev/cloud modules/projects/ci/files/manager-startup.sh, #48): a newer
+# manager waits for this one to go before its gitlab-runner starts. gitlab-runner stops gracefully, as long as its
+# running jobs take (SIGQUIT: no new job, the running ones finished), and never starts again here; then this VM
+# deletes itself. The SIGQUIT is gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its running jobs
+# still reach their VMs through (the apply that made the successor among them), goes only once it has exited. MANAGER_ROOT and RUNNER_POLL as the startup script's.
+set -uo pipefail
+root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30}
+md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
+access() { md instance/service-accounts/default/token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'; }
+install -d "$root/etc/systemd/system/gitlab-runner.service.d"
+printf '[Service]\nKillSignal=SIGQUIT\nKillMode=mixed\nTimeoutStopSec=infinity\n' > "$root/etc/systemd/system/gitlab-runner.service.d/drain.conf"
+systemctl daemon-reload
+systemctl disable gitlab-runner
+echo "runner-retire: $(md instance/attributes/runner-successor) succeeds this manager: gitlab-runner finishes its jobs and stops"
+systemctl stop gitlab-runner
+name=$(md instance/name) zone=$(md instance/zone)
+echo "runner-retire: gitlab-runner stopped, no job left: deleting $name"
+until curl -fsS -X DELETE -H @<(printf 'Authorization: Bearer %s\n' "$(access)") -o /dev/null \
+    "https://compute.googleapis.com/compute/v1/projects/$(md project/project-id)/zones/${zone##*/}/instances/$name"; do
+  sleep "$poll"
+done
+RETIRE
+chmod 0755 "$root/usr/local/sbin/runner-retire"
+cat > "$root/etc/systemd/system/runner-retire.service" <<'UNIT'
+[Unit]
+Description=Drain this runner manager for its successor, then delete it (tacplus-dev/cloud#48)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/runner-retire
+TimeoutStartSec=infinity
+UNIT
+
 # The reaper (#49): a VM the pools' groups cannot make, for lack of capacity or quota, stays CREATING, retried by the
 # group forever, and the autoscaler counts it as coming: every job waiting on it waits with it (spot t2a in
 # us-central1-b, 2026-11-12, #29). Each minute it lists the groups the metadata names (runner-groups, each a group's
@@ -162,6 +209,12 @@ systemctl daemon-reload
 systemctl enable --now runner-config-watch.service
 systemctl enable --now runner-reap.service
 
+if successor=$(attr runner-successor 2>/dev/null) && [ -n "$successor" ]; then
+  systemctl start --no-block runner-retire.service
+  say "retiring for $successor: gitlab-runner finishes its jobs and stops, then this VM deletes itself"
+  exit 0
+fi
+
 # token POOL: the pool's runner token on stdout, or nothing yet.
 token() {
   curl -fsS -H @<(printf 'Authorization: Bearer %s\n' "$(access)") \
@@ -187,7 +240,77 @@ install -d -m 0700 "$root/etc/gitlab-runner"
 # Whole or not at all: gitlab-runner reloads config.toml when it changes, and must never read half of one.
 install -m 0600 "$tmp/config.toml" "$root/etc/gitlab-runner/.config.toml.new"
 mv -f "$root/etc/gitlab-runner/.config.toml.new" "$root/etc/gitlab-runner/config.toml"
+
+# compute METHOD PATH [BODY]: Compute Engine's API on this project, PATH under it (zones/<zone>/..., a group's path), with
+# the VM's token; its answer on stdout. A POST has a body, BODY's file or an empty one (Google's front end refuses one
+# without a length).
+zone=$(md instance/zone) && zone=zones/${zone##*/}
+compute() {
+  local data=()
+  [ "$1" = POST ] && data=(--data-binary "@${3:-/dev/null}")
+  curl -fsS -X "$1" -H @<(printf 'Authorization: Bearer %s\n' "$(access)") -H 'Content-Type: application/json' \
+    "${data[@]}" "https://compute.googleapis.com/compute/v1/projects/$project/$2"
+}
+# older: the managers made before this one, by name, one a line (the pools' VMs and this one are not): runner-manager-*,
+# and runner-manager, its name before #46.
+older() {
+  compute GET "$zone/"'instances?filter=name%20eq%20%22runner-manager(-.*)%3F%22' | python3 -c '
+import datetime, json, re, sys
+me, at = sys.argv[1], datetime.datetime.fromisoformat
+items = json.load(sys.stdin).get("items", [])
+mine = [at(i["creationTimestamp"]) for i in items if i["name"] == me]
+if len(mine) != 1:
+    sys.exit("this manager, %s, is not among the instances" % me)
+for i in items:
+    if re.fullmatch("runner-manager(-.*)?", i["name"]) and i["name"] != me and at(i["creationTimestamp"]) < mine[0]:
+        print(i["name"])
+' "$1"
+}
+# retire NAME: the older manager NAME told to retire, with this script as its startup-script, which its watcher runs
+# on the change (a manager older than #48 has no runner-retire of its own); nothing if it already was.
+retire() {
+  compute GET "$zone/instances/$1" > "$tmp/old.json" && attr startup-script > "$tmp/script" &&
+    python3 - "$tmp/old.json" "$tmp/script" "$2" > "$tmp/metadata.json" <<'PY' || return 1
+import json, sys
+inst, script, me = json.load(open(sys.argv[1])), open(sys.argv[2]).read(), sys.argv[3]
+md = inst.get("metadata", {})
+items = {i["key"]: i.get("value", "") for i in md.get("items", [])}
+if items.get("runner-successor") == me and items.get("startup-script") == script:
+    sys.exit(0)
+items.update({"runner-successor": me, "startup-script": script})
+json.dump({"fingerprint": md.get("fingerprint", ""), "items": [{"key": k, "value": v} for k, v in sorted(items.items())]}, sys.stdout)
+PY
+  [ -s "$tmp/metadata.json" ] || return 0
+  compute POST "$zone/instances/$1/setMetadata" "$tmp/metadata.json" > /dev/null && say "told $1 to retire: $2 succeeds it"
+}
+# managed GROUP: how many instances the group whose path is GROUP (zonal or regional) has, whatever their state (creating and deleting ones too).
+managed() {
+  compute POST "$1/listManagedInstances" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("managedInstances", [])))'
+}
+# handoff: gitlab-runner starts alone on empty groups. The older managers first retire (each drains its jobs, then
+# deletes itself), however long their jobs take: until then they hold the groups' VMs, and their jobs, and this
+# manager takes no job. Then the groups to zero, until each has no instance at all: a creation stuck on an error of
+# the old fleet's time (QUOTA_EXCEEDED, retried by the group about every 90 minutes, #29) goes with them, and the
+# VMs gitlab-runner then asks for are created at once.
+handoff() {
+  local me olds o g n
+  me=$(md instance/name)
+  while :; do
+    olds=$(older "$me") || { say "cannot list the managers yet"; sleep "$poll"; continue; }
+    [ -z "$olds" ] && break
+    for o in $olds; do retire "$o" "$me" || say "cannot tell $o to retire yet"; done
+    say "waiting for the older managers to finish their jobs and go: ${olds//$'\n'/ }"
+    sleep "$poll"
+  done
+  for g in $(attr runner-groups); do
+    until compute POST "$g/resize?size=0" > /dev/null; do say "cannot resize $g to 0 yet"; sleep "$poll"; done
+    until n=$(managed "$g") && [ "$n" = 0 ]; do say "the group $g still has ${n:-some} instances: waiting until it has none"; sleep "$poll"; done
+  done
+  say "no older manager left, the groups empty: $(attr runner-groups)"
+}
+
 if [ -n "$installed" ] || ! systemctl is-active --quiet gitlab-runner; then
+  handoff
   systemctl restart gitlab-runner
 else
   say "config.toml rewritten: gitlab-runner reloads it, its running jobs untouched"

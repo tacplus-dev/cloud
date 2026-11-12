@@ -9,9 +9,9 @@
 # empty state, with mock providers: they never see what the state adds to the graph, and there the deposed manager's
 # destroy (create_before_destroy), the removed terraform_data's destroy and the pools' templates and groups closed a
 # cycle, and plan:ci failed. So: the plan has no cycle; it forgets terraform_data.manager_config (it has no remote
-# object) and destroys nothing of it; it destroys the deposed manager and replaces runner-manager create-before-destroy,
-# by runner-manager-<hash>; ci/policy.sh admits it; it only reads; and the stack with the terraform_data destroyed
-# again, as #46 left it, fails with the cycle, as plan:ci did. The fixture is built from the Compute and Resource
+# object) and destroys nothing of it; it forgets the deposed manager and runner-manager, which retire by themselves
+# once their jobs are done (#48), and creates runner-manager-<hash>; ci/policy.sh admits it; it only reads; and the
+# stack as #46 left it (the terraform_data destroyed, the manager destroyed too), fails with the cycle, as plan:ci did. The fixture is built from the Compute and Resource
 # Manager APIs' documented answers, not recorded. Needs bin/ (ci/tools.sh), go, jq.
 #
 #   tests/ci_plan_test.sh
@@ -64,8 +64,8 @@ if plan; then
   [ "$(changes module.ci.terraform_data.manager_config)" = '[{"deposed":null,"actions":["forget"]}]' ] &&
     ok "terraform_data.manager_config: forgotten, not destroyed (it has no remote object)" ||
     fail "terraform_data.manager_config: $(changes module.ci.terraform_data.manager_config)"
-  [ "$(changes module.ci.google_compute_instance.manager)" = '[{"deposed":null,"actions":["create","delete"]},{"deposed":"01338cc8","actions":["delete"]}]' ] &&
-    ok "the manager: replaced create-before-destroy, and the deposed one destroyed" ||
+  [ "$(changes module.ci.google_compute_instance.manager)" = '[{"deposed":null,"actions":["forget","create"]},{"deposed":"01338cc8","actions":["forget"]}]' ] &&
+    ok "the manager: the old one and the deposed one forgotten, not destroyed (they retire by themselves, #48), the new one created" ||
     fail "the manager: $(changes module.ci.google_compute_instance.manager)"
   jq -e '.resource_changes[] | select(.address == "module.ci.google_compute_instance.manager" and .deposed == null) | .change.after.name | test("^runner-manager-[0-9a-f]{8}$")' "$work/plan.json" > /dev/null &&
     ok "the new manager is runner-manager-<its build's hash> (#46)" ||
@@ -77,10 +77,11 @@ else
 fi
 ! grep -v '^GET ' "$work/requests" > /dev/null && ok "a plan only reads" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests")"
 
-# The stack as #46 left it (b15a1c9): terraform_data.manager_config destroyed, not forgotten. The plan fails with the
-# cycle plan:ci met (job 17961392097), so the test sees what it guards against.
-awk '/^removed \{/ { skip = 1 } !skip { print } skip && /^\}/ { skip = 0 }' "$here/modules/projects/ci/runners.tf" > "$work/modules/projects/ci/runners.tf"
-grep -q '^removed {' "$work/modules/projects/ci/runners.tf" && fail "the test cannot remove the removed block from its copy"
+# The stack as #46 left it (b15a1c9): terraform_data.manager_config destroyed, not forgotten, and the manager destroyed
+# (no destroy = false, #48). The plan fails with the cycle plan:ci met (job 17961392097), so the test sees what it
+# guards against.
+awk '/^removed \{/ { skip = 1 } !skip && !/^ *destroy *= *false$/ { print } skip && /^\}/ { skip = 0 }' "$here/modules/projects/ci/runners.tf" > "$work/modules/projects/ci/runners.tf"
+grep -qE '^removed \{|^ *destroy *= *false$' "$work/modules/projects/ci/runners.tf" && fail "the test cannot remove the removed block and destroy = false from its copy"
 (cd "$stack" && tofu init -input=false -lockfile=readonly -no-color > "$work/init.txt" 2>&1) || fail "init: $(cat "$work/init.txt")"
 ! plan && grep '^Error: Cycle: ' "$work/plan.txt" | grep -F 'module.ci.google_compute_instance.manager (destroy deposed 01338cc8)' |
   grep -qF 'module.ci.terraform_data.manager_config (destroy)' &&

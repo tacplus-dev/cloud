@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#49).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#48).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -89,6 +89,22 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   it), and the manager (a new
   startup script: a new build); whether GCP deletes a VM still creating on a stockout, as the reaper asks, shows only
   then.
+- **No job lost to a new manager (#48):** #46's first replacement (pipeline 3060348536, 2026-11-12) killed every looper
+  job: the new manager's gitlab-runner removed every pool VM it had not created (`no data on pre-existing instance so
+  removing for safety`), and the apply deleted the old manager; the groups kept creations stuck on the old fleet's
+  `QUOTA_EXCEEDED` (#29). The #49 apply (pipeline 3061478514) did it again, and died itself: it ran through the old
+  manager, which it deleted (`Plugin did not respond`). Now the old one drains first and the new one starts on empty
+  groups (README, No job lost to a new manager): the stack forgets a manager instead of deleting it (`destroy = false`,
+  deposed ones too); the new one's startup script tells each older one to retire (metadata `runner-successor` and its
+  own startup script, so a pre-#48 manager's watcher runs the retirement), waits until none is left, empties the
+  pools' groups (`runner-groups`, zonal or regional) to no instance at all, then starts gitlab-runner; a retiring one
+  stops gitlab-runner on SIGQUIT (no new job, its running ones finished with no time limit, the apply's own among
+  them; the signal gitlab-runner's alone, `KillMode=mixed`, so its fleeting plugin serves them to the end) and deletes
+  its VM. While the old one drains no new job starts. `ci/policy.sh` refuses a plan destroying a manager at all and a
+  source without `destroy = false`. Tested: the startup script and `runner-retire` against a stub Compute API, the
+  policy, the plan tests and `tests/ci_plan_test.sh` (the old and deposed managers forgotten). Not yet seen live: the
+  first apply of it creates runner-manager-4c24f5f4, runner-manager-e66cee62 (and any older one left) drains and goes,
+  and the shared pool's three VMs come back on the new manager.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

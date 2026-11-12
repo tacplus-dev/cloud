@@ -31,8 +31,10 @@
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
 #     organization role is not developer: the one org:admin rule and admin account are the bootstrap, made by hand;
-#   - the runner manager (#46): in the source, its instance without create_before_destroy; in a plan, a VM tagged
-#     runner-manager replaced destroy-first: the fleet would have no manager, and every runner would go offline;
+#   - the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false;
+#     in a plan, a VM tagged runner-manager destroyed, first or after its replacement: destroyed first, the fleet would
+#     have no manager and every runner would go offline; destroyed at all, its running jobs would die with it (an
+#     old manager retires by itself, its jobs finished: modules/projects/ci/files/manager-startup.sh);
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -72,12 +74,16 @@ source_check() {
         n && /^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
         n && /^}/ { if (!p) print n ": google_compute_global_address." a; n = 0 }' "$f")
       # The runner manager's instance says create_before_destroy = true (#46): a replacement never leaves the fleet
-      # without a manager.
+      # without a manager; and destroy = false (#48): no apply deletes one, and its jobs with it.
       while IFS= read -r line; do
-        [ -n "$line" ] && refuse "$f:$line is not create_before_destroy: its replacement would leave the fleet with no runner manager"
-      done < <(awk '/^resource "google_compute_instance" "manager"/ { n = FNR; p = 0 }
+        [ -n "$line" ] && refuse "$f:$line"
+      done < <(awk '/^resource "google_compute_instance" "manager"/ { n = FNR; p = 0; d = 0 }
         n && /^[[:space:]]*create_before_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
-        n && /^}/ { if (!p) print n ": google_compute_instance.manager"; n = 0 }' "$f")
+        n && /^[[:space:]]*destroy[[:space:]]*=[[:space:]]*false/ { d = 1 }
+        n && /^}/ {
+          if (!p) print n ": google_compute_instance.manager is not create_before_destroy: its replacement would leave the fleet with no runner manager"
+          if (!d) print n ": google_compute_instance.manager is not destroy = false: an apply would delete the old manager, and its running jobs with it"
+          n = 0 }' "$f")
     done < <(find "$dir" -type d -name .terraform -prune -o -type f \( -name '*.tf' -o -name '*.tftpl' \) -print0 | sort -z)
   done
 }
@@ -118,10 +124,15 @@ plan_check() {
           and (if any($unknown[]; . == "ip_address") then any(refs($rc; "ip_address")[]; startswith("google_compute_global_address.gateway"))
                else ($after.ip_address // "") as $ip | ($ip | test("(^|/)global/addresses/gateway$")) or any($gateway_ips[]; . == $ip) end);
       .resource_changes[]
-      # The runner manager (a VM tagged runner-manager) replaced destroy-first: the fleet would have none (#46).
-      | (select(.type == "google_compute_instance" and .change.actions == ["delete", "create"]
-           and any(.change.before.tags[]?; . == "runner-manager"))
-         | "\(.address) destroys the runner manager before its replacement exists: every runner would go offline (create_before_destroy)"),
+      # The runner manager (a VM tagged runner-manager) replaced destroy-first: the fleet would have none (#46); or
+      # destroyed at all, a deposed one too: its running jobs would die with it (#48: destroy = false, it retires).
+      | (select(.type == "google_compute_instance" and any(.change.before.tags[]?; . == "runner-manager"))
+         | select(.change.actions | any(. == "delete"))
+         | if .change.actions == ["delete", "create"] then
+             "\(.address) destroys the runner manager before its replacement exists: every runner would go offline (create_before_destroy)"
+           else
+             "\(.address)\(if .deposed then " (deposed \(.deposed))" else "" end) destroys a runner manager: its running jobs would die with it (destroy = false: it retires by itself, its jobs done)"
+           end),
       (select(.change.actions | any(. == "create" or . == "update"))
       | . as $rc | .address as $a | (.change.after // {}) as $after
       | [.change.after_unknown // {} | paths(. == true) | map(tostring) | join(".")] as $unknown

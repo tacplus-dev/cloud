@@ -196,10 +196,13 @@ resource "google_compute_instance" "manager" {
   # Never without a manager (#46): every runner of the fleet is its, and the apply that replaces it runs on one of them.
   # A new build replaces it, the new manager up before the old one goes (its name is the build's, so both can be);
   # a new config (a pool raised, a tag moved) is an in-place metadata update, which the running manager's watcher
-  # applies (files/manager-startup.sh) with no restart and no job lost. ci/policy.sh refuses a plan that would
-  # destroy it first.
+  # applies (files/manager-startup.sh) with no restart and no job lost. And never a job lost to a new one (#48): the
+  # old one is forgotten, not destroyed. The new one tells it to retire, and it deletes itself once its jobs are done
+  # (the apply's own among them), before the new one's gitlab-runner starts on emptied groups (files/manager-startup.sh).
+  # ci/policy.sh refuses a plan that would destroy it, and a source without either setting.
   lifecycle {
     create_before_destroy = true
+    destroy               = false
   }
 
   # Its builds are in the bucket, and readable by it, before it boots.

@@ -531,13 +531,33 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   the startup script again, which rewrites `config.toml`; gitlab-runner reloads it by itself, with no restart and no
   job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk or
   the zone) replaces the manager `create_before_destroy`, after its objects are in the bucket: its name is the build's
-  hash (`runner-manager-<8 hex>`), so the new one is up before the old one goes. The jobs the old one was running are
-  lost with it, `apply:ci`'s too (it runs through that manager): the next pipeline finishes what it left (a deposed
-  old manager is deleted then, and `tests/ci_plan_test.sh` plans from such a state, #47; a state lock left behind
-  needs `tofu force-unlock`). `ci/policy.sh` refuses any plan
-  that would destroy the manager before making its replacement, and the plan tests pin both (a config change keeps
-  the name, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at INFO) is in the
-  apply job's artifacts, `plans/<stack>.apply.log`.
+  hash (`runner-manager-<8 hex>`), so the new one is up before the old one goes.
+- **No job lost to a new manager (#48).** A new manager's gitlab-runner removes every pool VM it did not create, jobs
+  and all (`no data on pre-existing instance so removing for safety`: it cannot resume another manager's jobs), and
+  deleting the old manager kills its jobs anyway; on 2026-11-12 the two together killed every looper job. So the old
+  one drains first, and the new one starts on empty groups (rather than the new one taking the old one's instance
+  state: with it the VMs would live on, but not their jobs, which only the old process can finish). `apply:ci` never
+  deletes a manager (`destroy = false`): it forgets the old one, deposed ones too, and creates the new one. Before its
+  gitlab-runner starts, the new one's startup script tells each older manager to retire (its metadata
+  `runner-successor`, and the new startup script, which the old one's watcher runs: a manager older than #48 learns
+  how), and waits until none is left. A manager told to retire runs `runner-retire`: gitlab-runner stops on SIGQUIT,
+  taking no new job and finishing its running ones however long they take (`apply:ci`'s own among them, which runs
+  through the old manager: that job now ends well), then the VM deletes itself. The SIGQUIT is gitlab-runner's alone
+  (`KillMode=mixed`): its fleeting plugin, which those jobs reach their VMs through, goes only after it (the #49
+  apply died with `Plugin did not respond` when its manager went). Then the new one resizes each pool's group
+  (`runner-groups`, zonal or regional) to zero and waits until it has no instance, a creation stuck on an error of
+  the old fleet's time too (#29: `QUOTA_EXCEEDED`, retried by the group only about every 90 minutes), and starts
+  gitlab-runner: the shared pool's idle VMs are created at once, the quota freed (the old fleet's VMs gone first, both
+  managers within it). The cost: while the old one drains, no new job starts anywhere; the queue waits for the longest
+  running job. `ci/policy.sh` refuses any plan
+  that would destroy a manager (first, or at all) and a source without `create_before_destroy` and `destroy = false`;
+  `tests/manager_startup_test.sh` pins the handoff and the retirement against a stub Compute API, and the plan tests
+  pin the names (a config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the
+  providers at INFO) is in the apply job's artifacts, `plans/<stack>.apply.log`.
+- **If an old manager does not retire** (its watcher not running, a job that never ends), the new one waits, and
+  says so in its serial log (`waiting for the older managers to finish their jobs and go`): the old one still runs
+  its jobs. Delete the old one by hand (`gcloud compute instances delete runner-manager-<old> --zone us-central1-b
+  --project tacplus-ci`), which kills its remaining jobs; the new one then goes on by itself.
 - **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a

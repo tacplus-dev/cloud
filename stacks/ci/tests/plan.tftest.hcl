@@ -255,7 +255,8 @@ run "ci" {
   }
   # An instance stuck creating on a capacity error is deleted, not retried forever (#49, #29): the manager's reaper
   # (files/manager-startup.sh) reads every pool's group from its metadata, so the autoscaler's next VM goes where there
-  # is capacity.
+  # is capacity. And a new manager empties each of them before its gitlab-runner starts,
+  # once the old one has retired (#48).
   assert {
     condition     = google_compute_instance.manager.metadata["runner-groups"] == "regions/us-central1/instanceGroupManagers/runner-no-account-region zones/us-central1-b/instanceGroupManagers/runner-with-account"
     error_message = "The manager's reaper does not watch every pool's group, by its region or zone."
@@ -407,7 +408,7 @@ run "ci" {
   # Never without a manager (#46): its name is its build's, so a new build makes the new one before the old one goes.
   # This build's (these inputs and files/manager-startup.sh): a commit that changes it replaces the manager.
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-e66cee62" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
+    condition     = google_compute_instance.manager.name == "runner-manager-4c24f5f4" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
     error_message = "The manager's name is not runner-manager-<its build's hash>, or its build changed: then this test's name, knowingly (a new build replaces the manager)."
   }
   assert {
@@ -859,7 +860,7 @@ run "manager_config_pushed" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-e66cee62" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
+    condition     = google_compute_instance.manager.name == "runner-manager-4c24f5f4" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
     error_message = "A config change renames the manager: it would replace it, every runner down until the new one boots."
   }
 }
@@ -907,7 +908,7 @@ run "manager_build_replaced" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name != "runner-manager-e66cee62" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
+    condition     = google_compute_instance.manager.name != "runner-manager-4c24f5f4" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
   }
 }

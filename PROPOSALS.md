@@ -375,11 +375,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   (graceful) rather than SIGTERM (which aborts its jobs), or a step between the create and the delete (a
   `terraform_data` the old instance's destroy depends on, waiting until it has no job). Why: `create_before_destroy`
   keeps the fleet up, but the jobs on the old manager are still lost, `apply:ci`'s own among them, which can leave
-  the state locked (README, Never without a manager).
+  the state locked (README, Never without a manager). Done by #48 (2026-11-12): the stack forgets the old manager,
+  which drains on SIGQUIT and deletes itself.
 - **Two managers on the same groups, briefly** (looper, #46). What: check how the new manager's autoscaler treats
   the VMs the old one made in the same managed instance groups during the overlap (adopted, or removed as unknown),
   and if it removes busy ones, give a new build its own groups or pause the old runners first. Why: the overlap is
-  a minute or two, but it is new with #46.
+  a minute or two, but it is new with #46. Answered by #48 (2026-11-12): it removes them, busy or not (it cannot
+  resume another's jobs); the new manager now starts only once the old one has gone.
+- **A shorter handoff between managers** (looper, #48, 2026-11-12). What: while the old manager drains, no new job
+  starts anywhere (the new one waits on its groups). With quota for two fleets, a new build could get groups of its
+  own (named by the build, forgotten with its manager, which deletes them once drained) and take jobs at once. Why:
+  the queue waits for the old manager's longest job, up to a looper's four hours; today CPUS_ALL_REGIONS (32) holds
+  one fleet only.
 - **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). What: once an `apply:ci`
   of it has succeeded (the state no longer holds the resource), delete the block in `modules/projects/ci/runners.tf`
   and the half of `tests/ci_plan_test.sh` that needs it. Why: it is a no-op after that apply, kept only until the one

@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub of Compute Engine's API in the project tacplus-ci, for tests/stub/manager/curl (#48): compute-api METHOD PATH
+# [BODY], PATH under the project and BODY a file, the answer on stdout, exit 22 on an error, as curl -f. The world is
+# STUB_MANAGER/compute: instances/<name>.json (an instance of us-central1-b: name, creationTimestamp, metadata),
+# told/<name>.json (the last metadata set on it), and a group's (by its path, / as _) groups/<group> (how many
+# instances it has) or, for the reaper (#49), <group>.json (its listManagedInstances, as is). Each call is an event
+# (STUB_MANAGER/events: METHOD PATH). An instance with instances/<name>.drain, once told to retire (its metadata
+# runner-successor), goes after that many more listings, as an old manager deletes itself once its jobs are done; a
+# group resized to 0 loses one instance at each listing of its instances, as its deletions finish.
+exec python3 - "$@" <<'PY'
+import json, os, re, sys
+
+method, path = sys.argv[1], sys.argv[2]
+body = sys.argv[3] if len(sys.argv) > 3 else ""
+world = os.path.join(os.environ["STUB_MANAGER"], "compute")
+with open(os.path.join(os.environ["STUB_MANAGER"], "events"), "a") as f:
+    print(method, path, file=f)
+
+
+def p(*a):
+    return os.path.join(world, *a)
+
+
+def instance(name):
+    return json.load(open(p("instances", name + ".json")))
+
+
+def put(name, i):
+    json.dump(i, open(p("instances", name + ".json"), "w"))
+
+
+def told(i):
+    return any(m["key"] == "runner-successor" for m in i.get("metadata", {}).get("items", []))
+
+
+def read(f, default=0):
+    return int(open(f).read()) if os.path.exists(f) else default
+
+
+zone = "zones/us-central1-b/"
+group = r"((?:zones|regions)/[a-z0-9-]+/instanceGroupManagers/[a-z0-9-]+)"
+if method == "GET" and path.startswith(zone + "instances?filter="):
+    items = []
+    for f in sorted(os.listdir(p("instances"))):
+        if not f.endswith(".json"):
+            continue
+        name = f[: -len(".json")]
+        i, drain = instance(name), p("instances", name + ".drain")
+        if os.path.exists(drain) and told(i):
+            left = read(drain)
+            if left == 0:
+                os.remove(p("instances", f)), os.remove(drain)
+                continue
+            open(drain, "w").write(str(left - 1))
+        items.append(i)
+    json.dump({"items": items}, sys.stdout)
+elif m := re.fullmatch(zone + r"instances/([a-z0-9-]+)", path):
+    if not os.path.exists(p("instances", m[1] + ".json")):
+        sys.exit(22)
+    if method == "GET":
+        json.dump(instance(m[1]), sys.stdout)
+    elif method == "DELETE":
+        os.remove(p("instances", m[1] + ".json"))
+        print("{}")
+    else:
+        sys.exit(22)
+elif (m := re.fullmatch(zone + r"instances/([a-z0-9-]+)/setMetadata", path)) and method == "POST":
+    i, new = instance(m[1]), json.load(open(body))
+    if new.get("fingerprint") != i["metadata"]["fingerprint"]:
+        sys.exit(22)
+    os.makedirs(p("told"), exist_ok=True)
+    json.dump(new, open(p("told", m[1] + ".json"), "w"))
+    i["metadata"] = {"fingerprint": i["metadata"]["fingerprint"] + "+", "items": new["items"]}
+    put(m[1], i)
+    print("{}")
+elif (m := re.fullmatch(group + r"/resize\?size=0", path)) and method == "POST":
+    g = m[1].replace("/", "_")
+    if not os.path.exists(p("groups", g)):
+        sys.exit(22)
+    open(p("groups", g + ".target"), "w").write("0")
+    print("{}")
+elif (m := re.fullmatch(group + r"/listManagedInstances", path)) and method == "POST":
+    g = m[1].replace("/", "_")
+    if os.path.exists(p("groups", g)):
+        n = read(p("groups", g))
+        json.dump({"managedInstances": [{"instance": "%s-%d" % (g, k)} for k in range(n)]} if n else {}, sys.stdout)
+        if n and os.path.exists(p("groups", g + ".target")):
+            open(p("groups", g), "w").write(str(n - 1))
+    elif os.path.exists(p(g + ".json")):
+        sys.stdout.write(open(p(g + ".json")).read())
+    else:
+        sys.exit(22)
+elif re.fullmatch(group + r"/deleteInstances", path) and method == "POST":
+    json.dump({"status": "RUNNING"}, sys.stdout)
+else:
+    sys.exit(22)
+PY

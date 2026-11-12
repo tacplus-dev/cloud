@@ -3,7 +3,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # A stub systemctl for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log; is-active answers
-# whether STUB_MANAGER/active exists (gitlab-runner running).
+# whether STUB_MANAGER/active exists (gitlab-runner running). Each call is also an event (STUB_MANAGER/events), in
+# order with the Compute API's (#48).
 echo "systemctl $*" >> "$STUB_MANAGER/log"
+echo "systemctl $*" >> "$STUB_MANAGER/events"
 [ "${1:-}" = is-active ] && { [ -f "$STUB_MANAGER/active" ]; exit; }
 exit 0

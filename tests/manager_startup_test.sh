@@ -11,6 +11,13 @@
 # A config pushed to the running manager (#46): its watcher, installed and enabled, re-runs the startup script when
 # the metadata changes, and that run rewrites config.toml without restarting gitlab-runner (which reloads it), so no
 # job is lost; a new build, or a runner not running, is restarted.
+# A new manager never takes the old one's VMs (#48): before its gitlab-runner starts, it tells each older manager
+# (runner-manager-*, made before it) to retire, with its own startup script (an old manager's watcher runs it), and
+# waits until none is left, touching no group meanwhile; a newer manager it leaves alone; then it empties each pool's
+# group, a stuck creation too, and waits until each has no instance, and only then starts gitlab-runner. A config
+# pushed to a running manager asks Compute nothing. A manager told to retire starts runner-retire and nothing else:
+# no config, no gitlab-runner; runner-retire stops gitlab-runner gracefully (SIGQUIT, no time limit), never to start
+# again, and only then deletes its own VM. Against a stub Compute API (tests/stub/manager/compute-api).
 # Needs bash, python3 and sha256sum.
 #
 #   tests/manager_startup_test.sh
@@ -41,8 +48,23 @@ attrs() {
   printf %s "$2" > "$stub/attributes/fleeting-plugin-sha256"
   printf %s 'shared deploy' > "$stub/attributes/runner-pools"
   printf 'concurrent = 1\ntoken = "@TOKEN:shared@"\ntoken = "@TOKEN:deploy@"\n' > "$stub/attributes/runner-config"
+  printf %s 'regions/us-central1/instanceGroupManagers/runner-deploy zones/us-central1-b/instanceGroupManagers/runner-shared' > "$stub/attributes/runner-groups"
+  cp "$script" "$stub/attributes/startup-script"
 }
-run() { : > "$stub/calls"; : > "$stub/log"; PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root bash "$script" > "$work/out" 2>&1; }
+# The Compute world: this manager (runner-manager-new, made at 18:00Z) alone, and the two pools' groups, empty: one
+# regional (a pool spread over the region's zones, #49), one zonal.
+world() {
+  rm -rf "$stub/compute" && mkdir -p "$stub/compute/instances" "$stub/compute/groups"
+  vm runner-manager-new 2026-11-12T10:00:00.000-08:00
+  echo 0 > "$stub/compute/groups/regions_us-central1_instanceGroupManagers_runner-deploy"; echo 0 > "$stub/compute/groups/zones_us-central1-b_instanceGroupManagers_runner-shared"
+}
+# vm NAME CREATED [ITEMS]: an instance in the world, its metadata ITEMS (JSON, none by default).
+vm() { printf '{"name": "%s", "creationTimestamp": "%s", "metadata": {"fingerprint": "fp-%s", "items": %s}}' "$1" "$2" "$1" "${3:-[]}" > "$stub/compute/instances/$1.json"; }
+run() {
+  : > "$stub/calls"; : > "$stub/log"; : > "$stub/events"
+  PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root RUNNER_POLL=0 timeout 60 bash "$script" > "$work/out" 2>&1
+}
+world
 
 attrs "$runner_sha" "$plugin_sha"
 run && ok "the startup exits 0" || fail "exit: $(cat "$work/out")"
@@ -52,7 +74,7 @@ cmp -s "$root/usr/bin/gitlab-runner" "$work/gitlab-runner" && [ -x "$root/usr/bi
 grep -qxF "GET https://storage.googleapis.com/storage/v1/b/tacplus-ci-runner-bin/o/gitlab-runner%2F$runner_sha?alt=media Bearer vm-token" "$stub/calls" &&
   grep -qxF "GET https://storage.googleapis.com/storage/v1/b/tacplus-ci-runner-bin/o/fleeting-plugin-googlecloud%2F$plugin_sha?alt=media Bearer vm-token" "$stub/calls" &&
   ok "each fetched from the bucket, by its SHA-256, with the VM's token" || fail "calls: $(cat "$stub/calls")"
-! grep -vE '^GET (http://metadata\.google\.internal/|https://storage\.googleapis\.com/storage/v1/b/tacplus-ci-runner-bin/o/|https://secretmanager\.googleapis\.com/v1/projects/tacplus-ci/secrets/runner-token-)' "$stub/calls" &&
+! grep -vE '^GET (http://metadata\.google\.internal/|https://storage\.googleapis\.com/storage/v1/b/tacplus-ci-runner-bin/o/|https://secretmanager\.googleapis\.com/v1/projects/tacplus-ci/secrets/runner-token-)|^(GET|POST) https://compute\.googleapis\.com/compute/v1/projects/tacplus-ci/(zones/us-central1-b|regions/us-central1)/[^ ]* Bearer vm-token$' "$stub/calls" &&
   ok "nothing asked of any other host (no upstream, no apt)" || fail "other hosts: $(cat "$stub/calls")"
 ! grep -qE 'apt|dpkg' "$stub/log" && ! grep -qE 'apt-get|dpkg' "$script" && ok "no package installed" || fail "packages: $(cat "$stub/log")"
 grep -qxF 'useradd --system --shell /bin/bash --comment GitLab Runner --create-home --skel /dev/null gitlab-runner' "$stub/log" &&
@@ -80,7 +102,8 @@ touch "$stub/active"
 printf 'concurrent = 2\ntoken = "@TOKEN:shared@"\ntoken = "@TOKEN:deploy@"\n' > "$stub/attributes/runner-config"
 run && [ "$(cat "$root/etc/gitlab-runner/config.toml")" = "$(printf 'concurrent = 2\ntoken = "glrt-shared-token"\ntoken = "glrt-deploy-token"')" ] &&
   [ "$(stat -c %a "$root/etc/gitlab-runner/config.toml")" = 600 ] && ! grep -q storage.googleapis.com "$stub/calls" &&
-  ! grep -q 'restart gitlab-runner' "$stub/log" && ok "a config pushed to the running manager: config.toml rewritten, gitlab-runner not restarted" ||
+  ! grep -q 'restart gitlab-runner' "$stub/log" && ! grep -q compute.googleapis.com "$stub/calls" &&
+  ok "a config pushed to the running manager: config.toml rewritten, gitlab-runner not restarted, nothing asked of Compute" ||
   fail "config push: $(cat "$work/out" "$stub/log")"
 
 # A new build on a running manager: installed and restarted.
@@ -91,6 +114,72 @@ attrs "$runner2_sha" "$plugin_sha"
 run && cmp -s "$root/usr/bin/gitlab-runner" "$work/gitlab-runner-2" && grep -qxF 'systemctl restart gitlab-runner' "$stub/log" &&
   ok "a new build on a running manager: installed and restarted" || fail "new build: $(cat "$work/out" "$stub/log")"
 rm -f "$stub/active"
+
+# A new manager (#48), with two older ones (one made before #48, one deposed) still running their jobs, and a newer one
+# (a later build, made while it rebooted): it tells each older one to retire, with its own startup script, once, and
+# waits; the newer one it leaves alone. It touches no group, and does not start gitlab-runner, until no older one is
+# left; then it resizes each group to zero and waits until each has no instance (runner-shared still has two: a VM of
+# the old fleet and a creation stuck on QUOTA_EXCEEDED, #29); then gitlab-runner starts.
+world
+vm runner-manager-19769182 2026-11-12T09:23:00.000-08:00 '[{"key": "startup-script", "value": "the #46 script"}, {"key": "runner-config", "value": "old"}]'
+vm runner-manager 2026-11-10T09:00:00Z
+vm runner-manager-ffffffff 2026-11-12T10:05:00.000-08:00
+echo 2 > "$stub/compute/instances/runner-manager-19769182.drain"; echo 1 > "$stub/compute/instances/runner-manager.drain"
+echo 2 > "$stub/compute/groups/zones_us-central1-b_instanceGroupManagers_runner-shared"
+rm -f "$stub/active"
+run && python3 - "$stub/events" "$script" <<'PY' && ok "a new manager: the older ones told to retire, waited for; the groups emptied; then gitlab-runner" || fail "handoff: $(cat "$work/out" "$stub/events")"
+import sys
+ev = [l.rstrip("\n") for l in open(sys.argv[1])]
+told = [e for e in ev if e.endswith("/setMetadata")]
+assert sorted(told) == ["POST zones/us-central1-b/instances/runner-manager-19769182/setMetadata", "POST zones/us-central1-b/instances/runner-manager/setMetadata"], told
+start = ev.index("systemctl restart gitlab-runner")
+lists = [k for k, e in enumerate(ev) if e.startswith("GET zones/us-central1-b/instances?filter=")]
+assert len(lists) == 4, lists  # two waits for runner-manager-19769182, then none older
+first_group = min(k for k, e in enumerate(ev) if "instanceGroupManagers" in e)
+assert first_group > lists[-1], "a group touched while an older manager is left"
+for g in ("regions/us-central1/instanceGroupManagers/runner-deploy", "zones/us-central1-b/instanceGroupManagers/runner-shared"):
+    resize = ev.index("POST %s/resize?size=0" % g)
+    polls = [k for k, e in enumerate(ev) if e == "POST %s/listManagedInstances" % g]
+    assert resize < polls[0] and polls[-1] < start, g
+assert len([e for e in ev if e == "POST zones/us-central1-b/instanceGroupManagers/runner-shared/listManagedInstances"]) == 3
+assert not any("ffffffff" in e for e in ev), "the newer manager touched"
+assert all(not e.startswith(("GET ", "POST ")) for e in ev[start:]), "Compute asked after gitlab-runner started"
+PY
+[ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] && [ ! -e "$stub/compute/instances/runner-manager.json" ] &&
+  [ -e "$stub/compute/instances/runner-manager-ffffffff.json" ] && [ "$(cat "$stub/compute/groups/zones_us-central1-b_instanceGroupManagers_runner-shared")" = 0 ] &&
+  ok "the older managers gone, the newer one there, the groups empty" || fail "world: $(ls "$stub/compute/instances" "$stub/compute/groups")"
+python3 - "$stub/compute/told/runner-manager-19769182.json" "$script" <<'PY' &&
+import json, sys
+told, script = json.load(open(sys.argv[1])), open(sys.argv[2]).read()
+assert told["fingerprint"] == "fp-runner-manager-19769182", told["fingerprint"]
+assert {i["key"]: i["value"] for i in told["items"]} == {"runner-successor": "runner-manager-new", "startup-script": script, "runner-config": "old"}
+PY
+  ok "an older manager told: runner-successor, this startup script (its watcher runs it), the rest of its metadata kept" ||
+  fail "told: $(cat "$stub/compute/told/runner-manager-19769182.json")"
+
+# A manager told to retire (#48), its successor's script run by its watcher: runner-retire started, not waited for;
+# no config written, gitlab-runner neither restarted nor started, nothing asked of Compute.
+world
+echo runner-manager-19769182 > "$stub/name"; vm runner-manager-19769182 2026-11-12T09:23:00.000-08:00
+printf %s runner-manager-new > "$stub/attributes/runner-successor"
+touch "$stub/active"; rm -f "$root/etc/gitlab-runner/config.toml"
+run && grep -qxF 'systemctl start --no-block runner-retire.service' "$stub/log" && ! grep -q gitlab-runner "$stub/log" &&
+  [ ! -e "$root/etc/gitlab-runner/config.toml" ] && ! grep -q compute.googleapis.com "$stub/calls" &&
+  [ -x "$root/usr/local/sbin/runner-retire" ] && grep -qxF 'TimeoutStartSec=infinity' "$root/etc/systemd/system/runner-retire.service" &&
+  grep -qF 'retiring for runner-manager-new' "$work/out" &&
+  ok "a manager told to retire: runner-retire started, nothing else" || fail "retiring: $(cat "$work/out" "$stub/log")"
+
+# runner-retire: gitlab-runner stopped on SIGQUIT with no time limit (it finishes its jobs) and disabled, then, and
+# only then, its own VM deleted. The SIGQUIT is gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its
+# running jobs (the apply that made its successor among them) reach their VMs through, outlives it.
+: > "$stub/calls"; : > "$stub/log"; : > "$stub/events"
+PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root RUNNER_POLL=0 timeout 20 "$root/usr/local/sbin/runner-retire" > "$work/out" 2>&1 &&
+  [ "$(cat "$root/etc/systemd/system/gitlab-runner.service.d/drain.conf")" = "$(printf '[Service]\nKillSignal=SIGQUIT\nKillMode=mixed\nTimeoutStopSec=infinity')" ] &&
+  [ "$(cat "$stub/events")" = "$(printf 'systemctl daemon-reload\nsystemctl disable gitlab-runner\nsystemctl stop gitlab-runner\nDELETE zones/us-central1-b/instances/runner-manager-19769182')" ] &&
+  grep -qxF 'DELETE https://compute.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager-19769182 Bearer vm-token' "$stub/calls" &&
+  [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
+  ok "runner-retire: gitlab-runner drained (SIGQUIT to it alone, no time limit) and disabled, then its VM deleted" || fail "runner-retire: $(cat "$work/out" "$stub/events")"
+rm -f "$stub/name" "$stub/attributes/runner-successor" "$stub/active"
 
 # The watcher: on a change of the metadata (a new ETag), the startup script again; on none (a wait that times out
 # with the same ETag), nothing; each wait from the last ETag seen.
@@ -113,7 +202,7 @@ mi() { # mi ZONE NAME ACTION [CODE]: a managed instance, as listManagedInstances
   [ -z "${4:-}" ] || attempt=$(printf ', "lastAttempt": {"errors": {"errors": [{"code": "%s", "message": "..."}]}}' "$4")
   printf '{"instance": "%s", "currentAction": "%s"%s}' "$(vm "$1" "$2")" "$3" "$attempt"
 }
-mkdir -p "$stub/compute"
+rm -rf "$stub/compute" && mkdir -p "$stub/compute"
 printf 'regions/us-central1/instanceGroupManagers/runner-build zones/us-central1-b/instanceGroupManagers/runner-shared' > "$stub/attributes/runner-groups"
 printf '{"managedInstances": [%s, %s, %s]}' "$(mi us-central1-b runner-build-a CREATING ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS)" \
   "$(mi us-central1-a runner-build-b CREATING)" "$(mi us-central1-f runner-build-c NONE)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
