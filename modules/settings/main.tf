@@ -317,7 +317,8 @@ output "runner_pools" {
     # The builds (Jody, 2026-11-10): "Builds run on the spot instances. And builds can be limited to a few at a time."
     # Up to two spot t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
     # 14g (they share the VM like processes): eight builds at once (Jody, 2026-11-11, "Yes": two builds at a time left
-    # 13 queued and every manager timing out). 16 CPUs at peak, inside CPUS_ALL_REGIONS 48. tacplus-dev/build's jobs only.
+    # 13 queued and every manager timing out). 16 CPUs at peak: with shared's 24 and cluster's 4, over CPUS_ALL_REGIONS
+    # 32 (#53). tacplus-dev/build's jobs only.
     # Spread over every zone of the region with t2a (#49): on 2026-11-12 spot t2a ran out in us-central1-b, its VM
     # stuck creating for hours and every build with it, while on-demand t2a there was out too until 18:05Z. So an
     # on-demand fallback in the same zone would have stalled as well, and a second, on-demand runner on the same tags

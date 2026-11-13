@@ -133,9 +133,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   running the drift schedule. Tested: the plan tests (mock providers: the policy on both kinds of group, the new
   build's name), `tests/manager_startup_test.sh` (a recreation reaped), `tests/pools_test.sh` (a stub gcloud). Not
   yet seen live: `apply:ci` (in place for the groups; the new manager and its handoff), and the first pool report.
-  The pools' CPUs at peak (shared 24, build 16, deploy 4, cluster 4, the manager 1, 2 during a handoff) are 49 to 50,
-  over the CPUS_ALL_REGIONS of 48 the settings name: the second build VM can fail on quota while deploy and cluster
-  run. The 3-hour full gates on spot, and the capacity that would carry them, are a proposal (PROPOSALS.md) for Jody.
+  Then (13:35Z, 14:38Z) jobs dialed two build VMs for 10 minutes each, round after round: read by the hub at 15:55Z,
+  `6851fa60cf6e5288` was not dead but repaired, recreated by its group at 13:34Z under its name at a new address
+  (10.10.15.199), while the old manager kept dialing the old one (10.10.0.59); with `DO_NOTHING` (applied 15:43Z) a
+  group no longer recreates a VM. And the quota, not spot capacity, holds the pools back: CPUS_ALL_REGIONS is 32 in
+  tacplus-ci (the settings said 48), and the configured pools need 45 to 46 CPUs (shared 3x8, build 2x8, cluster 4,
+  the managers 1 to 2): the second build VM stays `CREATING` on `QUOTA_EXCEEDED` (15:48Z) whenever the cluster runner
+  is up, the shared pool at 2 of 3. The reaper deletes it after 5 minutes, and the next one fails the same way until
+  CPUs are free. Raising the quota to 64, or sizing the pools to fit 32, is Jody's (PROPOSALS.md). The 3-hour full gates on spot, and the capacity that would carry them, are a proposal (PROPOSALS.md) for Jody.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
