@@ -50,7 +50,7 @@ module "ci" {
   subnet_cidr          = "10.10.0.0/20"
   image                = module.settings.ubuntu_arm64_image.image
   pool_image           = module.settings.cos_arm64_image
-  manager_machine_type = "t2a-standard-1"
+  manager_machine_type = module.settings.ci_cpus.manager_machine_type
   # A new manager's handoff (#51, Jody 2026-11-12): the old one drains for at most this long, less 5 minutes, then
   # the jobs still on it are cut and run again here; the fleet starts nothing new until then.
   manager_handoff_minutes = 30

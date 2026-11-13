@@ -67,8 +67,8 @@ module "gitlab" {
     trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
     schedules = yamldecode(file("${path.module}/nightly-builds.yaml"))
   }
-  # Every pool takes jobs (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the loopers' three
-  # always-on nodes), build (spot), deploy (fleet-seatrials') and cluster (tacplus-dev/cluster's and this
+  # Every pool takes jobs (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the loopers' always-on
+  # node), build (on demand, from zero), deploy (fleet-seatrials') and cluster (tacplus-dev/cluster's and this
   # repository's own pipeline), replacing jody1-328023's runners.
   runners = {
     for k, p in module.settings.runner_pools : k => merge(p.runner, {

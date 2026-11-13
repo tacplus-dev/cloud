@@ -297,45 +297,50 @@ output "runner_pools" {
     jody1-328023 is a later issue, which unpauses them.
   EOT
   value = {
-    # pd-standard (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, two 250 GB balanced disks) and
-    # max_instances 3 (CPUS_ALL_REGIONS is 32: three 8-CPU VMs and the manager), 2026-11-08. Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
+    # pd-standard (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, two 250 GB balanced disks). Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
-    # The three always-on nodes for now (Jody, 2026-11-10): every looper and control job, with no slots (capacity
+    # The always-on nodes (Jody, 2026-11-10, then three): every looper and control job, with no slots (capacity
     # above): "The loopers run as many as needed divided across the 3 always on nodes." Builds are not here: they run
     # on the spot build pool below. It replaces the jody1-328023 pools, whose settings change only over SSH. The
     # in-cluster runners take this arrangement over (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
     # through Workload Identity Federation (the ci module's build cache).
+    # One always-on node since #55 (Jody, 2026-11-13: "we will need to bring the cost back down ASAP"): three, 24 CPUs
+    # always on, left the build pool's second VM over CPUS_ALL_REGIONS (ci_cpus below), and builds queued for an hour.
     shared = {
       machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 3, idle_count = 3, idle_time = "30m"
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 1, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
       spot            = false
       runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false }
     }
     # The builds (Jody, 2026-11-10): "Builds run on the spot instances. And builds can be limited to a few at a time."
-    # Up to two spot t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
+    # Up to two t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
     # 14g (they share the VM like processes): eight builds at once (Jody, 2026-11-11, "Yes": two builds at a time left
-    # 13 queued and every manager timing out). 16 CPUs at peak: with shared's 24 and cluster's 4, over CPUS_ALL_REGIONS
-    # 32 (#53). tacplus-dev/build's jobs only.
+    # 13 queued and every manager timing out). 16 CPUs at peak (ci_cpus below). tacplus-dev/build's jobs only.
     # Spread over every zone of the region with t2a (#49): on 2026-11-12 spot t2a ran out in us-central1-b, its VM
     # stuck creating for hours and every build with it, while on-demand t2a there was out too until 18:05Z. So an
     # on-demand fallback in the same zone would have stalled as well, and a second, on-demand runner on the same tags
     # would take half the builds even while spot has room (and, from zero, take jobs it has no VM for): the group is
-    # regional instead, and makes each VM in whichever of these zones has the capacity, still spot.
+    # regional instead, and makes each VM in whichever of these zones has the capacity.
+    # On demand since #55 (Jody, 2026-11-13: "do whatever you think best"): five spot VMs were preempted that day, each
+    # under 10 minutes old, and the tacplus gates (about 3 hours) never finished on one. On-demand t2a-standard-8 is
+    # about $0.31/h, paid only while builds run: a spot VM that never finishes a build is the dearer one.
     build = {
       machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
       capacity        = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
       job             = local.jobs.build
       service_account = false
-      spot            = true
+      spot            = false
       zones           = ["us-central1-a", "us-central1-b", "us-central1-f"]
       runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
+    # deploy is a t2a-standard-2 since #55: with a t2a-standard-4 the pools at peak were 34 CPUs, over the quota of 32
+    # (ci_cpus below). Its two jobs share the VM's 2 CPUs and 8 GB like processes.
     deploy = {
-      machine_type    = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 30
+      machine_type    = "t2a-standard-2", disk_type = "pd-balanced", os_disk_gb = 30
       capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
       job             = { cpus = "2", memory = "6g", memory_swap = "6g", disk_gb = 25, security_opt = [] }
       service_account = false
@@ -351,5 +356,20 @@ output "runner_pools" {
       service_account = false
       runner          = { type = "project_type", group = null, project = "tacplus-dev/cluster", also_projects = ["tacplus-dev/cloud"], tags = ["cluster", "cloud"], protected = true }
     }
+  }
+}
+
+output "ci_cpus" {
+  description = <<-EOT
+    tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it; a raise is a
+    request to Google, then this line); the manager's machine type, and how many managers run at once at most (a
+    handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
+    CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
+    Today: shared 8, build 16, cluster 4, deploy 2, managers 2: 32.
+  EOT
+  value = {
+    quota                = 32
+    manager_machine_type = "t2a-standard-1"
+    managers             = 2
   }
 }

@@ -42,9 +42,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
   and the VM reaches `https://registry.gitlab.com/v2/` (`instance_ready_command`; #50: egress before the first job). No baked image and no bake identity (superseded). Tested against mock providers only.
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
-  (two jobs of 4 CPUs and 14g, no swap) three always-on t2a-standard-8s with no slots since 2026-11-10 (Jody: every looper runs when it wants; up to 25 jobs a
+  one always-on t2a-standard-8 (three until #55) with no slots since 2026-11-10 (Jody: every looper runs when it wants; up to 25 jobs a
   VM, each may use the whole VM), every looper and control job, a tacplus-dev group runner tagged `arm64`,
-  `autoscale`, `autoscale-16`; builds on the `build` pool, up to two spot t2a-standard-8s from zero, eight builds at a time,
+  `autoscale`, `autoscale-16`; builds on the `build` pool, up to two on-demand t2a-standard-8s from zero (spot until #55), eight builds at a time,
   tagged `arm64`, `build`; `deploy` and `cluster`, protected and on demand. Job containers
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
@@ -79,7 +79,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
 - **A zone out of capacity stalls no build (#49):** on 2026-11-12 spot t2a ran out in us-central1-b and the build pool's
   one VM stayed `CREATING` for hours, every build behind it. The build pool is now a regional group over us-central1-a,
   -b and -f (the zones with t2a), target shape `ANY` (each new VM where there is capacity; redistribution off), the
-  plugin pointed at the region; still spot. Spread rather than an on-demand fallback (README, The pools: on-demand t2a
+  plugin pointed at the region; on demand since #55. Spread rather than an on-demand fallback (README, The pools: on-demand t2a
   in -b was out too that day). The manager's reaper (`runner-reap`, beside the watcher) deletes any pool's VM creating
   on a capacity or quota error for five minutes, so the autoscaler's next one is made where there is room, instead of
   the group retrying it forever. Tested: the plan (mock providers: the regional group, its zones and shape, the
@@ -140,7 +140,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   tacplus-ci (the settings said 48), and the configured pools need 45 to 46 CPUs (shared 3x8, build 2x8, cluster 4,
   the managers 1 to 2): the second build VM stays `CREATING` on `QUOTA_EXCEEDED` (15:48Z) whenever the cluster runner
   is up, the shared pool at 2 of 3. The reaper deletes it after 5 minutes, and the next one fails the same way until
-  CPUs are free. Raising the quota to 64, or sizing the pools to fit 32, is Jody's (PROPOSALS.md). The 3-hour full gates on spot, and the capacity that would carry them, are a proposal (PROPOSALS.md) for Jody.
+  CPUs are free.
+  Since #55 the pools fit 32: the shared pool is one always-on VM, deploy a t2a-standard-2 and the build pool on
+  demand (five build VMs preempted on 2026-11-13, the tacplus full gates never finishing), 32 at peak with two
+  managers, and the ci stack's test refuses pools over `ci_cpus.quota` (32). Not yet seen live: `apply:ci` of it (the
+  shared group down to one VM, the build and deploy templates replaced; no new manager).
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

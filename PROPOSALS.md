@@ -415,23 +415,25 @@ the looper then marks it `promoted` or `declined` here with the date.
   creating longer than a set time be removed (the provisioner keeps it forever today), and drop `runner-reap` once our
   build has it. Why: every googlecloud (and other) plugin user meets a VM stuck on a stockout; the reaper does it from
   outside the runner, by polling.
-- **The tacplus full gates off spot, or split** (looper, #53, 2026-11-13; Jody's yes with numbers, not applied). What:
+- **The tacplus full gates off spot, or split** (looper, #53, 2026-11-13; Jody's yes with numbers; (b) done by #55,
+  Jody 2026-11-13: the build pool on demand; (c) still open). What:
   one of (a) a `build-long` pool: one on-demand t2a-standard-8 from zero (`idle_count = 0`, `max_instances = 1`,
   `idle_time = "15m"`, 450 GB pd-standard, tags `arm64`, `build-long`), for the tacplus full-gates job alone, which
   tacplus-dev/looper's `ci/build.gitlab-ci.yml` would tag `build-long`; about $0.31/h while it runs (spot is about a
   third of that), so about $1.00 a 3 h 15 m run instead of about $0.30, and $0 while none runs (its VM and disk go); 8 more
-  CPUs, which needs CPUS_ALL_REGIONS raised from 32 to 64 at least (the next item); (b) the whole build
+  CPUs, which needs CPUS_ALL_REGIONS raised from 32 to 40 at least (#55: the pools use all 32), and `ci_cpus.quota`
+  with it; (b) the whole build
   pool on demand: about 3x its cost while it builds, the same 16 CPUs, and on-demand t2a runs out too (us-central1-b,
   2026-11-12); (c) no capacity change: the full gates split (tacplus-dev/tacplus, tacplus-dev/looper) into jobs of
   under an hour each, so a reclaim costs one part; the looper's retry then reruns the part. Recommended: (c) for
   good, with (a) until it lands. Why: a spot VM is reclaimed at any time, and a 3-hour job on one rarely finishes
   (job 17995954848 lost its VM 3 h 12 m into a 3 h 15 m run); the 11-hour timeout (tacplus-dev/looper#140) does not
   help.
-- **The CPU quota under the pools' peak** (looper, #53, 2026-11-13). What: CPUS_ALL_REGIONS raised from 32 (read by the
-  hub on 2026-11-13; the settings said 48) to 64, or the pools sized under 32 (shared at 2 VMs, say). Why: the pools
-  as configured need 45 to 46 CPUs (shared 3x8, build 2x8, cluster 4, the managers 1 to 2, deploy 4 more while one
-  runs); at 15:48Z 30 were in use and the second build VM sat `CREATING` on `QUOTA_EXCEEDED`, so the build pool runs
-  at 1 of 2 VMs and the shared at 2 of 3 whenever the cluster runner is up; the drift's pool check (`ci/pools.sh`) reports the quota once it is 80% used.
+- **The CPU quota under the pools' peak** (looper, #53, 2026-11-13; done by #55: the pools sized under 32, and a
+  test refusing pools over it). What: CPUS_ALL_REGIONS raised from 32 (read by the hub on 2026-11-13; the settings
+  said 48) to 64, or the pools sized under 32. Why: the pools as configured needed 45 to 46 CPUs (shared 3x8, build
+  2x8, cluster 4, the managers 1 to 2, deploy 4 more while one runs); at 15:48Z 30 were in use and the second build VM
+  sat `CREATING` on `QUOTA_EXCEEDED`; the drift's pool check (`ci/pools.sh`) reports the quota once it is 80% used.
 - **The pool check more often than nightly** (looper, #53). What: a schedule of its own (hourly) running only
   `ci/pools.sh`, without the tools job's builds, filing its own issue while a pool cannot make a VM. Why: the drift is
   nightly; a stall like #53's is seen the next night unless someone runs the schedule.

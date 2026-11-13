@@ -94,8 +94,15 @@ run "settings" {
     error_message = "The pools are not shared, build, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 25 && output.runner_pools.shared.idle_count == 3 && output.runner_pools.shared.max_instances == 3
-    error_message = "The shared pool is not three always-on t2a-standard-8s with no slots (25 jobs a VM, Jody 2026-11-10)."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 25 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
+    error_message = "The shared pool is not one always-on t2a-standard-8 with no slots (25 jobs a VM, Jody 2026-11-10; one VM, #55)."
+  }
+  # Every pool at its peak fits tacplus-ci's CPU quota (#55): each pool's max_instances VMs, and two managers (a
+  # handoff), never more CPUs than CPUS_ALL_REGIONS, or a pool's VM fails QUOTA_EXCEEDED (the second build VM,
+  # 2026-11-13). A t2a-standard-N has N CPUs.
+  assert {
+    condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])])) <= output.ci_cpus.quota
+    error_message = "The pools' VMs at their max_instances and two managers need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N."
   }
   assert {
     condition     = output.runner_pools.shared.job.cpus == "8" && output.runner_pools.shared.job.memory == "28g" && output.runner_pools.shared.job.memory_swap == "28g" && output.runner_pools.shared.capacity * output.runner_pools.shared.job.disk_gb + output.runner_pools.shared.os_disk_gb <= 500
@@ -105,10 +112,11 @@ run "settings" {
     condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false } && !output.runner_pools.shared.service_account
     error_message = "The shared pool is not an unprotected group runner of tacplus-dev under today's tags, with no account on its VM."
   }
-  # The builds run on spot, a few at a time, never on the always-on nodes (Jody, 2026-11-10).
+  # The builds run a few at a time, never on the always-on nodes (Jody, 2026-11-10), on demand from zero since #55: five
+  # build VMs were preempted on 2026-11-13, each under 10 minutes old, and a 3-hour tacplus gates run never finished.
   assert {
-    condition     = output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
-    error_message = "Builds do not run only on spot, from zero, a few at a time, apart from the always-on nodes."
+    condition     = !output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
+    error_message = "Builds do not run on demand, from zero, a few at a time, apart from the always-on nodes."
   }
   # A zone out of spot t2a stalls no build (#49): the build pool spreads over every us-central1 zone with t2a, and the
   # other pools stay in the stack's zone.

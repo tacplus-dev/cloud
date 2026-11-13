@@ -462,13 +462,13 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
-| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **three, always on** (`idle_count = 3`, `max_instances = 3`): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
-| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **spot, from zero** (`idle_count = 0`, `max_instances = 2`): t2a-standard-8, 450 GB pd-standard, in whichever of us-central1-a, -b and -f has the capacity (#49) | 4 builds a VM (8 at once), each may use 4 CPUs and 14g |
-| `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 80 GB | 2: 2 CPUs, 6g, 25 GB |
+| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **one, always on** (`idle_count = 1`, `max_instances = 1`; three until #55): t2a-standard-8, 350 GB pd-standard | no slots (Jody, 2026-11-10): up to 25 jobs a VM, each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
+| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **on demand, from zero** (`idle_count = 0`, `max_instances = 2`; spot until #55): t2a-standard-8, 450 GB pd-standard, in whichever of us-central1-a, -b and -f has the capacity (#49) | 4 builds a VM (8 at once), each may use 4 CPUs and 14g |
+| `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2 (#55), 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, also tacplus-dev/cloud's own pipeline, protected; tags `cluster`, `cloud` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 70 GB | 2: 2 CPUs, 7g, 20 GB |
 
-- **The shared VMs** are the three always-on nodes for now (Jody, 2026-11-10): every looper and control job runs on
-  them, with no slots; builds run on the spot `build` pool, a few at a time. "If it's a looper and it wants to run, it runs, period": a job is not a reservation of
+- **The shared VM** is the one always-on node (Jody, 2026-11-10, then three; one since #55, to bring the cost down): every looper and control job runs on
+  it, with no slots; builds run on the `build` pool, a few at a time. "If it's a looper and it wants to run, it runs, period": a job is not a reservation of
   CPUs or memory, and the jobs share a VM like processes on a laptop (25 a VM is a ceiling, not a slot count). They
   replace the jody1-328023 pools (whose settings change only over SSH); tacplus-dev/looper#84 moves the same
   arrangement into the cluster. One VM is one runner registration
@@ -506,6 +506,14 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
   `us-central1` and of the project 80% used or more. What it finds is in the drift issue on GitHub (`pools`), which
   the hub and the reports read. It runs nightly; for it now, run the drift schedule in the GitLab project (Build,
   Pipeline schedules, run), which plans and never applies.
+- **The CPU quota (#55).** `ci_cpus` in `modules/settings` keeps tacplus-ci's `CPUS_ALL_REGIONS` (32) and the
+  manager's machine type; the ci stack's test refuses pools whose VMs, each pool at its `max_instances`, and two
+  managers (a handoff) need more: shared 8, build 16, cluster 4, deploy 2 and the managers 2 are 32. A pool over it
+  makes its last VM fail `QUOTA_EXCEEDED` (the build pool's second, 2026-11-13). Raising a pool, or a machine type,
+  needs room under it, or the quota raised first (a request to Google, then `ci_cpus.quota`).
+- **The build pool on demand (#55).** On 2026-11-13 five build VMs were preempted, each under 10 minutes old, taking
+  their builds with them (`runner_system_failure`), and the tacplus gates (about 3 hours) never finished on spot. The
+  build pool is on demand since, still from zero: about $0.31/h a VM, paid only while builds run.
 - **Scaling.** Moving the shared VM to t2a-standard-16, four jobs at once, is one line (`shared_machine_type`), on
   Jody's word; so is raising `max_instances`. Scaling down needs no ask.
 - **Deploy and cluster** are protected and on demand: their credentials never share a VM with agents, and they cost
