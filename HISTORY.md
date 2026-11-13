@@ -42,3 +42,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-13 looper issue dev: the Google sign-in adders cannot create the client: roles/oauthconfig.editor on tacplus-dev is missing (#56)
 - 2026-11-13 looper issue STATE.md: Blocked on names closed #4 (runner-image measure 20, removed with the COS rescope): the line is stale (#52)
 - 2026-11-13 looper issue ci: the build runner pool (spot, from zero) acquires no instance since 2026-11-13 10:25Z; every build is stalled, and a 3 h gates job died with its VM (#53)
+- 2026-11-13 looper issue Runner pools as configured need 45 CPUs; tacplus-ci's quota is 32, so the build pool never gets its second VM (#55, 01dcb68; gates: full)
