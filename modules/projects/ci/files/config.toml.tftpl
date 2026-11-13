@@ -35,7 +35,7 @@ shutdown_timeout = 0
     capacity_per_instance = ${pool.capacity}
     max_use_count = 0
     max_instances = ${pool.max_instances}
-    instance_ready_command = "timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'"
+    instance_ready_command = "timeout 600 sh -c 'until docker info >/dev/null 2>&1 && curl -so /dev/null --max-time 10 https://registry.gitlab.com/v2/; do sleep 2; done'"
     [runners.autoscaler.plugin_config]
       name = "${pool.group.name}"
       project = "${project}"

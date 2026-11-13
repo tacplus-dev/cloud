@@ -436,7 +436,10 @@ which replaced the baked image of tacplus-dev/looper#43). No job is placed on a 
 containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-2026-11-03.md`; below, The pools).
 
 - **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until `docker info` answers
-  the user the manager connects as (`files/config.toml.tftpl`); a VM not ready by then is removed. That user, `runner`,
+  the user the manager connects as (`files/config.toml.tftpl`) and the VM gets an HTTPS answer from
+  `https://registry.gitlab.com/v2/`, the helper image's registry (each try bounded to ten seconds; any HTTP status
+  counts): a fresh VM is up before its egress through Cloud NAT works, and its first job failed pulling the helper
+  image (#50). A VM not ready by then is removed. That user, `runner`,
   is created by the OS's guest agent from the SSH key the fleeting plugin sets, in the OS's `docker` group.
 - **The VM.** No startup-script, and no OS update (`cos-update-strategy = update_disabled`): the image changes only
   with its pin. COS's root is read-only, so a job's builds stay in the executor's own volume (no host `/builds`); the

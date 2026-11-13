@@ -40,7 +40,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   `modules/settings` (`cos_arm64_image`, never a family: the module and `ci/policy.sh` refuse one), vanilla
   (`decisions/builds-in-containers-2026-11-03.md`): no startup-script, nothing installed at boot, OS updates off, the
   OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
-  (`instance_ready_command`). No baked image and no bake identity (superseded). Tested against mock providers only.
+  and the VM reaches `https://registry.gitlab.com/v2/` (`instance_ready_command`; #50: egress before the first job). No baked image and no bake identity (superseded). Tested against mock providers only.
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
   (two jobs of 4 CPUs and 14g, no swap) three always-on t2a-standard-8s with no slots since 2026-11-10 (Jody: every looper runs when it wants; up to 25 jobs a
   VM, each may use the whole VM), every looper and control job, a tacplus-dev group runner tagged `arm64`,

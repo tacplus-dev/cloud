@@ -272,7 +272,8 @@ run "ci" {
   }
   # The pools' VMs are vanilla Container-Optimized OS: nothing installed at boot, no startup-script, no OS update
   # (the pin is the only way their OS changes); the manager connects as runner, which the guest agent creates with
-  # the OS's docker group, and waits, at most ten minutes, for the OS's own container runtime to answer.
+  # the OS's docker group, and waits, at most ten minutes, for the OS's own container runtime to answer and for an
+  # HTTPS answer from the helper image's registry (#50: a fresh VM is up before its egress, Cloud NAT, works).
   assert {
     condition     = alltrue([for t in google_compute_instance_template.pool : length(t.metadata) == 1 && t.metadata["cos-update-strategy"] == "update_disabled"])
     error_message = "A pool's VMs run a startup-script or update their OS."
@@ -282,8 +283,8 @@ run "ci" {
     error_message = "The manager does not connect as runner."
   }
   assert {
-    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "A pool does not wait, bounded, for its VM's container runtime."
+    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1 && curl -so /dev/null --max-time 10 https://registry.gitlab.com/v2/; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "A pool does not wait, bounded, for its VM's container runtime and its egress to registry.gitlab.com."
   }
   # Job containers share the pools' VMs (decisions/looper-job-per-issue-2026-11-03.md, #5): each pool runs its
   # capacity of jobs on a VM, each job's container limited in CPU and memory (no swap), the disk bounded per VM (its
