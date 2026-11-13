@@ -46,8 +46,9 @@ resource "google_secret_manager_secret_iam_binding" "google_signin" {
 # (#56): roles/oauthconfig.editor on the project, which brands.create and the clients need; Jody's account holds no
 # other role on it. A member binding, not authoritative: the project's other holders of the role are not this file's.
 resource "google_project_iam_member" "google_signin_adders" {
-  for_each = toset(var.google_signin_adders)
-  project  = google_project.dev.project_id
-  role     = "roles/oauthconfig.editor"
-  member   = each.key
+  for_each   = toset(var.google_signin_adders)
+  project    = google_project.dev.project_id
+  role       = "roles/oauthconfig.editor"
+  member     = each.key
+  depends_on = [terraform_data.iam_ready]
 }
