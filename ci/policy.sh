@@ -184,7 +184,16 @@ plan_check() {
         (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
         (select(.type | startswith("anthropic_")) | select(.change.importing != null)
-         | "\($a) is adopted with a change: an adoption plans none, as its deployment names the identity live; write the config as the Console holds it, and change it in a commit of its own after"),
+         # What differs, the value in the Console (before) then in the config (after), as the text of the plan is printed
+         # only once the policy passes: not what is known only after apply (its timestamps), nor a sensitive value.
+         | (.change.before // {}) as $b | (.change.before_sensitive // {}) as $bs | (.change.after_sensitive // {}) as $as
+         | ([[($b, $after) | paths(type != "object" and type != "array")] | unique[] as $q
+             | ($q | map(tostring) | join(".")) as $k | select(any($unknown[]; . == $k) | not)
+             | select(($b | getpath($q)) != ($after | getpath($q)))
+             | if any(range(1; ($q | length) + 1) as $n | ($bs, $as) | try getpath($q[:$n]) catch null; . == true) then "\($k): sensitive"
+               else "\($k): \($b | getpath($q) | tojson) in the Console, \($after | getpath($q) | tojson) here" end]
+            | if length > 0 then " (\(join("; ")))" else "" end) as $what
+         | "\($a) is adopted with a change\($what): an adoption plans none, as its deployment names the identity live; write the config as the Console holds it, and change it in a commit of its own after"),
         (select(.type == "anthropic_federation_rule" and ($after.oauth_scope | IN("workspace:developer", "workspace:inference") | not))
          | "\($a) grants \($after.oauth_scope // "an unknown scope"): the pipeline makes workspace:developer and workspace:inference rules only (the org:admin rule is the bootstrap, made by hand)"),
         (select(.type == "anthropic_service_account" and $after.organization_role != "developer")

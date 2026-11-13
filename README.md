@@ -1057,6 +1057,8 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
 - **Adopted, not made again:** seatrials' were made by hand on 2026-10-24; `import` blocks adopt them by the IDs its
   llmproxy names (each `adopt` in `modules/settings`). An adoption plans no change: `ci/policy.sh` refuses a plan that
   adopts an identity with a change, so the config is what the Console holds, and a change is a commit of its own after.
+  The refusal names each attribute that differs, its value in the Console and in the config (a sensitive one only by
+  name), as the plan's text is printed only once the policy passes.
   seatrials' rule narrows to `workspace:inference` that way, once adopted (Jody, 2026-11-10: llmproxy calls inference
   only), in place, with the same ID.
 - **The membership is made, not adopted:** a federated token acts in a workspace other than the organization's default

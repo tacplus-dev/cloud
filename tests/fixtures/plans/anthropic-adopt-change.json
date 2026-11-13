@@ -39,9 +39,38 @@
         "actions": [
           "update"
         ],
+        "before": {
+          "name": "llmproxy-seatrials",
+          "oauth_scope": "workspace:developer",
+          "description": "llmproxy for seatrials",
+          "token_lifetime_seconds": 3600,
+          "match": {
+            "subject_prefix": "spiffe://local.dev/system/services/llmproxy",
+            "audience": "https://api.anthropic.com"
+          },
+          "attributes": {
+            "k": "before-secret"
+          }
+        },
         "after": {
           "name": "llmproxy-seatrials",
-          "oauth_scope": "workspace:inference"
+          "oauth_scope": "workspace:inference",
+          "description": null,
+          "token_lifetime_seconds": 3600,
+          "match": {
+            "subject_prefix": "spiffe://local.dev/system/services/llmproxy",
+            "audience": null
+          },
+          "attributes": {
+            "k": "after-secret"
+          }
+        },
+        "after_unknown": {
+          "updated_at": true
+        },
+        "before_sensitive": {},
+        "after_sensitive": {
+          "attributes": true
         },
         "importing": {
           "id": "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"

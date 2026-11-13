@@ -348,8 +348,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   account `svac_011SKzqJqvTtj2LmUFbbDztN`, issuer `gitlab-com`) and set in the CI file, so the pipeline on main plans
   and applies the stack. **Partly run:** the first `plan:anthropic` (pipeline 3057435167, 2026-11-12) exchanged through
   the bootstrap rule and imported the issuer, account and rule with no error, and failed on the membership's import (no
-  explicit membership exists), now made instead; the next plan shows whether the adoption is otherwise a no-op (the
-  policy refuses it otherwise); the narrowing of seatrials' rule to `workspace:inference` is the commit after it.
+  explicit membership exists), now made instead. The second (pipeline 3064308469, 2026-11-13) was refused: the account
+  and the rule are adopted with a change, which the refusal did not say (the plan's text is printed only once the policy
+  passes); it now names each attribute that differs, the Console's value and the config's, so the next plan says what
+  to write. The narrowing of seatrials' rule to `workspace:inference` is the commit after the adoption.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's
