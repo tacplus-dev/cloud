@@ -1,0 +1,7 @@
+[
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-a/instances/runner-build-1a2b", "currentAction": "RECREATING", "instanceStatus": "TERMINATED",
+   "lastAttempt": {"errors": {"errors": [{"code": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS", "message": "The zone 'projects/tacplus-ci/zones/us-central1-a' does not have enough resources available to fulfill the request."}]}}},
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-f/instances/runner-build-3c4d", "currentAction": "CREATING",
+   "lastAttempt": {"errors": {"errors": [{"code": "QUOTA_EXCEEDED", "message": "Quota 'T2A_CPUS' exceeded.  Limit: 24.0 in region us-central1."}]}}},
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-build-5e6f", "currentAction": "CREATING"}
+]

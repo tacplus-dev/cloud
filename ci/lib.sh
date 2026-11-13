@@ -115,6 +115,16 @@ ci_zone() {
   echo "$p $z"
 }
 
+# ci_pools: the ci project and the region its runner pools are in (ci/pools.sh's PROJECT REGION), as modules/settings
+# names them (projects, region).
+ci_pools() {
+  local p r
+  p=$(sed -n 's|^ *ci *= *{ *folder *= *"[^"]*", *project *= *"\([a-z][a-z0-9-]*\)",.*|\1|p' "$ci_here/../modules/settings/main.tf")
+  r=$(sed -n '/^output "region"/,/^}/s|^ *value *= *"\([a-z][a-z0-9-]*\)"$|\1|p' "$ci_here/../modules/settings/main.tf")
+  [ -n "$p" ] && [ -n "$r" ] || { echo "pools: modules/settings/main.tf names no ci project or no region" >&2; return 1; }
+  echo "$p $r"
+}
+
 # ci_gitlab_secret: the GitLab token's secret version, as modules/settings names it.
 ci_gitlab_secret() {
   local s

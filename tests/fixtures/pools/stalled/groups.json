@@ -1,0 +1,4 @@
+[
+  {"name": "runner-build-region", "region": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/regions/us-central1", "targetSize": 2},
+  {"name": "runner-shared", "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b", "targetSize": 3}
+]

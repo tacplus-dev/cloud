@@ -1,0 +1,10 @@
+[
+  {"timestamp": "2026-11-13T02:30:12.512-08:00", "error": {"code": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS", "message": "The zone 'projects/tacplus-ci/zones/us-central1-a' does not have enough resources available to fulfill the request."},
+   "instanceActionDetails": {"action": "RECREATING", "instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-a/instances/runner-build-1a2b"}},
+  {"timestamp": "2026-11-13T02:45:00.000-08:00", "error": {"code": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS", "message": "The zone 'projects/tacplus-ci/zones/us-central1-a' does not have enough resources available to fulfill the request."},
+   "instanceActionDetails": {"action": "RECREATING", "instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-a/instances/runner-build-1a2b"}},
+  {"timestamp": "2026-11-13T11:00:00Z", "error": {"code": "QUOTA_EXCEEDED", "message": "Quota 'T2A_CPUS' exceeded.  Limit: 24.0 in region us-central1."},
+   "instanceActionDetails": {"action": "CREATING", "instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-f/instances/runner-build-3c4d"}},
+  {"timestamp": "2026-11-11T09:00:00.000-08:00", "error": {"code": "CONDITION_NOT_MET", "message": "an error of two days ago"},
+   "instanceActionDetails": {"action": "CREATING", "instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-build-old"}}
+]

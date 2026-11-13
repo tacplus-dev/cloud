@@ -97,7 +97,8 @@ resource "google_compute_instance_template" "pool" {
 
   scheduling {
     # A spot VM in a managed instance group takes GCP's default termination action (STOP; DELETE is refused there,
-    # 2026-11-10): the group recreates a reclaimed VM, and the manager's autoscaler removes the ones it no longer needs.
+    # 2026-11-10): a reclaimed VM stays stopped, its group does nothing (the groups' instance_lifecycle_policy, #53),
+    # and the plugin deletes it; the autoscaler then asks for another, made where there is capacity.
     automatic_restart   = false
     on_host_maintenance = "TERMINATE"
     provisioning_model  = each.value.spot ? "SPOT" : "STANDARD"
@@ -127,6 +128,14 @@ resource "google_compute_instance_group_manager" "pool" {
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
   }
+  # A VM its group did not stop (a spot VM reclaimed, a VM failed) is left as it is, not repaired (#53): the plugin
+  # deletes it, as it does every stopped VM, and the autoscaler's next one goes where there is capacity, which is what
+  # upstream's README recommends. A repair recreates it in its own zone, and one in a zone out of spot t2a is retried
+  # there for as long as it is out, counted by the autoscaler as coming (the build pool's VM lost at 10:26Z on
+  # 2026-11-13, most likely reclaimed, and no build VM after it).
+  instance_lifecycle_policy {
+    default_action_on_failure = "DO_NOTHING"
+  }
   # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
   lifecycle {
     ignore_changes = [target_size]
@@ -151,6 +160,14 @@ resource "google_compute_region_instance_group_manager" "pool" {
   target_size                      = 0
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
+  }
+  # A VM its group did not stop (a spot VM reclaimed, a VM failed) is left as it is, not repaired (#53): the plugin
+  # deletes it, as it does every stopped VM, and the autoscaler's next one goes where there is capacity, which is what
+  # upstream's README recommends. A repair recreates it in its own zone, and one in a zone out of spot t2a is retried
+  # there for as long as it is out, counted by the autoscaler as coming (the build pool's VM lost at 10:26Z on
+  # 2026-11-13, most likely reclaimed, and no build VM after it).
+  instance_lifecycle_policy {
+    default_action_on_failure = "DO_NOTHING"
   }
   update_policy {
     type                         = "OPPORTUNISTIC"

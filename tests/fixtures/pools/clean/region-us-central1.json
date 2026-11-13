@@ -1,0 +1,1 @@
+{"name": "us-central1", "quotas": [{"metric": "CPUS", "limit": 48.0, "usage": 9.0}, {"metric": "T2A_CPUS", "limit": 48.0, "usage": 8.0}]}

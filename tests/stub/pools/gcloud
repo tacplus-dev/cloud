@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/pools_test.sh: it answers what ci/pools.sh runs, each from STUB_POOLS/<project>/: the
+# groups (groups.json), a group's instances and errors (instances-<group>.json, errors-<group>.json, the group named
+# with --region or --zone as groups.json places it), the region (region-<region>.json) and the project
+# (project.json). A read with no file is refused, as the API refuses one. Every call is logged (STUB_LOG, one line
+# each); any other command fails loudly.
+set -euo pipefail
+echo "gcloud $*" >> "$STUB_LOG"
+project='' format='' where='' words=()
+for a in "$@"; do
+  case $a in
+    --project=*) project=${a#*=} ;;
+    --format=*) format=${a#*=} ;;
+    --region=* | --zone=*) where=$a ;;
+    --*) echo "stub gcloud: a flag ci/pools.sh does not pass: $a" >&2; exit 99 ;;
+    *) words+=("$a") ;;
+  esac
+done
+[ "$format" = json ] && [ -n "$project" ] || { echo "stub gcloud: no --project or --format=json: $*" >&2; exit 99; }
+dir=$STUB_POOLS/$project
+# placed GROUP: --region=R or --zone=Z, as groups.json places GROUP.
+placed() { jq -r --arg g "$1" '.[] | select(.name == $g) | if .region then "--region=\(.region | sub(".*/"; ""))" else "--zone=\(.zone | sub(".*/"; ""))" end' "$dir/groups.json" 2>/dev/null; }
+case "${words[*]}" in
+  "compute instance-groups managed list") f=$dir/groups.json ;;
+  "compute instance-groups managed list-instances "* | "compute instance-groups managed list-errors "*)
+    [ "${#words[@]}" = 5 ] && [ -n "$where" ] && [ "$where" = "$(placed "${words[4]}")" ] ||
+      { echo "stub gcloud: not the group as it is placed: $*" >&2; exit 99; }
+    f=$dir/${words[3]#list-}-${words[4]}.json ;;
+  "compute regions describe "*) f=$dir/region-${words[3]}.json ;;
+  "compute project-info describe") f=$dir/project.json ;;
+  *) echo "stub gcloud: not a command ci/pools.sh runs: $*" >&2; exit 99 ;;
+esac
+[ -f "$f" ] || { echo "ERROR: (gcloud.compute) PERMISSION_DENIED: stub: no ${f##*/} in $project" >&2; exit 1; }
+cat "$f"

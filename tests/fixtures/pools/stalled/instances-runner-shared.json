@@ -1,0 +1,5 @@
+[
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-shared-0001", "currentAction": "NONE", "instanceStatus": "RUNNING"},
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-shared-0002", "currentAction": "NONE", "instanceStatus": "RUNNING"},
+  {"instance": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-shared-0003", "currentAction": "NONE", "instanceStatus": "STOPPED"}
+]

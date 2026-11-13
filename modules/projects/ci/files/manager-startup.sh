@@ -15,7 +15,7 @@
 # and runner-config-watch, a unit this script installs, re-runs this script (google-startup-scripts.service) when the
 # metadata changes. That run rewrites config.toml, which gitlab-runner reloads by itself, its jobs untouched: it is
 # restarted only on a new build, or when it is not running. Beside it, runner-reap (#49) deletes a pool's VM stuck
-# creating on a capacity or quota error, so that the group's next one goes where there is room.
+# creating (or recreating, #53) on a capacity or quota error, so that the group's next one goes where there is room.
 #
 # A new build is a new manager, and the old one drains before the new one starts (#48): the ci stack never deletes a
 # manager (it forgets the old one), and a new manager's gitlab-runner would remove every pool VM it did not create,
@@ -170,11 +170,12 @@ UNIT
 # us-central1-b, 2026-11-12, #29). Each minute it lists the groups the metadata names (runner-groups, each a group's
 # path in the Compute API: config, re-read each round), and deletes a VM creating on a capacity or quota error for
 # RUNNER_REAP_AFTER seconds (5 minutes) or more; the autoscaler then asks for another, which a group spread over the
-# region's zones makes where there is room. It deletes nothing else.
+# region's zones makes where there is room. A VM its group recreates (a repair, a replacement) is recreated in its own
+# zone, and stuck the same way (#53): it goes too. It deletes nothing else.
 cat > "$root/usr/local/sbin/runner-reap" <<'REAP'
 #!/bin/bash
 # The runner manager's reaper (tacplus-dev/cloud modules/projects/ci/files/manager-startup.sh, #49): deletes a pool's
-# VM stuck creating on a capacity or quota error, rather than letting its group retry it forever.
+# VM stuck creating or recreating on a capacity or quota error, rather than letting its group retry it forever.
 # RUNNER_REAP_ROUNDS, empty on the VM, is how many rounds tests/manager_startup_test.sh lets it make, RUNNER_REAP_SLEEP
 # its wait between them, and RUNNER_REAP_STATE where it keeps when it first saw each VM stuck.
 set -uo pipefail
@@ -182,7 +183,7 @@ md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/comp
 access() { md instance/service-accounts/default/token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'; }
 api() { curl -fsS -X POST -H @<(printf 'Authorization: Bearer %s\n' "$token") -H 'Content-Type: application/json' --data "${2:-}" "https://compute.googleapis.com/compute/v1/projects/$project/$1"; }
 after=${RUNNER_REAP_AFTER:-300} state=${RUNNER_REAP_STATE:-/var/lib/runner-reap} rounds=${RUNNER_REAP_ROUNDS:-0} n=0
-# The managed VMs (stdin) creating on a capacity or quota error for AFTER seconds or more, one per line; when each
+# The managed VMs (stdin) creating or recreating on a capacity or quota error for AFTER seconds or more, one per line; when each
 # was first seen stuck is kept in STATE, the group's file.
 stuck='
 import json, re, sys
@@ -195,7 +196,7 @@ capacity = re.compile(r"RESOURCE_POOL_EXHAUSTED|QUOTA_EXCEEDED|STOCKOUT")
 stuck = {}
 for m in json.load(sys.stdin).get("managedInstances", []):
     codes = [e.get("code", "") for e in m.get("lastAttempt", {}).get("errors", {}).get("errors", [])]
-    if m.get("currentAction") == "CREATING" and m.get("instance") and any(capacity.search(c) for c in codes):
+    if m.get("currentAction") in ("CREATING", "RECREATING") and m.get("instance") and any(capacity.search(c) for c in codes):
         stuck[m["instance"]] = seen.get(m["instance"], now)
 json.dump(stuck, open(path, "w"))
 for vm, since in sorted(stuck.items()):

@@ -1,0 +1,1 @@
+{"name": "tacplus-ci", "quotas": [{"metric": "CPUS_ALL_REGIONS", "limit": 48.0, "usage": 41.0}, {"metric": "NETWORKS", "limit": 5.0, "usage": 1.0}]}

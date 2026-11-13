@@ -236,6 +236,13 @@ run "ci" {
     condition     = alltrue([for g in concat(values(google_compute_instance_group_manager.pool), values(google_compute_region_instance_group_manager.pool)) : g.target_size == 0])
     error_message = "A pool's instance group is not empty at rest."
   }
+  # A VM its group did not stop (a spot VM reclaimed, 2026-11-13 10:26Z) is left stopped, not repaired: the plugin
+  # deletes it and the autoscaler's next VM goes where there is capacity (#53), as upstream's README recommends. A
+  # repair recreates it in its own zone, retried there forever when that zone is out of capacity.
+  assert {
+    condition     = alltrue([for g in concat(values(google_compute_instance_group_manager.pool), values(google_compute_region_instance_group_manager.pool)) : g.instance_lifecycle_policy[0].default_action_on_failure == "DO_NOTHING"])
+    error_message = "A pool's instance group repairs a VM it did not stop, in its zone, instead of leaving it to the plugin."
+  }
   # A zone out of capacity stalls no pool spread over the region's zones (#49): its group is regional, over its zones,
   # and makes each new VM in a zone that has the capacity (target shape ANY, which never moves a VM to even the zones
   # out: redistribution off). The plugin is pointed at the region. A pool with no zones of its own stays in the stack's.
@@ -414,7 +421,7 @@ run "ci" {
   # Never without a manager (#46): its name is its build's, so a new build makes the new one before the old one goes.
   # This build's (these inputs and files/manager-startup.sh): a commit that changes it replaces the manager.
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-3daaeddf" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
+    condition     = google_compute_instance.manager.name == "runner-manager-b95678f3" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
     error_message = "The manager's name is not runner-manager-<its build's hash>, or its build changed: then this test's name, knowingly (a new build replaces the manager)."
   }
   assert {
@@ -866,7 +873,7 @@ run "manager_config_pushed" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-3daaeddf" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
+    condition     = google_compute_instance.manager.name == "runner-manager-b95678f3" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
     error_message = "A config change renames the manager: it would replace it, every runner down until the new one boots."
   }
 }
@@ -914,7 +921,7 @@ run "manager_build_replaced" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name != "runner-manager-3daaeddf" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
+    condition     = google_compute_instance.manager.name != "runner-manager-b95678f3" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
   }
 }

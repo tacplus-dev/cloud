@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#45).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#53).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -117,7 +117,25 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   (a drain that ends early, one that hits the cap, on both managers' side) and the plan tests (the setting; the new
   build runner-manager-3daaeddf). Not yet seen live: the first apply of it creates runner-manager-3daaeddf and caps
   the drain of 4c24f5f4 and e66cee62 (whichever are left); that the cut jobs fail as `runner_interrupted` (gitlab-runner
-  19.5.3's source says so) and the kicker starts them again shows only then.
+  19.5.3's source says so) and the kicker starts them again shows only then (since #53, the build it applies is
+  runner-manager-b95678f3).
+- **The build pool made no VM (#53):** from about 10:25Z on 2026-11-13 every build job logged `unable to acquire
+  instance within the configured timeout of 15m0s`, after the 3-hour tacplus full gates lost their VM at 10:26:40Z,
+  most likely reclaimed. Not confirmed: nobody but the pipeline reads the ci project's groups. The groups repaired a
+  VM they did not stop (GCP's default), recreating a reclaimed spot VM in its own zone, retried there while that zone
+  is out, counted by the autoscaler as coming, and the reaper took creations only. Now every group's
+  `instance_lifecycle_policy` does nothing on a failure (`DO_NOTHING`, the fleeting plugin's recommendation: it
+  deletes the stopped VM and the autoscaler's next one goes where there is room), and the reaper also deletes a VM
+  *recreating* on a capacity or quota error (a new manager build, runner-manager-b95678f3: its handoff empties the
+  groups, a stuck recreation too). Where a report reads the reason: the drift job's pool check (`ci/pools.sh`), in
+  the drift issue: each VM a group cannot make with its error, a stopped VM it keeps, each group's errors of the last
+  24 hours by error and zone, and every quota of us-central1 and the project 80% used or more; nightly, or now by
+  running the drift schedule. Tested: the plan tests (mock providers: the policy on both kinds of group, the new
+  build's name), `tests/manager_startup_test.sh` (a recreation reaped), `tests/pools_test.sh` (a stub gcloud). Not
+  yet seen live: `apply:ci` (in place for the groups; the new manager and its handoff), and the first pool report.
+  The pools' CPUs at peak (shared 24, build 16, deploy 4, cluster 4, the manager 1, 2 during a handoff) are 49 to 50,
+  over the CPUS_ALL_REGIONS of 48 the settings name: the second build VM can fail on quota while deploy and cluster
+  run. The 3-hour full gates on spot, and the capacity that would carry them, are a proposal (PROPOSALS.md) for Jody.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

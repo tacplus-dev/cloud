@@ -279,8 +279,9 @@ mi() { # mi ZONE NAME ACTION [CODE]: a managed instance, as listManagedInstances
 }
 rm -rf "$stub/compute" && mkdir -p "$stub/compute"
 printf 'regions/us-central1/instanceGroupManagers/runner-build zones/us-central1-b/instanceGroupManagers/runner-shared' > "$stub/attributes/runner-groups"
-printf '{"managedInstances": [%s, %s, %s]}' "$(mi us-central1-b runner-build-a CREATING ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS)" \
-  "$(mi us-central1-a runner-build-b CREATING)" "$(mi us-central1-f runner-build-c NONE)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
+printf '{"managedInstances": [%s, %s, %s, %s]}' "$(mi us-central1-b runner-build-a CREATING ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS)" \
+  "$(mi us-central1-a runner-build-b CREATING)" "$(mi us-central1-f runner-build-c NONE)" \
+  "$(mi us-central1-b runner-build-r RECREATING ZONE_RESOURCE_POOL_EXHAUSTED)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
 printf '{"managedInstances": [%s, %s]}' "$(mi us-central1-b runner-shared-d CREATING QUOTA_EXCEEDED)" \
   "$(mi us-central1-b runner-shared-e CREATING CONDITION_NOT_MET)" > "$stub/compute/zones_us-central1-b_instanceGroupManagers_runner-shared.json"
 reaping() { : > "$stub/calls"; PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub RUNNER_REAP_STATE=$work/reap RUNNER_REAP_ROUNDS=1 timeout 20 "$reap" > "$work/out" 2>&1; }
@@ -292,9 +293,9 @@ reaping && grep -qxF "POST $compute/regions/us-central1/instanceGroupManagers/ru
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d={k: 0 for k in d}; json.dump(d, open(p, "w"))' "$work/reap/regions_us-central1_instanceGroupManagers_runner-build"
 reaping && [ "$(grep -c deleteInstances "$stub/calls")" = 1 ] &&
   grep -qxF "POST $compute/regions/us-central1/instanceGroupManagers/runner-build/deleteInstances Bearer vm-token" "$stub/calls" &&
-  grep -qxF "{\"instances\": [\"$(vm us-central1-b runner-build-a)\"], \"skipInstancesOnValidationError\": true}" "$stub/calls" &&
+  grep -qxF "{\"instances\": [\"$(vm us-central1-b runner-build-a)\", \"$(vm us-central1-b runner-build-r)\"], \"skipInstancesOnValidationError\": true}" "$stub/calls" &&
   grep -qF "runner-reap: deleting from regions/us-central1/instanceGroupManagers/runner-build" "$work/out" &&
-  ok "a VM stuck creating on a capacity error is deleted, and nothing else" || fail "reap: $(cat "$work/out" "$stub/calls")"
+  ok "a VM stuck creating, or recreating (#53), on a capacity error is deleted, and nothing else" || fail "reap: $(cat "$work/out" "$stub/calls")"
 # Gone from its group: forgotten. And a round that cannot list a group goes on to the next.
 printf '{"managedInstances": [%s]}' "$(mi us-central1-f runner-build-c NONE)" > "$stub/compute/regions_us-central1_instanceGroupManagers_runner-build.json"
 rm "$stub/compute/zones_us-central1-b_instanceGroupManagers_runner-shared.json"

@@ -1,0 +1,6 @@
+{"name": "us-central1", "quotas": [
+  {"metric": "CPUS", "limit": 48.0, "usage": 25.0},
+  {"metric": "T2A_CPUS", "limit": 24.0, "usage": 24.0},
+  {"metric": "DISKS_TOTAL_GB", "limit": 4096.0, "usage": 1100.0},
+  {"metric": "PREEMPTIBLE_CPUS", "limit": 0.0, "usage": 0.0}
+]}

@@ -56,7 +56,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab\|anthropic>` | The five roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
 | `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/nightly-builds.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and its nightly schedules, one per pinned repository (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
@@ -93,7 +93,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), a break of the network rules (below), or an Anthropic identity adopted with a change (below, The Anthropic organization). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), the pool check (`ci/pools.sh`: why a runner pool makes no VM, below, The pools), and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -489,7 +489,23 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
   which the startup script installs beside the watcher) lists every pool's group each minute (`runner-groups` in its
   metadata) and deletes a VM that has been creating on a capacity or quota error for five minutes; the autoscaler then
   asks for another, which a spread pool makes where there is room (a zonal pool, in its zone again, five minutes
-  later). It deletes nothing else.
+  later). A VM its group *recreates* stalls the same way, in its own zone, and goes too (#53). It deletes nothing else.
+- **A reclaimed VM is not repaired (#53).** On 2026-11-13 from about 10:25Z the build pool made no VM: every build
+  job logged `unable to acquire instance within the configured timeout of 15m0s` every 15 minutes, and the 3-hour
+  tacplus full gates lost their VM at 10:26:40Z (`runner_system_failure`), as a spot reclaim does. Nobody but the
+  pipeline could read the group, so the cause was not confirmed; but the groups repaired a VM they did not stop
+  (GCP's default), which recreates a reclaimed spot VM in its own zone, retried there for as long as that zone is out
+  of spot t2a, and counted by the autoscaler as coming, while the reaper took only creations. Each group's
+  `instance_lifecycle_policy` now does nothing on a failure (`DO_NOTHING`, what the fleeting plugin's README
+  recommends): a reclaimed VM stays stopped, the plugin deletes it, as it does every stopped VM, and the autoscaler's
+  next one goes where there is capacity; its jobs are lost either way (a recreated VM is a blank disk).
+- **Why a pool makes no VM, where a report reads it (#53).** The drift job's pool check (`ci/pools.sh`) reads every
+  group of `tacplus-ci` as the pipeline: each VM its group cannot make (a creation or recreation whose last attempt
+  failed, with the error: `ZONE_RESOURCE_POOL_EXHAUSTED*` is a zone out of capacity, `QUOTA_EXCEEDED` names the
+  quota) and each stopped VM it keeps; the group's errors of the last 24 hours, by error and zone; and every quota of
+  `us-central1` and of the project 80% used or more. What it finds is in the drift issue on GitHub (`pools`), which
+  the hub and the reports read. It runs nightly; for it now, run the drift schedule in the GitLab project (Build,
+  Pipeline schedules, run), which plans and never applies.
 - **Scaling.** Moving the shared VM to t2a-standard-16, four jobs at once, is one line (`shared_machine_type`), on
   Jody's word; so is raising `max_instances`. Scaling down needs no ask.
 - **Deploy and cluster** are protected and on demand: their credentials never share a VM with agents, and they cost
