@@ -3,9 +3,9 @@
 #
 # cluster-admin-pipeline: tacplus-dev/cluster's pipeline identity, keyless. Only that GitLab project's protected
 # main may become it (the provider's condition). In GCP it may get the dev cluster's credentials, and read the runners'
-# tokens (runner-tokens.tf); its cluster-admin is a ClusterRoleBinding inside the cluster, made here (#18), through the
-# stack's kubernetes provider, as this pipeline: never roles/container.admin in IAM, which could delete the cluster
-# (ci/policy.sh refuses it).
+# tokens (runner-tokens.tf), and write its registry ci-images (#45, below); its cluster-admin is a ClusterRoleBinding
+# inside the cluster, made here (#18), through the stack's kubernetes provider, as this pipeline: never
+# roles/container.admin in IAM, which could delete the cluster (ci/policy.sh refuses it).
 
 resource "google_iam_workload_identity_pool" "gitlab" {
   project                   = google_project.dev.project_id
@@ -71,4 +71,30 @@ resource "kubernetes_cluster_role_binding_v1" "cluster_pipeline" {
     name      = "${var.cluster_pipeline.account_id}@${var.project_id}.iam.gserviceaccount.com"
   }
   depends_on = [terraform_data.iam_ready]
+}
+
+# Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12): the GitLab Runner and helper images
+# tacplus-dev/cluster builds itself (crane, no container runtime), which the cluster's runner and its job pods pull.
+# Private: cluster-admin-pipeline alone writes it, the nodes alone read it (authoritative bindings, so a grant added by
+# hand, a public one included, is drift); no cleanup policy, so no image a pin names is deleted.
+resource "google_artifact_registry_repository" "ci_images" {
+  project       = google_project.dev.project_id
+  location      = var.region
+  repository_id = var.cluster_pipeline.registry
+  format        = "DOCKER"
+  description   = "${var.cluster_pipeline.gitlab_project}'s GitLab Runner images, run on the dev cluster (tacplus-dev/cloud)"
+  labels        = { managed-by = "tacplus-dev-cloud" }
+  depends_on    = [terraform_data.iam_ready]
+}
+
+resource "google_artifact_registry_repository_iam_binding" "ci_images" {
+  for_each = {
+    "roles/artifactregistry.writer" = google_service_account.cluster_pipeline.member
+    "roles/artifactregistry.reader" = google_service_account.nodes.member
+  }
+  project    = google_project.dev.project_id
+  location   = google_artifact_registry_repository.ci_images.location
+  repository = google_artifact_registry_repository.ci_images.repository_id
+  role       = each.key
+  members    = [each.value]
 }

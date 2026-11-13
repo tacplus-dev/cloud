@@ -25,8 +25,9 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
     below, The network rules), the DNS zone
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
-    cluster-admin in the cluster and the runners' token secrets it reads (below, The cluster pipeline), each
-    deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below, Certificates),
+    cluster-admin in the cluster, the runners' token secrets it reads and its registry `ci-images` (below, The cluster
+    pipeline), each deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below,
+    Certificates),
     its `get-credentials` on the cluster, Cloud Build roles, deploy registry, build bucket and environment accounts
     (below, Deployments: images, the cluster and environment accounts), its fleet's CA and crypto file secrets, which
     only its init-secrets job writes (below, The fleet's CA and crypto file), its Google sign-in client's secret,
@@ -636,6 +637,13 @@ the hub does, steps 4 and 7, are this pipeline's):
   that account (`gcloud secrets versions add gitlab-runner-build --project=tacplus-dev --data-file=-`); a new token is
   a new version, and a pull request in tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names both
   secrets.
+- **Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12):** the Artifact Registry Docker
+  repository `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, for the GitLab Runner and helper images
+  tacplus-dev/cluster builds itself (crane, no container runtime) and its `gitlab-runner/pin.yaml` names by digest.
+  Private: `cluster-admin-pipeline` alone holds `roles/artifactregistry.writer` on it, the nodes' account `gke-nodes`
+  alone `roles/artifactregistry.reader` (the runner Deployment and its job pods pull through the nodes), both
+  authoritative bindings on the repository only, so a grant added by hand is drift. No cleanup policy: no image a pin
+  names is deleted. The dev stack's output `cluster_pipeline` names it (`registry`).
 
 ## The GitHub Apps' keys
 

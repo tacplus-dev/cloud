@@ -22,10 +22,11 @@ output "dns_name_servers" {
 }
 
 output "cluster_pipeline" {
-  description = "tacplus-dev/cluster's GCP_WIF_PROVIDER and GCP_DEPLOY_SA."
+  description = "tacplus-dev/cluster's GCP_WIF_PROVIDER and GCP_DEPLOY_SA, and its registry's path (gitlab-runner/pin.yaml)."
   value = {
     wif_provider = google_iam_workload_identity_pool_provider.cluster.name
     sa           = google_service_account.cluster_pipeline.email
+    registry     = "${google_artifact_registry_repository.ci_images.location}-docker.pkg.dev/${google_project.dev.project_id}/${google_artifact_registry_repository.ci_images.repository_id}"
   }
 }
 

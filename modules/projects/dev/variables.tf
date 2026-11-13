@@ -93,12 +93,13 @@ variable "zone" {
 }
 
 variable "cluster_pipeline" {
-  description = "The cluster pipeline's identity: its service account's ID, the GitLab project it federates (protected main only), and the pool and provider names."
+  description = "The cluster pipeline's identity: its service account's ID, the GitLab project it federates (protected main only), the pool and provider names, and the name of its Docker registry (cluster-pipeline.tf), which it alone writes and the nodes read."
   type = object({
     account_id     = string
     gitlab_project = string
     pool           = string
     provider       = string
+    registry       = string
   })
 }
 

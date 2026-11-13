@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#51).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#45).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -185,6 +185,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   (PROPOSALS.md). Tested with the dev stack's plan tests (mock providers), the policy's fixtures, and a plan of the binding
   with the real kubernetes provider under an unknown configuration; not applied yet: `apply:dev` on main does it, and
   whether the host admits the adder shows there; the hub sets `GCP_RUNNER_TOKEN_ADDERS` first.
+- **The cluster pipeline's registry (#45; tacplus-dev/cluster#21, decision (1)):** the dev stack makes the Artifact
+  Registry Docker repository `ci-images` (us-central1, `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, output
+  `cluster_pipeline.registry`), private: `artifactregistry.writer` for `cluster-admin-pipeline` alone and
+  `artifactregistry.reader` for the nodes' `gke-nodes` alone, authoritative bindings on that repository only; no cleanup
+  policy. For tacplus-dev/cluster's own GitLab Runner images (its `runner-images` job, then its interim exception goes,
+  by 2026-11-25). Tested with the dev stack's plan tests (mock providers); not applied yet: `apply:dev` on main does it.
 - **The GitHub Apps' keys in tacplus-ci (#19; looper#83):** the key ring `looper` holds `tacplus-manager`,
   `tacplus-looper` and `tacplus-reader` (`modules/settings` `github_apps`, with the apps' IDs), import-only RS256
   software keys with no version, `prevent_destroy`; the reader's key and key ring moved to the map's addresses

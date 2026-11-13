@@ -82,6 +82,8 @@ module "dev" {
     gitlab_project = "tacplus-dev/cluster"
     pool           = "gitlab-com"
     provider       = "tacplus-dev-cluster"
+    # Its GitLab Runner images (tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12).
+    registry = "ci-images"
   }
   deployments = module.settings.deployments
   # Jody adds the runners' token versions (#18): the hub registers each runner and pipes its token in, as Jody.

@@ -80,6 +80,11 @@ run "stack" {
     condition     = output.deployments["seatrials"].registry == "us-central1-docker.pkg.dev/tacplus-dev/seatrials" && output.deployments["seatrials"].build.bucket == "gs://tacplus-dev-seatrials-build" && keys(output.deployments["seatrials"].environment_accounts) == ["test-idp"]
     error_message = "The stack does not give seatrials its registry, its build bucket and the test IdP's account."
   }
+  # tacplus-dev/cluster's gitlab-runner/pin.yaml names it (#45).
+  assert {
+    condition     = output.cluster_pipeline.registry == "us-central1-docker.pkg.dev/tacplus-dev/ci-images"
+    error_message = "The stack does not give the cluster pipeline its registry us-central1-docker.pkg.dev/tacplus-dev/ci-images."
+  }
   # fleet-seatrials#44's names (#28).
   assert {
     condition     = output.deployments["seatrials"].fleet_secrets.ca == "projects/tacplus-dev/secrets/fleet-ca-seatrials" && output.deployments["seatrials"].fleet_secrets.crypto == "projects/tacplus-dev/secrets/fleet-crypto-seatrials" && output.deployments["seatrials"].fleet_secrets.environment == "init-secrets"
@@ -158,6 +163,7 @@ run "dev" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = {
@@ -391,6 +397,20 @@ run "dev" {
     condition     = toset(keys(google_artifact_registry_repository_iam_binding.deploy)) == toset(["seatrials/roles/artifactregistry.writer", "seatrials/roles/artifactregistry.reader"]) && google_artifact_registry_repository_iam_binding.deploy["seatrials/roles/artifactregistry.writer"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.deploy["seatrials/roles/artifactregistry.reader"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com", "serviceAccount:gke-nodes@tacplus-dev.iam.gserviceaccount.com"])
     error_message = "The deploy registry is not written by the builds' account alone, and read by seatrials-deploy and the nodes alone."
   }
+  # The cluster pipeline's registry (#45, tacplus-dev/cluster#21): Docker, us-central1, ci-images, private;
+  # cluster-admin-pipeline alone writes it, the nodes alone read it, and it holds no other registry's role.
+  assert {
+    condition     = google_artifact_registry_repository.ci_images.repository_id == "ci-images" && google_artifact_registry_repository.ci_images.format == "DOCKER" && google_artifact_registry_repository.ci_images.location == "us-central1" && google_artifact_registry_repository.ci_images.project == "tacplus-dev"
+    error_message = "The cluster pipeline's registry is not the Docker registry ci-images in us-central1, in tacplus-dev."
+  }
+  assert {
+    condition     = toset(keys(google_artifact_registry_repository_iam_binding.ci_images)) == toset(["roles/artifactregistry.writer", "roles/artifactregistry.reader"]) && google_artifact_registry_repository_iam_binding.ci_images["roles/artifactregistry.writer"].members == toset(["serviceAccount:cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.ci_images["roles/artifactregistry.reader"].members == toset(["serviceAccount:gke-nodes@tacplus-dev.iam.gserviceaccount.com"]) && alltrue([for b in values(google_artifact_registry_repository_iam_binding.ci_images) : b.repository == "ci-images" && b.location == "us-central1"])
+    error_message = "ci-images is not written by cluster-admin-pipeline alone and read by the nodes alone."
+  }
+  assert {
+    condition     = alltrue([for b in values(google_artifact_registry_repository_iam_binding.deploy) : !contains(b.members, "serviceAccount:cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com")])
+    error_message = "cluster-admin-pipeline holds a role on a deploy registry."
+  }
   # Cloud Build (#20): seatrials-deploy submits builds, as the builds' account, which pushes to the registry.
   assert {
     condition     = toset([for m in values(google_project_iam_member.deploy) : "${m.member} ${m.role}"]) == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com roles/cloudbuild.builds.editor", "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com roles/serviceusage.serviceUsageConsumer"])
@@ -565,6 +585,7 @@ run "shared_port_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     load_balancer = {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = false }
@@ -613,6 +634,7 @@ run "x86_nodes_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
@@ -660,6 +682,7 @@ run "empty_normal_pool_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
@@ -707,6 +730,7 @@ run "shared_environment_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # Two pipelines would share one ACME account and one challenge zone.
     deployments = {
@@ -756,6 +780,7 @@ run "environment_account_as_deploy_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # The test IdP's jobs would run as the deploy account (#20: it must not be).
     deployments = {
@@ -807,6 +832,7 @@ run "init_secrets_account_as_deploy_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # The init-secrets job would run as the deploy account (#28: it must not be).
     deployments = {
@@ -858,6 +884,7 @@ run "init_secrets_environment_shared_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # The test IdP's jobs would become the init-secrets job's account too (#28: its environment is its own).
     deployments = {
@@ -910,6 +937,7 @@ run "environment_certificate_without_account_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # A certificate for an environment that has no account of its own (#32): nobody would own it.
     deployments = {
@@ -961,6 +989,7 @@ run "environment_certificate_shared_domain_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # The test IdP's certificate on the deployment's domain (#32): two jobs would share one challenge zone.
     deployments = {
@@ -1013,6 +1042,7 @@ run "environment_secret_taken_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # An environment's secret named as the deployment's certificate (#32): the test IdP's jobs would read it.
     deployments = {
@@ -1065,6 +1095,7 @@ run "environment_secret_fleet_taken_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     # An environment's secret named as the deployment's fleet CA (#32, #28): the test IdP's jobs would read it.
     deployments = {
@@ -1119,6 +1150,7 @@ run "hostname_outside_zone_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.example.com"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
@@ -1167,6 +1199,7 @@ run "copied_record_at_hostname_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
@@ -1215,6 +1248,7 @@ run "copied_apex_ns_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
@@ -1265,6 +1299,7 @@ run "google_signin_without_adders" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     deployments = {
       seatrials = {
@@ -1327,6 +1362,7 @@ run "google_signin_adder_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     google_signin_adders = ["jody@example.com"]
   }
@@ -1372,6 +1408,7 @@ run "runner_token_adder_refused" {
       gitlab_project = "tacplus-dev/cluster"
       pool           = "gitlab-com"
       provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
     }
     runner_token_adders = ["jody@example.com"]
   }
