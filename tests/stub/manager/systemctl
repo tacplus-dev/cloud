@@ -3,9 +3,32 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # A stub systemctl for tests/manager_startup_test.sh: logs its arguments to STUB_MANAGER/log; is-active answers
-# whether STUB_MANAGER/active exists (gitlab-runner running). Each call is also an event (STUB_MANAGER/events), in
-# order with the Compute API's (#48).
+# whether STUB_MANAGER/active exists (gitlab-runner running), and prints its state unless --quiet. Each call is also an
+# event (STUB_MANAGER/events), in order with the Compute API's (#48).
+# gitlab-runner's stop (#51): `stop --no-block` leaves it deactivating for STUB_MANAGER/drain more is-active (its jobs
+# finishing; none without it), a SIGTERM to its main process (its jobs cut) for STUB_MANAGER/abort more (none without
+# it), and a SIGKILL stops it at once.
 echo "systemctl $*" >> "$STUB_MANAGER/log"
 echo "systemctl $*" >> "$STUB_MANAGER/events"
-[ "${1:-}" = is-active ] && { [ -f "$STUB_MANAGER/active" ]; exit; }
+s=$STUB_MANAGER
+case ${1:-} in
+  is-active)
+    state=inactive
+    if [ -f "$s/stopping" ]; then
+      n=$(cat "$s/stopping")
+      if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$s/stopping"; state=deactivating; else rm -f "$s/stopping" "$s/active"; fi
+    elif [ -f "$s/active" ]; then
+      state=active
+    fi
+    [ "${2:-}" = --quiet ] || echo "$state"
+    [ "$state" = active ]; exit ;;
+  stop)
+    [ "${2:-}" = --no-block ] && [ -f "$s/active" ] && [ ! -f "$s/stopping" ] && cat "$s/drain" 2>/dev/null > "$s/stopping"
+    [ -s "$s/stopping" ] || echo 0 > "$s/stopping" ;;
+  kill)
+    case "$*" in
+      *--signal=SIGKILL*) rm -f "$s/active" "$s/stopping" ;;
+      *--signal=SIGTERM*) [ -f "$s/active" ] && { cat "$s/abort" 2>/dev/null || echo 0; } > "$s/stopping" ;;
+    esac ;;
+esac
 exit 0

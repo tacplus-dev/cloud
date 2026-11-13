@@ -24,7 +24,14 @@
 # script as its startup-script, which its watcher then runs) and waits until none is left; then it empties the pools'
 # groups (runner-groups), stuck creations too (#29), and gitlab-runner starts on empty groups. A manager told to
 # retire (runner-successor) starts runner-retire: gitlab-runner stops gracefully (SIGQUIT: it takes no new job and
-# finishes its running ones, with no time limit), then the VM deletes itself.
+# finishes its running ones), then the VM deletes itself.
+#
+# The handoff is capped (#51): while it lasts no job starts anywhere, and a repository manager's job runs for hours.
+# The new manager starts gitlab-runner at most runner-handoff-limit seconds (the ci stack's manager_handoff_minutes,
+# 30) after it began waiting: each older one drains until 5 minutes before then (runner-drain-until, which the new
+# one sets), then cuts the jobs still running (SIGTERM: gitlab-runner aborts them, failed as runner_interrupted at
+# once, and run again here: by GitLab where their retry names it, else by the looper's kicker, from their last
+# checkpoint) and goes; one still there 2 minutes before then is deleted; the last 2 minutes empty the groups.
 #
 # MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /; RUNNER_POLL, 30 on the
 # VM, is the seconds between its waits' checks.
@@ -106,20 +113,40 @@ UNIT
 cat > "$root/usr/local/sbin/runner-retire" <<'RETIRE'
 #!/bin/bash
 # The runner manager's retirement (tacplus-dev/cloud modules/projects/ci/files/manager-startup.sh, #48): a newer
-# manager waits for this one to go before its gitlab-runner starts. gitlab-runner stops gracefully, as long as its
-# running jobs take (SIGQUIT: no new job, the running ones finished), and never starts again here; then this VM
-# deletes itself. The SIGQUIT is gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its running jobs
-# still reach their VMs through (the apply that made the successor among them), goes only once it has exited. MANAGER_ROOT and RUNNER_POLL as the startup script's.
+# manager waits for this one to go before its gitlab-runner starts. gitlab-runner stops gracefully (SIGQUIT: no new
+# job, the running ones finished) and never starts again here; then this VM deletes itself. The drain ends at
+# runner-drain-until (#51, the successor's, re-read each check): the jobs still running then are cut (SIGTERM, a
+# forced stop: gitlab-runner aborts them and fails them as runner_interrupted, run again on the successor), and a
+# gitlab-runner still running RUNNER_ABORT_WAIT seconds later (60) is killed. The signals are gitlab-runner's alone
+# (KillMode=mixed): its fleeting plugin, which its running jobs still reach their VMs through (the apply that made the
+# successor among them), goes only once it has exited. MANAGER_ROOT and RUNNER_POLL as the startup script's.
 set -uo pipefail
-root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30}
+root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30} abort=${RUNNER_ABORT_WAIT:-60}
 md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
 access() { md instance/service-accounts/default/token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'; }
+# running: gitlab-runner not stopped yet (active, or deactivating while its jobs finish).
+running() { case $(systemctl is-active gitlab-runner) in inactive | failed) return 1 ;; esac; }
 install -d "$root/etc/systemd/system/gitlab-runner.service.d"
 printf '[Service]\nKillSignal=SIGQUIT\nKillMode=mixed\nTimeoutStopSec=infinity\n' > "$root/etc/systemd/system/gitlab-runner.service.d/drain.conf"
 systemctl daemon-reload
 systemctl disable gitlab-runner
 echo "runner-retire: $(md instance/attributes/runner-successor) succeeds this manager: gitlab-runner finishes its jobs and stops"
-systemctl stop gitlab-runner
+systemctl stop --no-block gitlab-runner
+while running; do
+  end=$(md instance/attributes/runner-drain-until 2>/dev/null) || end=''
+  if [[ $end =~ ^[0-9]+$ ]] && [ "$(date +%s)" -ge "$end" ]; then
+    echo "runner-retire: the drain's end ($(date -u -d "@$end" +%FT%TZ)): gitlab-runner cuts its running jobs (runner_interrupted), to run again on the successor"
+    systemctl kill --kill-whom=main --signal=SIGTERM gitlab-runner
+    end=$(($(date +%s) + abort))
+    while running && [ "$(date +%s)" -lt "$end" ]; do sleep "$poll"; done
+    if running; then
+      echo "runner-retire: gitlab-runner still running ${abort}s after the cut: killed"
+      systemctl kill --signal=SIGKILL gitlab-runner
+    fi
+    break
+  fi
+  sleep "$poll"
+done
 name=$(md instance/name) zone=$(md instance/zone)
 echo "runner-retire: gitlab-runner stopped, no job left: deleting $name"
 until curl -fsS -X DELETE -H @<(printf 'Authorization: Bearer %s\n' "$(access)") -o /dev/null \
@@ -210,8 +237,10 @@ systemctl enable --now runner-config-watch.service
 systemctl enable --now runner-reap.service
 
 if successor=$(attr runner-successor 2>/dev/null) && [ -n "$successor" ]; then
-  systemctl start --no-block runner-retire.service
-  say "retiring for $successor: gitlab-runner finishes its jobs and stops, then this VM deletes itself"
+  # Restarted, not started: one already draining (a newer successor, or one from before #51, which had no end) takes
+  # this script's, and the end it is given now.
+  systemctl restart --no-block runner-retire.service
+  say "retiring for $successor: gitlab-runner finishes its jobs and stops, or has them cut at the drain's end, then this VM deletes itself"
   exit 0
 fi
 
@@ -266,18 +295,20 @@ for i in items:
         print(i["name"])
 ' "$1"
 }
-# retire NAME: the older manager NAME told to retire, with this script as its startup-script, which its watcher runs
-# on the change (a manager older than #48 has no runner-retire of its own); nothing if it already was.
+# retire NAME ME END: the older manager NAME told to retire, its successor ME, its drain to end at END (seconds since
+# the epoch), with this script as its startup-script, which its watcher runs on the change (a manager older than #48
+# has no runner-retire of its own, one older than #51 no drain's end); nothing if it already was.
 retire() {
   compute GET "$zone/instances/$1" > "$tmp/old.json" && attr startup-script > "$tmp/script" &&
-    python3 - "$tmp/old.json" "$tmp/script" "$2" > "$tmp/metadata.json" <<'PY' || return 1
+    python3 - "$tmp/old.json" "$tmp/script" "$2" "$3" > "$tmp/metadata.json" <<'PY' || return 1
 import json, sys
-inst, script, me = json.load(open(sys.argv[1])), open(sys.argv[2]).read(), sys.argv[3]
+inst, script, me, end = json.load(open(sys.argv[1])), open(sys.argv[2]).read(), sys.argv[3], sys.argv[4]
 md = inst.get("metadata", {})
 items = {i["key"]: i.get("value", "") for i in md.get("items", [])}
-if items.get("runner-successor") == me and items.get("startup-script") == script:
+told = {"runner-successor": me, "startup-script": script, "runner-drain-until": end}
+if all(items.get(k) == v for k, v in told.items()):
     sys.exit(0)
-items.update({"runner-successor": me, "startup-script": script})
+items.update(told)
 json.dump({"fingerprint": md.get("fingerprint", ""), "items": [{"key": k, "value": v} for k, v in sorted(items.items())]}, sys.stdout)
 PY
   [ -s "$tmp/metadata.json" ] || return 0
@@ -288,24 +319,40 @@ managed() {
   compute POST "$1/listManagedInstances" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("managedInstances", [])))'
 }
 # handoff: gitlab-runner starts alone on empty groups. The older managers first retire (each drains its jobs, then
-# deletes itself), however long their jobs take: until then they hold the groups' VMs, and their jobs, and this
-# manager takes no job. Then the groups to zero, until each has no instance at all: a creation stuck on an error of
-# the old fleet's time (QUOTA_EXCEEDED, retried by the group about every 90 minutes, #29) goes with them, and the
-# VMs gitlab-runner then asks for are created at once.
+# deletes itself): until then they hold the groups' VMs, and their jobs, and this manager takes no job. Not for longer
+# than the handoff's limit (#51, runner-handoff-limit seconds from the handoff's start, which a re-run of this script
+# keeps): each drains until 5 minutes before it, then cuts its jobs and goes; one still there 2 minutes before it (its
+# watcher or runner-retire not running) is deleted, its jobs with it. Then the groups to zero, until each has no
+# instance at all: a creation stuck on an error of the old fleet's time (QUOTA_EXCEEDED, retried by the group about
+# every 90 minutes, #29) goes with them, and the VMs gitlab-runner then asks for are created at once.
 handoff() {
-  local me olds o g n
+  local me olds o g n limit since end gone state=$root/var/lib/runner-handoff
   me=$(md instance/name)
+  limit=$(attr runner-handoff-limit 2>/dev/null) && [[ $limit =~ ^[0-9]+$ ]] || limit=1800
+  install -d "$state"
+  [ -s "$state/since" ] || date +%s > "$state/since"
+  since=$(cat "$state/since")
+  end=$((since + limit - 300)) gone=$((since + limit - 120))
   while :; do
     olds=$(older "$me") || { say "cannot list the managers yet"; sleep "$poll"; continue; }
     [ -z "$olds" ] && break
-    for o in $olds; do retire "$o" "$me" || say "cannot tell $o to retire yet"; done
-    say "waiting for the older managers to finish their jobs and go: ${olds//$'\n'/ }"
+    for o in $olds; do
+      if [ "$(date +%s)" -lt "$gone" ]; then
+        retire "$o" "$me" "$end" || say "cannot tell $o to retire yet"
+      elif compute DELETE "$zone/instances/$o" > /dev/null; then
+        say "deleted $o: still there past its drain's end, 2 minutes before the handoff's limit (its jobs, if any, lost)"
+      else
+        say "cannot delete $o yet"
+      fi
+    done
+    say "waiting for the older managers to finish their jobs, or cut them at $(date -u -d "@$end" +%FT%TZ), and go: ${olds//$'\n'/ }"
     sleep "$poll"
   done
   for g in $(attr runner-groups); do
     until compute POST "$g/resize?size=0" > /dev/null; do say "cannot resize $g to 0 yet"; sleep "$poll"; done
     until n=$(managed "$g") && [ "$n" = 0 ]; do say "the group $g still has ${n:-some} instances: waiting until it has none"; sleep "$poll"; done
   done
+  rm -f "$state/since"
   say "no older manager left, the groups empty: $(attr runner-groups)"
 }
 

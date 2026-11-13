@@ -403,13 +403,18 @@ run "ci" {
     error_message = "The manager's metadata does not name the runner bucket and the two builds' pinned SHA-256s."
   }
   assert {
-    condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-groups runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
+    condition     = join(" ", keys(google_compute_instance.manager.metadata)) == "fleeting-plugin-sha256 runner-bucket runner-config runner-groups runner-handoff-limit runner-pools runner-sha256 startup-script" && !anytrue([for v in values(google_compute_instance.manager.metadata) : strcontains(v, "gitlab-runner-downloads") || strcontains(v, "/packages/generic/") || strcontains(v, "apt-get")])
     error_message = "The manager's metadata still pins an upstream download or a package archive."
+  }
+  # The handoff's cap (#51): 30 minutes by default, config pushed to the running manager (not its build), in seconds.
+  assert {
+    condition     = google_compute_instance.manager.metadata["runner-handoff-limit"] == "1800"
+    error_message = "The manager's metadata does not cap a handoff at 30 minutes (runner-handoff-limit, in seconds)."
   }
   # Never without a manager (#46): its name is its build's, so a new build makes the new one before the old one goes.
   # This build's (these inputs and files/manager-startup.sh): a commit that changes it replaces the manager.
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-4c24f5f4" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
+    condition     = google_compute_instance.manager.name == "runner-manager-3daaeddf" && google_compute_instance.manager.metadata["startup-script"] == file("../../modules/projects/ci/files/manager-startup.sh")
     error_message = "The manager's name is not runner-manager-<its build's hash>, or its build changed: then this test's name, knowingly (a new build replaces the manager)."
   }
   assert {
@@ -861,7 +866,7 @@ run "manager_config_pushed" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name == "runner-manager-4c24f5f4" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
+    condition     = google_compute_instance.manager.name == "runner-manager-3daaeddf" && strcontains(google_compute_instance.manager.metadata["runner-config"], "capacity_per_instance = 4")
     error_message = "A config change renames the manager: it would replace it, every runner down until the new one boots."
   }
 }
@@ -909,7 +914,7 @@ run "manager_build_replaced" {
     kms_key_importers = ["user:jody@example.com"]
   }
   assert {
-    condition     = google_compute_instance.manager.name != "runner-manager-4c24f5f4" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
+    condition     = google_compute_instance.manager.name != "runner-manager-3daaeddf" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
   }
 }

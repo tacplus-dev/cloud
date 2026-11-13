@@ -248,6 +248,8 @@ locals {
     runner-pools           = join(" ", sort(keys(var.pools)))
     runner-groups          = join(" ", [for k in sort(keys(var.pools)) : local.groups[k].path])
     runner-config          = local.manager_config
+    # Config, not the build (#51): read by the next new manager's handoff, which caps the old one's drain with it.
+    runner-handoff-limit = tostring(var.manager_handoff_minutes * 60)
   }
 }
 

@@ -544,23 +544,39 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   gitlab-runner starts, the new one's startup script tells each older manager to retire (its metadata
   `runner-successor`, and the new startup script, which the old one's watcher runs: a manager older than #48 learns
   how), and waits until none is left. A manager told to retire runs `runner-retire`: gitlab-runner stops on SIGQUIT,
-  taking no new job and finishing its running ones however long they take (`apply:ci`'s own among them, which runs
+  taking no new job and finishing its running ones until the drain's end, below (`apply:ci`'s own among them, which runs
   through the old manager: that job now ends well), then the VM deletes itself. The SIGQUIT is gitlab-runner's alone
-  (`KillMode=mixed`): its fleeting plugin, which those jobs reach their VMs through, goes only after it (the #49
-  apply died with `Plugin did not respond` when its manager went). Then the new one resizes each pool's group
-  (`runner-groups`, zonal or regional) to zero and waits until it has no instance, a creation stuck on an error of
-  the old fleet's time too (#29: `QUOTA_EXCEEDED`, retried by the group only about every 90 minutes), and starts
+  (`KillMode=mixed`): its fleeting plugin, which those jobs reach their VMs through, goes only after it (the #49 apply
+  died with `Plugin did not respond` when its manager went). Then the new one resizes each pool's group
+  (`runner-groups`, zonal or regional) to zero and waits until it has no instance, a creation stuck on an error of the
+  old fleet's time too (#29: `QUOTA_EXCEEDED`, retried by the group only about every 90 minutes), and starts
   gitlab-runner: the shared pool's idle VMs are created at once, the quota freed (the old fleet's VMs gone first, both
-  managers within it). The cost: while the old one drains, no new job starts anywhere; the queue waits for the longest
-  running job. `ci/policy.sh` refuses any plan
-  that would destroy a manager (first, or at all) and a source without `create_before_destroy` and `destroy = false`;
-  `tests/manager_startup_test.sh` pins the handoff and the retirement against a stub Compute API, and the plan tests
-  pin the names (a config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the
-  providers at INFO) is in the apply job's artifacts, `plans/<stack>.apply.log`.
-- **If an old manager does not retire** (its watcher not running, a job that never ends), the new one waits, and
-  says so in its serial log (`waiting for the older managers to finish their jobs and go`): the old one still runs
-  its jobs. Delete the old one by hand (`gcloud compute instances delete runner-manager-<old> --zone us-central1-b
-  --project tacplus-ci`), which kills its remaining jobs; the new one then goes on by itself.
+  managers within it). While the old one drains, no new job starts anywhere, so the drain is capped (#51): the new
+  manager takes jobs at most `manager_handoff_minutes` (30, the ci stack's; metadata `runner-handoff-limit`) after its
+  handoff began, a re-run of its startup script keeping that start. It tells each older one when its drain ends
+  (`runner-drain-until`, 5 minutes before the cap); then `runner-retire` cuts the jobs still running (SIGTERM, to
+  gitlab-runner alone: a forced stop, killed if it has not stopped a minute later) and the VM goes. gitlab-runner
+  19.5.3 aborts them and fails them at once as `runner_interrupted` (its `common/build.go`), which GitLab retries
+  where a job's `retry: when:` names it. tacplus-dev/looper's jobs retry only on `runner_system_failure`,
+  `scheduler_failure` and `unknown_failure` today, so its kicker starts them again: an issue whose report job is no
+  longer running is resumed by its next pass, from the run's last checkpoint, and is not `looper:stuck` (a run killed
+  outright never ends with an outcome; tacplus-dev/looper README, A run killed outright), and a repository whose lands
+  are queued gets its manager again. An older manager still there 2 minutes before the cap (its watcher or
+  `runner-retire` not running) the new one deletes itself. What the cap trades: a job longer than the drain (a
+  repository manager's, a looper report's of hours) loses the work since its last checkpoint, and starts again behind
+  the queue, against the whole fleet waiting up to the longest job's timeout (11 hours) for it; a job that neither
+  retries on `runner_interrupted` nor has a kicker (a stack's apply, say) fails, and is run again by hand.
+  `ci/policy.sh` refuses any plan that would destroy a manager (first, or at all) and a source without
+  `create_before_destroy` and `destroy = false`; `tests/manager_startup_test.sh` pins the handoff and the retirement,
+  a drain that ends early and one that hits the cap, against a stub Compute API, and the plan tests pin the names (a
+  config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at
+  INFO) is in the apply job's artifacts, `plans/<stack>.apply.log`.
+- **If an old manager does not retire** (its watcher not running), the new one waits until 2 minutes before the
+  handoff's cap, and says so in its serial log (`waiting for the older managers to finish their jobs, or cut them at
+  ...`), then deletes it (`deleted runner-manager-<old>: still there past its drain's end`): its jobs die with it,
+  unreported, and GitLab fails them only when it finds them stale. To end a handoff sooner, delete the old one by
+  hand (`gcloud compute instances delete runner-manager-<old> --zone us-central1-b --project tacplus-ci`), which
+  kills its remaining jobs the same way; the new one then goes on by itself.
 - **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a

@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by the looper (#48).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#51).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -102,9 +102,22 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-12 by th
   them; the signal gitlab-runner's alone, `KillMode=mixed`, so its fleeting plugin serves them to the end) and deletes
   its VM. While the old one drains no new job starts. `ci/policy.sh` refuses a plan destroying a manager at all and a
   source without `destroy = false`. Tested: the startup script and `runner-retire` against a stub Compute API, the
-  policy, the plan tests and `tests/ci_plan_test.sh` (the old and deposed managers forgotten). Not yet seen live: the
-  first apply of it creates runner-manager-4c24f5f4, runner-manager-e66cee62 (and any older one left) drains and goes,
-  and the shared pool's three VMs come back on the new manager.
+  policy, the plan tests and `tests/ci_plan_test.sh` (the old and deposed managers forgotten). Seen live on
+  2026-11-13: pipeline 3062392842 created runner-manager-4c24f5f4 at 01:19Z, which told runner-manager-e66cee62 to
+  retire and waits for its jobs, none killed; but e66cee62's oldest jobs (repository managers, 11-hour timeout) held the
+  whole fleet for hours, hence #51.
+- **The handoff capped (#51):** a new manager takes jobs at most `manager_handoff_minutes` (30, `stacks/ci`; metadata
+  `runner-handoff-limit`) after its handoff began (kept in `/var/lib/runner-handoff/since` across its startup script's
+  re-runs): it tells each older one when its drain ends (`runner-drain-until`, 5 minutes before the cap), and deletes
+  one still there 2 minutes before it. `runner-retire` drains until then, then cuts the jobs still running (SIGTERM
+  to gitlab-runner alone: aborted and failed as `runner_interrupted`; tacplus-dev/looper's kicker starts them again,
+  as its jobs' retry does not name that reason), kills
+  gitlab-runner a minute later if it has not stopped, and deletes its VM; a retiring manager's startup script
+  restarts `runner-retire`, so one draining from before #51 takes the end too. Tested: `tests/manager_startup_test.sh`
+  (a drain that ends early, one that hits the cap, on both managers' side) and the plan tests (the setting; the new
+  build runner-manager-3daaeddf). Not yet seen live: the first apply of it creates runner-manager-3daaeddf and caps
+  the drain of 4c24f5f4 and e66cee62 (whichever are left); that the cut jobs fail as `runner_interrupted` (gitlab-runner
+  19.5.3's source says so) and the kicker starts them again shows only then.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

@@ -55,6 +55,16 @@ variable "manager_machine_type" {
   type        = string
 }
 
+variable "manager_handoff_minutes" {
+  description = "The cap on a manager handoff (#51): a new manager starts taking jobs at most this long after it boots. The old one drains until 5 minutes before it, then the jobs still on it are cut (failed as runner_interrupted, to run again on the new one); the last minutes delete the old manager and empty the groups."
+  type        = number
+  default     = 30
+  validation {
+    condition     = var.manager_handoff_minutes >= 10 && floor(var.manager_handoff_minutes) == var.manager_handoff_minutes
+    error_message = "The handoff's cap is a whole number of minutes, 10 or more: 5 are kept for the cut and the emptied groups."
+  }
+}
+
 variable "runner" {
   description = "GitLab Runner on the manager: our builds of its and the googlecloud fleeting plugin's tags (ci/runner.sh: version, branch and commit; plugin_version and plugin_commit), each installed by its SHA-256 (runner_sha256, plugin_sha256); the helper image its jobs run beside, and the default job image, by digest."
   type = object({

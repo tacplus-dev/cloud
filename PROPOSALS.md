@@ -386,7 +386,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   starts anywhere (the new one waits on its groups). With quota for two fleets, a new build could get groups of its
   own (named by the build, forgotten with its manager, which deletes them once drained) and take jobs at once. Why:
   the queue waits for the old manager's longest job, up to a looper's four hours; today CPUS_ALL_REGIONS (32) holds
-  one fleet only.
+  one fleet only. #51 (2026-11-13) caps that wait at 30 minutes by cutting the jobs still running then; this would end
+  it, and the cut with it.
+- **Retry a looper job cut by a manager handoff at once** (looper, #51, 2026-11-13). What: add `runner_interrupted`
+  to the `retry: when:` of tacplus-dev/looper's jobs (`ci/looper.gitlab-ci.yml`, `ci/tacplus-dev.gitlab-ci.yml`, now
+  `[runner_system_failure, scheduler_failure, unknown_failure]`). Why: at the handoff's cap the old manager's
+  gitlab-runner (19.5.3) aborts its jobs as `runner_interrupted`, not `runner_system_failure` (`common/build.go`), a
+  reason GitLab accepts in `retry: when:`; today the kicker starts them again on its next pass, which works, but a
+  retry keeps the job's place and its pipeline. A change in tacplus-dev/looper: a feature there, for Jody.
 - **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). What: once an `apply:ci`
   of it has succeeded (the state no longer holds the resource), delete the block in `modules/projects/ci/runners.tf`
   and the half of `tests/ci_plan_test.sh` that needs it. Why: it is a no-op after that apply, kept only until the one

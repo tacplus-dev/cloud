@@ -16,8 +16,13 @@
 # waits until none is left, touching no group meanwhile; a newer manager it leaves alone; then it empties each pool's
 # group, a stuck creation too, and waits until each has no instance, and only then starts gitlab-runner. A config
 # pushed to a running manager asks Compute nothing. A manager told to retire starts runner-retire and nothing else:
-# no config, no gitlab-runner; runner-retire stops gitlab-runner gracefully (SIGQUIT, no time limit), never to start
-# again, and only then deletes its own VM. Against a stub Compute API (tests/stub/manager/compute-api).
+# no config, no gitlab-runner; runner-retire stops gitlab-runner gracefully (SIGQUIT), never to start again, and only
+# then deletes its own VM. Against a stub Compute API (tests/stub/manager/compute-api).
+# The handoff's cap (#51): the new manager tells each older one when its drain ends (runner-drain-until: 5 minutes
+# before the handoff's limit, runner-handoff-limit, counted from its first try, kept across the script's re-runs);
+# an older one that drains before then goes untouched, one still there past it is deleted. runner-retire drains until
+# then, cuts the jobs still running (SIGTERM: gitlab-runner aborts them, failed as runner_interrupted), kills
+# gitlab-runner if it has not stopped a minute later, and goes.
 # Needs bash, python3 and sha256sum.
 #
 #   tests/manager_startup_test.sh
@@ -50,6 +55,7 @@ attrs() {
   printf 'concurrent = 1\ntoken = "@TOKEN:shared@"\ntoken = "@TOKEN:deploy@"\n' > "$stub/attributes/runner-config"
   printf %s 'regions/us-central1/instanceGroupManagers/runner-deploy zones/us-central1-b/instanceGroupManagers/runner-shared' > "$stub/attributes/runner-groups"
   cp "$script" "$stub/attributes/startup-script"
+  printf %s 1800 > "$stub/attributes/runner-handoff-limit"
 }
 # The Compute world: this manager (runner-manager-new, made at 18:00Z) alone, and the two pools' groups, empty: one
 # regional (a pool spread over the region's zones, #49), one zonal.
@@ -127,6 +133,7 @@ vm runner-manager-ffffffff 2026-11-12T10:05:00.000-08:00
 echo 2 > "$stub/compute/instances/runner-manager-19769182.drain"; echo 1 > "$stub/compute/instances/runner-manager.drain"
 echo 2 > "$stub/compute/groups/zones_us-central1-b_instanceGroupManagers_runner-shared"
 rm -f "$stub/active"
+t0=$(date +%s)
 run && python3 - "$stub/events" "$script" <<'PY' && ok "a new manager: the older ones told to retire, waited for; the groups emptied; then gitlab-runner" || fail "handoff: $(cat "$work/out" "$stub/events")"
 import sys
 ev = [l.rstrip("\n") for l in open(sys.argv[1])]
@@ -143,43 +150,111 @@ for g in ("regions/us-central1/instanceGroupManagers/runner-deploy", "zones/us-c
     assert resize < polls[0] and polls[-1] < start, g
 assert len([e for e in ev if e == "POST zones/us-central1-b/instanceGroupManagers/runner-shared/listManagedInstances"]) == 3
 assert not any("ffffffff" in e for e in ev), "the newer manager touched"
+assert not any(e.startswith("DELETE ") for e in ev), "an older manager deleted, though it went before its drain's end"
 assert all(not e.startswith(("GET ", "POST ")) for e in ev[start:]), "Compute asked after gitlab-runner started"
 PY
 [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] && [ ! -e "$stub/compute/instances/runner-manager.json" ] &&
   [ -e "$stub/compute/instances/runner-manager-ffffffff.json" ] && [ "$(cat "$stub/compute/groups/zones_us-central1-b_instanceGroupManagers_runner-shared")" = 0 ] &&
   ok "the older managers gone, the newer one there, the groups empty" || fail "world: $(ls "$stub/compute/instances" "$stub/compute/groups")"
-python3 - "$stub/compute/told/runner-manager-19769182.json" "$script" <<'PY' &&
+python3 - "$stub/compute/told/runner-manager-19769182.json" "$script" "$t0" <<'PY' &&
 import json, sys
-told, script = json.load(open(sys.argv[1])), open(sys.argv[2]).read()
+told, script, t0 = json.load(open(sys.argv[1])), open(sys.argv[2]).read(), int(sys.argv[3])
 assert told["fingerprint"] == "fp-runner-manager-19769182", told["fingerprint"]
-assert {i["key"]: i["value"] for i in told["items"]} == {"runner-successor": "runner-manager-new", "startup-script": script, "runner-config": "old"}
+items = {i["key"]: i["value"] for i in told["items"]}
+until = int(items.pop("runner-drain-until"))
+assert t0 + 1500 <= until <= t0 + 1500 + 30, (t0, until)
+assert items == {"runner-successor": "runner-manager-new", "startup-script": script, "runner-config": "old"}, items
 PY
-  ok "an older manager told: runner-successor, this startup script (its watcher runs it), the rest of its metadata kept" ||
+  ok "an older manager told: runner-successor, its drain's end (5 minutes before the handoff's 30), this startup script (its watcher runs it), the rest of its metadata kept" ||
   fail "told: $(cat "$stub/compute/told/runner-manager-19769182.json")"
+[ ! -e "$root/var/lib/runner-handoff/since" ] && ok "the handoff done: its start forgotten" || fail "since: $(ls -R "$root/var/lib" 2>&1)"
 
-# A manager told to retire (#48), its successor's script run by its watcher: runner-retire started, not waited for;
+# A drain that hits the cap (#51): an older manager whose jobs do not end. The new one tells it when its drain ends and
+# waits, gitlab-runner not started; a re-run of the script (the watcher, a reboot) keeps the handoff's start. Past the
+# limit (its start 30 minutes back), the older one, still there, is deleted, and gitlab-runner starts on empty groups.
+world
+vm runner-manager-19769182 2026-11-12T09:23:00.000-08:00
+echo 100000 > "$stub/compute/instances/runner-manager-19769182.drain"
+waiting() {
+  : > "$stub/calls"; : > "$stub/log"; : > "$stub/events"
+  PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root RUNNER_POLL=1 timeout 4 bash "$script" > "$work/out" 2>&1
+}
+waiting
+since=$(cat "$root/var/lib/runner-handoff/since" 2>/dev/null)
+python3 - "$stub/compute/told/runner-manager-19769182.json" "${since:-0}" <<'PY' && [ -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
+import json, sys
+items = {i["key"]: i["value"] for i in json.load(open(sys.argv[1]))["items"]}
+assert int(items["runner-drain-until"]) == int(sys.argv[2]) + 1500, (items, sys.argv[2])
+PY
+  ! grep -qE '^DELETE |restart gitlab-runner|instanceGroupManagers' "$stub/events" && grep -qF 'waiting for the older managers' "$work/out" &&
+  ok "an older manager whose jobs do not end: told when its drain ends, and waited for; nothing started" || fail "cap, waiting: $(cat "$work/out" "$stub/events")"
+waiting
+[ -n "$since" ] && [ "$(cat "$root/var/lib/runner-handoff/since" 2>/dev/null)" = "$since" ] && ! grep -q setMetadata "$stub/events" &&
+  ok "a re-run keeps the handoff's start, and tells the older one nothing new" || fail "cap, re-run: $(cat "$work/out" "$stub/events")"
+echo $((since - 1800)) > "$root/var/lib/runner-handoff/since"
+run && python3 - "$stub/events" <<'PY' && [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] && [ ! -e "$root/var/lib/runner-handoff/since" ] &&
+import sys
+ev = [l.rstrip("\n") for l in open(sys.argv[1])]
+gone = ev.index("DELETE zones/us-central1-b/instances/runner-manager-19769182")
+start = ev.index("systemctl restart gitlab-runner")
+assert gone < min(k for k, e in enumerate(ev) if "instanceGroupManagers" in e) < start, ev
+assert not any(e.endswith("/setMetadata") for e in ev), ev
+PY
+  grep -qF 'deleted runner-manager-19769182' "$work/out" &&
+  ok "past the handoff's limit, an older manager still there is deleted; the groups emptied; then gitlab-runner" || fail "cap: $(cat "$work/out" "$stub/events")"
+
+# A manager told to retire (#48), its successor's script run by its watcher: runner-retire (re)started, not waited for;
 # no config written, gitlab-runner neither restarted nor started, nothing asked of Compute.
 world
 echo runner-manager-19769182 > "$stub/name"; vm runner-manager-19769182 2026-11-12T09:23:00.000-08:00
 printf %s runner-manager-new > "$stub/attributes/runner-successor"
 touch "$stub/active"; rm -f "$root/etc/gitlab-runner/config.toml"
-run && grep -qxF 'systemctl start --no-block runner-retire.service' "$stub/log" && ! grep -q gitlab-runner "$stub/log" &&
+run && grep -qxF 'systemctl restart --no-block runner-retire.service' "$stub/log" && ! grep -q gitlab-runner "$stub/log" &&
   [ ! -e "$root/etc/gitlab-runner/config.toml" ] && ! grep -q compute.googleapis.com "$stub/calls" &&
   [ -x "$root/usr/local/sbin/runner-retire" ] && grep -qxF 'TimeoutStartSec=infinity' "$root/etc/systemd/system/runner-retire.service" &&
   grep -qF 'retiring for runner-manager-new' "$work/out" &&
-  ok "a manager told to retire: runner-retire started, nothing else" || fail "retiring: $(cat "$work/out" "$stub/log")"
+  ok "a manager told to retire: runner-retire (re)started, nothing else" || fail "retiring: $(cat "$work/out" "$stub/log")"
 
-# runner-retire: gitlab-runner stopped on SIGQUIT with no time limit (it finishes its jobs) and disabled, then, and
-# only then, its own VM deleted. The SIGQUIT is gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its
-# running jobs (the apply that made its successor among them) reach their VMs through, outlives it.
-: > "$stub/calls"; : > "$stub/log"; : > "$stub/events"
-PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root RUNNER_POLL=0 timeout 20 "$root/usr/local/sbin/runner-retire" > "$work/out" 2>&1 &&
+# runner-retire, a drain that ends early: gitlab-runner stopped on SIGQUIT (it finishes its jobs) and disabled, its
+# jobs done before the drain's end (runner-drain-until), then, and only then, its own VM deleted; nothing cut. The
+# SIGQUIT is gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its running jobs (the apply that made
+# its successor among them) reach their VMs through, outlives it.
+retiring() {
+  vm runner-manager-19769182 2026-11-12T09:23:00.000-08:00; touch "$stub/active"; rm -f "$stub/stopping"
+  : > "$stub/calls"; : > "$stub/log"; : > "$stub/events"
+  PATH=$here/tests/stub/manager:$PATH STUB_MANAGER=$stub MANAGER_ROOT=$root RUNNER_POLL=${1:-0} timeout 20 "$root/usr/local/sbin/runner-retire" > "$work/out" 2>&1
+}
+echo $(($(date +%s) + 3600)) > "$stub/attributes/runner-drain-until"; echo 2 > "$stub/drain"
+retiring &&
   [ "$(cat "$root/etc/systemd/system/gitlab-runner.service.d/drain.conf")" = "$(printf '[Service]\nKillSignal=SIGQUIT\nKillMode=mixed\nTimeoutStopSec=infinity')" ] &&
-  [ "$(cat "$stub/events")" = "$(printf 'systemctl daemon-reload\nsystemctl disable gitlab-runner\nsystemctl stop gitlab-runner\nDELETE zones/us-central1-b/instances/runner-manager-19769182')" ] &&
+  [ "$(cat "$stub/events")" = "$(printf 'systemctl daemon-reload\nsystemctl disable gitlab-runner\nsystemctl stop --no-block gitlab-runner\nsystemctl is-active gitlab-runner\nsystemctl is-active gitlab-runner\nsystemctl is-active gitlab-runner\nDELETE zones/us-central1-b/instances/runner-manager-19769182')" ] &&
   grep -qxF 'DELETE https://compute.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager-19769182 Bearer vm-token' "$stub/calls" &&
   [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
-  ok "runner-retire: gitlab-runner drained (SIGQUIT to it alone, no time limit) and disabled, then its VM deleted" || fail "runner-retire: $(cat "$work/out" "$stub/events")"
-rm -f "$stub/name" "$stub/attributes/runner-successor" "$stub/active"
+  ok "runner-retire, a drain that ends early: gitlab-runner drained (SIGQUIT to it alone) and disabled, nothing cut, then its VM deleted" || fail "runner-retire: $(cat "$work/out" "$stub/events")"
+
+# runner-retire, a drain that hits the cap: the jobs not done by runner-drain-until are cut (SIGTERM to gitlab-runner
+# alone: it aborts them, failed as runner_interrupted, to run again on the successor), then its VM deleted.
+echo $(($(date +%s) + 1)) > "$stub/attributes/runner-drain-until"; echo 100000 > "$stub/drain"; echo 1 > "$stub/abort"
+retiring 0.2 && python3 - "$stub/events" <<'PY' && [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
+import sys
+ev = [l.rstrip("\n") for l in open(sys.argv[1])]
+cut = ev.index("systemctl kill --kill-whom=main --signal=SIGTERM gitlab-runner")
+assert ev.index("systemctl stop --no-block gitlab-runner") < cut - 2 and ev[cut - 1] == "systemctl is-active gitlab-runner", ev
+assert ev[-1] == "DELETE zones/us-central1-b/instances/runner-manager-19769182" and not any("SIGKILL" in e for e in ev), ev
+PY
+  grep -qF "runner-retire: the drain's end" "$work/out" &&
+  ok "runner-retire, a drain that hits the cap: the jobs still running cut (SIGTERM to gitlab-runner), then its VM deleted" || fail "runner-retire, cap: $(cat "$work/out" "$stub/events")"
+
+# And a gitlab-runner still running RUNNER_ABORT_WAIT after the cut is killed; the VM goes.
+echo $(($(date +%s) - 1)) > "$stub/attributes/runner-drain-until"; echo 100000 > "$stub/abort"
+RUNNER_ABORT_WAIT=0 retiring && python3 - "$stub/events" <<'PY' && [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
+import sys
+ev = [l.rstrip("\n") for l in open(sys.argv[1])]
+assert ev.index("systemctl kill --kill-whom=main --signal=SIGTERM gitlab-runner") < ev.index("systemctl kill --signal=SIGKILL gitlab-runner"), ev
+assert ev[-1] == "DELETE zones/us-central1-b/instances/runner-manager-19769182", ev
+PY
+  ok "runner-retire: a gitlab-runner still running after the cut is killed, then its VM deleted" || fail "runner-retire, kill: $(cat "$work/out" "$stub/events")"
+rm -f "$stub/name" "$stub/attributes/runner-successor" "$stub/attributes/runner-drain-until" "$stub/active" "$stub/stopping" "$stub/drain" "$stub/abort"
 
 # The watcher: on a change of the metadata (a new ETag), the startup script again; on none (a wait that times out
 # with the same ETag), nothing; each wait from the last ETag seen.
