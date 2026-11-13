@@ -37,3 +37,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-12 looper issue ci: plan:ci cycle after #46: a deposed runner manager plus the removed terraform_data.manager_config (manager swap blocked) (#47)
 - 2026-11-13 looper issue ci: a new runner manager deletes every pool VM it did not create (fleeting 'removing for safety'): all looper jobs killed, pools stuck creating (#48, ba01590; gates: full)
 - 2026-11-13 looper issue ci: a fresh pool VM's first job fails pulling the helper image (registry.gitlab.com timeout); ready before its egress works (#50, 77e7b6f; gates: full)
+- 2026-11-13 looper issue ci: cap a manager handoff's drain at 30 min (cut jobs retried on the new manager), so a swap doesn't freeze the fleet for hours (#48) (#51, 0506cf8; gates: full)
