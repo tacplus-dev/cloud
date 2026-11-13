@@ -35,6 +35,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: the test-idp listener ready once the NEG seatrials-test-idp exists (#42, split from #32). Agent, at Jody's request, 2026-11-11 (fleet-seatrials#27).
 - ci: cloud#40's GitLab Runner build and helper pin move to v19.5.3, in step with tacplus-dev/cluster (#44). Agent, at Jody's request, 2026-11-12 (cluster#21, hub under Jody's security delegation).
 - dev: a private Artifact Registry repository ci-images for cluster's own GitLab Runner images, cluster-admin-pipeline its only writer (#45). Agent, at Jody's request, 2026-11-12 (cluster#21).
+- ci: a manager handoff drains for at most 30 minutes; jobs still on the old manager are cut and retried on the new one (#51). Agent, at Jody's request, 2026-11-12 (cloud#48).
 
 ## Not doing
 - Importing jody1-328023: the new projects are built fresh.
