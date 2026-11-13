@@ -7,7 +7,7 @@
 # (`extends` resolved): fmt, validate, tflint, shellcheck, policy and test in every pipeline, so every push and
 # merge request, with security on the nightly schedule too; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
 # manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
-# Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
+# The handoff job (#54) after apply:ci, delayed past a manager handoff's cap. Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
 # run in order (folder, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
 # does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
 # any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
@@ -37,7 +37,7 @@ yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.ext
 q() { yq -r "$1" "$ci"; }
 
 mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
-want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,plan:dev,apply:dev,plan:gitlab,apply:gitlab,plan:anthropic,apply:anthropic,drift,"
+want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,handoff,plan:dev,apply:dev,plan:gitlab,apply:gitlab,plan:anthropic,apply:anthropic,drift,"
 [ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
 stages=" $(q '.stages | join(" ")') "
 for j in "${jobs[@]}"; do
@@ -102,7 +102,7 @@ pipeline() {
 }
 
 lint="tools:on_success,fmt:on_success,validate:on_success,tflint:on_success,shellcheck:on_success,policy:on_success,test:on_success,security:on_success,"
-stacks="plan:folder:on_success,apply:folder:on_success,plan:ci:on_success,apply:ci:on_success,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
+stacks="plan:folder:on_success,apply:folder:on_success,plan:ci:on_success,apply:ci:on_success,handoff:delayed,plan:dev:on_success,apply:dev:on_success,plan:gitlab:on_success,apply:gitlab:on_success,"
 check() { # check WHAT WANT SOURCE BRANCH [VAR=VALUE...]
   local what=$1 want=$2 got; shift 2
   got=$(pipeline "$@")
@@ -143,17 +143,25 @@ ok "each apply needs its own plan and applies that saved plan, in its environmen
   [ "$(q '.["plan:gitlab"].needs | join(",")')" = "tools,apply:ci" ] && [[ $(q '.["plan:folder"].needs | join(",")') == tools,fmt,validate,tflint,shellcheck,policy,test,security ]] &&
   [ "$(q '.["plan:anthropic"].needs | join(",")')" = "$(q '.["plan:folder"].needs | join(",")')" ] &&
   ok "the order: the checks, folder, dev, ci, then gitlab; anthropic after the checks, needing no other stack" || fail "the order: plan:folder $(q '.["plan:folder"].needs') plan:ci $(q '.["plan:ci"].needs') plan:dev $(q '.["plan:dev"].needs') plan:gitlab $(q '.["plan:gitlab"].needs')"
+# The handoff's end (#54): after apply:ci, once a new manager's handoff is over (its cap, 30 minutes, the ci stack's),
+# with the GitLab token.
+cap=$(sed -n 's/^ *manager_handoff_minutes *= *\([0-9]*\)$/\1/p' "$here/stacks/ci/main.tf")
+start=$(q '.handoff.rules[0].start_in')
+[ "$(q '.handoff.needs | join(",")')" = apply:ci ] && [[ $start =~ ^([0-9]+)\ minutes$ ]] && [ -n "$cap" ] && [ "${BASH_REMATCH[1]}" -gt "$cap" ] &&
+  [[ $(q '.handoff.script | join(" ")') == *'ci_gcp && ci_gitlab && ci/handoff.sh' ]] &&
+  ok "handoff: after apply:ci, $start later (past the handoff's cap, $cap minutes), with the GitLab token" ||
+  fail "handoff: needs $(q '.handoff.needs'), start_in [$start], the cap [$cap], script $(q '.handoff.script')"
 # The drift issue's reader key is tacplus-ci's (#30), and nothing here signs with jody1-328023's.
 [ "$(q '.variables.TACPLUS_READER_KMS_KEY')" = projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader ] &&
   ! grep -rn 'jody1-328023/locations/[a-z0-9-]*/keyRings' "$here/ci" "$here/stacks" "$here/modules" &&
   ok "the reader's key is tacplus-ci's tacplus-reader, never jody1-328023's" || fail "the reader's key: $(q '.variables.TACPLUS_READER_KMS_KEY')"
 
 for j in "${jobs[@]}"; do
-  case $j in plan:*|apply:*|drift) want=yes ;; *) want=no ;; esac
+  case $j in plan:*|apply:*|drift|handoff) want=yes ;; *) want=no ;; esac
   has=$([ "$(q ".[\"$j\"].id_tokens.GCP_ID_TOKEN.aud // \"\"")" = 'https://iam.googleapis.com/$GCP_WIF_PROVIDER' ] && echo yes || echo no)
   [ "$has" = "$want" ] || fail "$j: id_token $has"
 done
-ok "only the plan, apply and drift jobs have an id_token"
+ok "only the plan, apply, handoff and drift jobs have an id_token"
 for j in "${jobs[@]}"; do
   case $j in plan:anthropic|apply:anthropic|drift) want=https://api.anthropic.com,https://api.anthropic.com,https://api.anthropic.com ;; *) want= ;; esac
   got=$(q ".[\"$j\"].id_tokens // {} | to_entries | map(select(.key | test(\"^ANTHROPIC\"))) | map(.value.aud) | join(\",\")")

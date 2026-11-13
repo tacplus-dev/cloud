@@ -56,12 +56,12 @@ variable "manager_machine_type" {
 }
 
 variable "manager_handoff_minutes" {
-  description = "The cap on a manager handoff (#51): a new manager starts taking jobs at most this long after it boots. The old one drains until 5 minutes before it, then the jobs still on it are cut (failed as runner_interrupted, to run again on the new one); the last minutes delete the old manager and empty the groups."
+  description = "The cap on a manager handoff (#51): a new manager starts taking jobs at most this long after it boots. The old one drains until 12 minutes before it, then the jobs still on it are cut (failed as runner_interrupted, with up to 8 minutes to tell GitLab, #54; the cloud pipeline's handoff job runs them again); the last minutes delete the old manager and empty the groups."
   type        = number
   default     = 30
   validation {
-    condition     = var.manager_handoff_minutes >= 10 && floor(var.manager_handoff_minutes) == var.manager_handoff_minutes
-    error_message = "The handoff's cap is a whole number of minutes, 10 or more: 5 are kept for the cut and the emptied groups."
+    condition     = var.manager_handoff_minutes >= 17 && floor(var.manager_handoff_minutes) == var.manager_handoff_minutes
+    error_message = "The handoff's cap is a whole number of minutes, 17 or more: 12 are kept for the cut, its report and the emptied groups, and 5 left to drain."
   }
 }
 

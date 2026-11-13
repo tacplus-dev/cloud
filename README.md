@@ -579,29 +579,51 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   managers within it). While the old one drains, no new job starts anywhere, so the drain is capped (#51): the new
   manager takes jobs at most `manager_handoff_minutes` (30, the ci stack's; metadata `runner-handoff-limit`) after its
   handoff began, a re-run of its startup script keeping that start. It tells each older one when its drain ends
-  (`runner-drain-until`, 5 minutes before the cap); then `runner-retire` cuts the jobs still running (SIGTERM, to
-  gitlab-runner alone: a forced stop, killed if it has not stopped a minute later) and the VM goes. gitlab-runner
-  19.5.3 aborts them and fails them at once as `runner_interrupted` (its `common/build.go`), which GitLab retries
-  where a job's `retry: when:` names it. tacplus-dev/looper's jobs retry only on `runner_system_failure`,
-  `scheduler_failure` and `unknown_failure` today, so its kicker starts them again: an issue whose report job is no
-  longer running is resumed by its next pass, from the run's last checkpoint, and is not `looper:stuck` (a run killed
-  outright never ends with an outcome; tacplus-dev/looper README, A run killed outright), and a repository whose lands
-  are queued gets its manager again. An older manager still there 2 minutes before the cap (its watcher or
-  `runner-retire` not running) the new one deletes itself. What the cap trades: a job longer than the drain (a
-  repository manager's, a looper report's of hours) loses the work since its last checkpoint, and starts again behind
-  the queue, against the whole fleet waiting up to the longest job's timeout (11 hours) for it; a job that neither
-  retries on `runner_interrupted` nor has a kicker (a stack's apply, say) fails, and is run again by hand.
+  (`runner-drain-until`, 12 minutes before the cap); then `runner-retire` cuts the jobs still running (SIGTERM, to
+  gitlab-runner alone: a forced stop) and the VM goes. gitlab-runner 19.5.3 aborts them as `runner_interrupted` (its
+  `common/build.go`) and has 7 minutes to tell GitLab (`shutdown_timeout` in `config.toml`, #54: at the default 30
+  seconds it exited before most had, and they stayed `running`, holding their resource groups); `runner-retire` kills
+  it only after 8. A job still waiting for a VM when the cut comes does not see the abort, and one gitlab-runner did
+  not report is left `running` all the same: the **handoff job** (`ci/handoff.sh`, #54) fails those back and runs
+  every cut job again. It runs 35 minutes after `apply:ci` (the cap, and 5 minutes), so on the new manager, which by
+  then alone runs the fleet's runners (those whose managers include its own); on each, for every other manager, it
+  cancels a job still `running` and force-cancels one `canceling` (a plain cancel waits for a runner that is gone:
+  on 2026-11-13 the hub had to force them), then retries it, and retries each job failed there as
+  `runner_interrupted` since its pipeline began that is still its pipeline's (not run again by its own `retry` or a
+  person). GitLab's `retry: when:` does accept `runner_interrupted` (reason 33), but tacplus-dev/looper's jobs name
+  only `runner_system_failure`, `scheduler_failure` and `unknown_failure` (PROPOSALS.md), and on 2026-11-13 its
+  hourly kicker restarted only what was ready then: the handoff job does not wait for either. It uses the gitlab
+  stack's token (Owner of tacplus-dev, `api`), so a job it retries runs as that token's user. An older manager still
+  there 2 minutes before the cap (its watcher or `runner-retire` not running) the new one deletes itself, and its
+  jobs, unreported, are the handoff job's too. What the cap trades: a job longer than the drain (a repository
+  manager's, a looper report's of hours) loses the work since its last checkpoint, and starts again behind the queue,
+  against the whole fleet waiting up to the longest job's timeout (11 hours) for it.
   `ci/policy.sh` refuses any plan that would destroy a manager (first, or at all) and a source without
   `create_before_destroy` and `destroy = false`; `tests/manager_startup_test.sh` pins the handoff and the retirement,
-  a drain that ends early and one that hits the cap, against a stub Compute API, and the plan tests pin the names (a
-  config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at
+  a drain that ends early and one that hits the cap, and that the cut's windows leave room for its report, against a
+  stub Compute API; `tests/handoff_test.sh` the handoff job, on the 2026-11-13 handoff in small, against a stub
+  GitLab API; and the plan tests pin the names (a config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at
   INFO) is in the apply job's artifacts, `plans/<stack>.apply.log`.
 - **If an old manager does not retire** (its watcher not running), the new one waits until 2 minutes before the
   handoff's cap, and says so in its serial log (`waiting for the older managers to finish their jobs, or cut them at
   ...`), then deletes it (`deleted runner-manager-<old>: still there past its drain's end`): its jobs die with it,
-  unreported, and GitLab fails them only when it finds them stale. To end a handoff sooner, delete the old one by
+  unreported, and the handoff job fails them back and runs them again. To end a handoff sooner, delete the old one by
   hand (`gcloud compute instances delete runner-manager-<old> --zone us-central1-b --project tacplus-ci`), which
   kills its remaining jobs the same way; the new one then goes on by itself.
+- **A handoff with jobs in flight** (the drill, #54): what a new build's `apply:ci` should show, in order, and what to
+  do when it does not. (1) The new manager's serial log: `told runner-manager-<old> to retire`, then `waiting for the
+  older managers ...` until the old one goes: its drain ends 18 minutes after the boot, and it is gone 8 later at
+  most. (2) The old one's journal (`journalctl -u runner-retire -u gitlab-runner`): at its drain's end `the drain's end (...): gitlab-runner cuts its running jobs`,
+  gitlab-runner's `Starting forceful shutdown`, one `Job failed: aborted: ...` (`runner_interrupted`) per job it
+  reports, then `deleting runner-manager-<old>`; a kill (`still running 480s after the cut`) means some went
+  unreported. (3) In GitLab, jobs of that manager failed `runner interrupted`, and perhaps some still `running` (one
+  that was waiting for a VM). (4) Within 30 minutes of the boot the new one starts gitlab-runner (`no older manager
+  left, the groups empty`). (5) 35 minutes after `apply:ci`, the pipeline's `handoff` job: a line `job N (project P)
+  ... run again as job M` for each job it failed back or cut, and `no job left running on an old manager`. Then no
+  job of an old manager is `running` or `canceling` (`GET /runners/:id/jobs?system_id=<old>&status=running`, for each
+  of the fleet's runners). If the handoff job fails, its log names each job it could not fail back or run again: do
+  those by hand (force-cancel, then retry, as on 2026-11-13), then retry the job, which only acts on what is left. If
+  it did not run (its `apply:ci` failed, so it was skipped), do what it does by hand, as above.
 - **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a

@@ -8,10 +8,12 @@
 # removed when it ends (disable_cache: no cache volume outlives its job). No job is privileged, and none gets the
 # host's Docker socket (decisions/looper-job-per-issue-2026-11-03.md, #5). The helper image each job runs beside is
 # upstream's for the runner's version, by digest, which the pools' VMs pull at the job's start: the manager installs no
-# helper-images package (#40; built here, a follow-up in PROPOSALS.md).
+# helper-images package (#40; built here, a follow-up in PROPOSALS.md). A forced stop (a handoff's cut, #51) gives
+# the aborted jobs 7 minutes to tell GitLab (#54): gitlab-runner waits up to 5 for each to finish, and at the default
+# 30 seconds it exited first, leaving them `running`; files/manager-startup.sh's runner-retire waits longer than this.
 concurrent = 100
 check_interval = 3
-shutdown_timeout = 0
+shutdown_timeout = 420
 %{ for name, pool in pools ~}
 
 [[runners]]

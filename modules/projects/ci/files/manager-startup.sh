@@ -28,10 +28,11 @@
 #
 # The handoff is capped (#51): while it lasts no job starts anywhere, and a repository manager's job runs for hours.
 # The new manager starts gitlab-runner at most runner-handoff-limit seconds (the ci stack's manager_handoff_minutes,
-# 30) after it began waiting: each older one drains until 5 minutes before then (runner-drain-until, which the new
-# one sets), then cuts the jobs still running (SIGTERM: gitlab-runner aborts them, failed as runner_interrupted at
-# once, and run again here: by GitLab where their retry names it, else by the looper's kicker, from their last
-# checkpoint) and goes; one still there 2 minutes before then is deleted; the last 2 minutes empty the groups.
+# 30) after it began waiting: each older one drains until 12 minutes before then (runner-drain-until, which the new
+# one sets), then cuts the jobs still running (SIGTERM: gitlab-runner aborts them and fails them as runner_interrupted,
+# with up to the config's shutdown_timeout to tell GitLab, #54) and goes; one still there 2 minutes before then is
+# deleted; the last 2 minutes empty the groups. A job the old one leaves `running` (one still preparing does not see
+# the abort), and the cut ones, the cloud pipeline's handoff job fails back and runs again (ci/handoff.sh, #54).
 #
 # MANAGER_ROOT, empty on the VM, is where tests/manager_startup_test.sh installs instead of /; RUNNER_POLL, 30 on the
 # VM, is the seconds between its waits' checks.
@@ -117,11 +118,12 @@ cat > "$root/usr/local/sbin/runner-retire" <<'RETIRE'
 # job, the running ones finished) and never starts again here; then this VM deletes itself. The drain ends at
 # runner-drain-until (#51, the successor's, re-read each check): the jobs still running then are cut (SIGTERM, a
 # forced stop: gitlab-runner aborts them and fails them as runner_interrupted, run again on the successor), and a
-# gitlab-runner still running RUNNER_ABORT_WAIT seconds later (60) is killed. The signals are gitlab-runner's alone
-# (KillMode=mixed): its fleeting plugin, which its running jobs still reach their VMs through (the apply that made the
-# successor among them), goes only once it has exited. MANAGER_ROOT and RUNNER_POLL as the startup script's.
+# gitlab-runner still running RUNNER_ABORT_WAIT seconds later (480) is killed: it exits by itself at the config's
+# shutdown_timeout (420), once its aborted jobs have told GitLab (#54: at the default 30 seconds most had not). The
+# signals are gitlab-runner's alone (KillMode=mixed): its fleeting plugin, which its running jobs still reach their VMs
+# through (the apply that made the successor among them), goes only once it has exited. MANAGER_ROOT and RUNNER_POLL as the startup script's.
 set -uo pipefail
-root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30} abort=${RUNNER_ABORT_WAIT:-60}
+root=${MANAGER_ROOT:-} poll=${RUNNER_POLL:-30} abort=${RUNNER_ABORT_WAIT:-480}
 md() { curl -fsS -H Metadata-Flavor:Google "http://metadata.google.internal/computeMetadata/v1/$1"; }
 access() { md instance/service-accounts/default/token | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])'; }
 # running: gitlab-runner not stopped yet (active, or deactivating while its jobs finish).
@@ -322,10 +324,11 @@ managed() {
 # handoff: gitlab-runner starts alone on empty groups. The older managers first retire (each drains its jobs, then
 # deletes itself): until then they hold the groups' VMs, and their jobs, and this manager takes no job. Not for longer
 # than the handoff's limit (#51, runner-handoff-limit seconds from the handoff's start, which a re-run of this script
-# keeps): each drains until 5 minutes before it, then cuts its jobs and goes; one still there 2 minutes before it (its
-# watcher or runner-retire not running) is deleted, its jobs with it. Then the groups to zero, until each has no
-# instance at all: a creation stuck on an error of the old fleet's time (QUOTA_EXCEEDED, retried by the group about
-# every 90 minutes, #29) goes with them, and the VMs gitlab-runner then asks for are created at once.
+# keeps): each drains until 12 minutes before it, then cuts its jobs, has up to 8 minutes to report them to GitLab
+# (#54), and goes; one still there 2 minutes before it (its watcher or runner-retire not running) is deleted, its jobs
+# with it. Then the groups to zero, until each has no instance at all: a creation stuck on an error of the old fleet's
+# time (QUOTA_EXCEEDED, retried by the group about every 90 minutes, #29) goes with them, and the VMs gitlab-runner then
+# asks for are created at once.
 handoff() {
   local me olds o g n limit since end gone state=$root/var/lib/runner-handoff
   me=$(md instance/name)
@@ -333,7 +336,7 @@ handoff() {
   install -d "$state"
   [ -s "$state/since" ] || date +%s > "$state/since"
   since=$(cat "$state/since")
-  end=$((since + limit - 300)) gone=$((since + limit - 120))
+  end=$((since + limit - 720)) gone=$((since + limit - 120))
   while :; do
     olds=$(older "$me") || { say "cannot list the managers yet"; sleep "$poll"; continue; }
     [ -z "$olds" ] && break

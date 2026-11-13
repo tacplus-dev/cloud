@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#53).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#54).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
@@ -108,7 +108,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   whole fleet for hours, hence #51.
 - **The handoff capped (#51):** a new manager takes jobs at most `manager_handoff_minutes` (30, `stacks/ci`; metadata
   `runner-handoff-limit`) after its handoff began (kept in `/var/lib/runner-handoff/since` across its startup script's
-  re-runs): it tells each older one when its drain ends (`runner-drain-until`, 5 minutes before the cap), and deletes
+  re-runs): it tells each older one when its drain ends (`runner-drain-until`, 12 minutes before the cap since #54), and deletes
   one still there 2 minutes before it. `runner-retire` drains until then, then cuts the jobs still running (SIGTERM
   to gitlab-runner alone: aborted and failed as `runner_interrupted`; tacplus-dev/looper's kicker starts them again,
   as its jobs' retry does not name that reason), kills
@@ -117,8 +117,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   (a drain that ends early, one that hits the cap, on both managers' side) and the plan tests (the setting; the new
   build runner-manager-3daaeddf). Not yet seen live: the first apply of it creates runner-manager-3daaeddf and caps
   the drain of 4c24f5f4 and e66cee62 (whichever are left); that the cut jobs fail as `runner_interrupted` (gitlab-runner
-  19.5.3's source says so) and the kicker starts them again shows only then (since #53, the build it applies is
-  runner-manager-b95678f3).
+  19.5.3's source says so) and the kicker starts them again shows only then (since #54, the build it applies is
+  runner-manager-3c8d4bad).
 - **The build pool made no VM (#53):** from about 10:25Z on 2026-11-13 every build job logged `unable to acquire
   instance within the configured timeout of 15m0s`, after the 3-hour tacplus full gates lost their VM at 10:26:40Z,
   most likely reclaimed. Not confirmed: nobody but the pipeline reads the ci project's groups. The groups repaired a
@@ -126,7 +126,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   is out, counted by the autoscaler as coming, and the reaper took creations only. Now every group's
   `instance_lifecycle_policy` does nothing on a failure (`DO_NOTHING`, the fleeting plugin's recommendation: it
   deletes the stopped VM and the autoscaler's next one goes where there is room), and the reaper also deletes a VM
-  *recreating* on a capacity or quota error (a new manager build, runner-manager-b95678f3: its handoff empties the
+  *recreating* on a capacity or quota error (a new manager build, runner-manager-3c8d4bad since #54: its handoff empties the
   groups, a stuck recreation too). Where a report reads the reason: the drift job's pool check (`ci/pools.sh`), in
   the drift issue: each VM a group cannot make with its error, a stopped VM it keeps, each group's errors of the last
   24 hours by error and zone, and every quota of us-central1 and the project 80% used or more; nightly, or now by
@@ -145,6 +145,20 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   demand (five build VMs preempted on 2026-11-13, the tacplus full gates never finishing), 32 at peak with two
   managers, and the ci stack's test refuses pools over `ci_cpus.quota` (32). Not yet seen live: `apply:ci` of it (the
   shared group down to one VM, the build and deploy templates replaced; no new manager).
+- **No job left running by a handoff (#54):** #51's first real cut (the re-pin to a9ee214, 2026-11-13 12:37Z) failed
+  20 looper jobs as `runner_interrupted`, retried by nothing but the kicker's next hourly pass, and left 31 looper and 8
+  build jobs `running`, holding their resource groups until the hub force-cancelled and retried them by hand:
+  gitlab-runner, cut, exited after its default `shutdown_timeout` (30 seconds) before reporting most of them, and a
+  job still waiting for a VM never sees the abort. Now the cut has room to report (`shutdown_timeout = 420`;
+  `runner-retire` kills after 480 seconds; the drain ends 12 minutes before the cap, the variable's floor 17), and the
+  cloud pipeline's `handoff` job (`ci/handoff.sh`), 35 minutes after `apply:ci`, on the new manager, cancels (by force
+  once `canceling`) and retries every job still `running` or `canceling` on another manager of the fleet's runners,
+  and retries each job failed there as `runner_interrupted` since its pipeline began and not run again yet, with the
+  gitlab stack's token (README, A handoff with jobs in flight: the drill). GitLab's `retry: when: runner_interrupted`
+  would retry a cut job at once; tacplus-dev/looper's jobs do not name it (PROPOSALS.md). Tested: `tests/handoff_test.sh`
+  against a stub GitLab API, `tests/manager_startup_test.sh` (the windows), the plan tests (the config; the new build
+  runner-manager-3c8d4bad), `tests/ci_test.sh` (the job). Not yet seen live: the next new build's handoff, and that
+  the token may retry jobs on tacplus-dev/looper's protected main and environments.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and

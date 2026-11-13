@@ -51,8 +51,9 @@ module "ci" {
   image                = module.settings.ubuntu_arm64_image.image
   pool_image           = module.settings.cos_arm64_image
   manager_machine_type = module.settings.ci_cpus.manager_machine_type
-  # A new manager's handoff (#51, Jody 2026-11-12): the old one drains for at most this long, less 5 minutes, then
-  # the jobs still on it are cut and run again here; the fleet starts nothing new until then.
+  # A new manager's handoff (#51, Jody 2026-11-12): the old one drains for at most this long, less 12 minutes, then
+  # the jobs still on it are cut and reported (#54), and the pipeline's handoff job, 5 minutes past it, runs them
+  # again here (ci/gitlab-project.gitlab-ci.yml's start_in follows this); the fleet starts nothing new until then.
   manager_handoff_minutes = 30
   # GitLab Runner and the fleeting plugin, our builds of upstream's tags (ci/runner.sh, #40): each commit, and each
   # build's SHA-256, which the build is refused without and the manager installs by.

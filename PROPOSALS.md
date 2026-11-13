@@ -393,7 +393,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   `[runner_system_failure, scheduler_failure, unknown_failure]`). Why: at the handoff's cap the old manager's
   gitlab-runner (19.5.3) aborts its jobs as `runner_interrupted`, not `runner_system_failure` (`common/build.go`), a
   reason GitLab accepts in `retry: when:`; today the kicker starts them again on its next pass, which works, but a
-  retry keeps the job's place and its pipeline. A change in tacplus-dev/looper: a feature there, for Jody.
+  retry keeps the job's place and its pipeline. A change in tacplus-dev/looper: a feature there, for Jody. Since #54
+  (2026-11-13) the cloud pipeline's handoff job runs them again 35 minutes after `apply:ci`, as the gitlab stack's
+  token's user (`ci/handoff.sh`); their own retry would do it within seconds of the cut, as their own user, and the
+  handoff job would find them already run again.
+- **The handoff job's token of its own** (looper, #54, 2026-11-13). What: give `ci/handoff.sh` a GitLab token of its
+  own (Maintainer of tacplus-dev, `api`: what listing a runner's jobs, a force-cancel and a retry need), in Secret
+  Manager, made and rotated by the pipeline, instead of the gitlab stack's Owner token. Why: the handoff job reads
+  and acts on jobs only, and needs no Owner rights; and the jobs it runs again run as that token's user, which a
+  token of its own would name plainly in their logs. Needs the token made (decisions/secrets-by-pipeline-2026-11-05.md).
 - **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). What: once an `apply:ci`
   of it has succeeded (the state no longer holds the resource), delete the block in `modules/projects/ci/runners.tf`
   and the half of `tests/ci_plan_test.sh` that needs it. Why: it is a no-op after that apply, kept only until the one

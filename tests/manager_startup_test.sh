@@ -18,11 +18,13 @@
 # pushed to a running manager asks Compute nothing. A manager told to retire starts runner-retire and nothing else:
 # no config, no gitlab-runner; runner-retire stops gitlab-runner gracefully (SIGQUIT), never to start again, and only
 # then deletes its own VM. Against a stub Compute API (tests/stub/manager/compute-api).
-# The handoff's cap (#51): the new manager tells each older one when its drain ends (runner-drain-until: 5 minutes
-# before the handoff's limit, runner-handoff-limit, counted from its first try, kept across the script's re-runs);
+# The handoff's cap (#51): the new manager tells each older one when its drain ends (runner-drain-until: 12 minutes
+# before the handoff's limit (#54: room for the cut jobs to be reported), runner-handoff-limit, counted from its first try, kept across the script's re-runs);
 # an older one that drains before then goes untouched, one still there past it is deleted. runner-retire drains until
 # then, cuts the jobs still running (SIGTERM: gitlab-runner aborts them, failed as runner_interrupted), kills
-# gitlab-runner if it has not stopped a minute later, and goes.
+# gitlab-runner if it has not stopped by then, and goes. The cut has room to report every job to GitLab (#54): the
+# config's shutdown_timeout outlasts gitlab-runner's wait for an aborted job (5 minutes), runner-retire waits longer
+# than it before a kill, and the new manager deletes an old one only after that.
 # Needs bash, python3 and sha256sum.
 #
 #   tests/manager_startup_test.sh
@@ -162,10 +164,10 @@ told, script, t0 = json.load(open(sys.argv[1])), open(sys.argv[2]).read(), int(s
 assert told["fingerprint"] == "fp-runner-manager-19769182", told["fingerprint"]
 items = {i["key"]: i["value"] for i in told["items"]}
 until = int(items.pop("runner-drain-until"))
-assert t0 + 1500 <= until <= t0 + 1500 + 30, (t0, until)
+assert t0 + 1080 <= until <= t0 + 1080 + 30, (t0, until)
 assert items == {"runner-successor": "runner-manager-new", "startup-script": script, "runner-config": "old"}, items
 PY
-  ok "an older manager told: runner-successor, its drain's end (5 minutes before the handoff's 30), this startup script (its watcher runs it), the rest of its metadata kept" ||
+  ok "an older manager told: runner-successor, its drain's end (12 minutes before the handoff's 30), this startup script (its watcher runs it), the rest of its metadata kept" ||
   fail "told: $(cat "$stub/compute/told/runner-manager-19769182.json")"
 [ ! -e "$root/var/lib/runner-handoff/since" ] && ok "the handoff done: its start forgotten" || fail "since: $(ls -R "$root/var/lib" 2>&1)"
 
@@ -184,7 +186,7 @@ since=$(cat "$root/var/lib/runner-handoff/since" 2>/dev/null)
 python3 - "$stub/compute/told/runner-manager-19769182.json" "${since:-0}" <<'PY' && [ -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
 import json, sys
 items = {i["key"]: i["value"] for i in json.load(open(sys.argv[1]))["items"]}
-assert int(items["runner-drain-until"]) == int(sys.argv[2]) + 1500, (items, sys.argv[2])
+assert int(items["runner-drain-until"]) == int(sys.argv[2]) + 1080, (items, sys.argv[2])
 PY
   ! grep -qE '^DELETE |restart gitlab-runner|instanceGroupManagers' "$stub/events" && grep -qF 'waiting for the older managers' "$work/out" &&
   ok "an older manager whose jobs do not end: told when its drain ends, and waited for; nothing started" || fail "cap, waiting: $(cat "$work/out" "$stub/events")"
@@ -255,6 +257,22 @@ assert ev[-1] == "DELETE zones/us-central1-b/instances/runner-manager-19769182",
 PY
   ok "runner-retire: a gitlab-runner still running after the cut is killed, then its VM deleted" || fail "runner-retire, kill: $(cat "$work/out" "$stub/events")"
 rm -f "$stub/name" "$stub/attributes/runner-successor" "$stub/attributes/runner-drain-until" "$stub/active" "$stub/stopping" "$stub/drain" "$stub/abort"
+
+# The cut reports every job (#54): on 2026-11-13 gitlab-runner, cut, exited after its default shutdown_timeout (30
+# seconds), before most of its aborted jobs had told GitLab (it waits up to 5 minutes for one to finish, its
+# WaitForBuildFinishTimeout), and they stayed `running`. The config's shutdown_timeout outlasts that wait;
+# runner-retire waits longer than shutdown_timeout before it kills gitlab-runner; and the new manager deletes an old
+# one only after both (its drain ends 12 minutes before the cap, the deletion 2 minutes before it).
+python3 - "$here/modules/projects/ci/files/config.toml.tftpl" "$script" <<'PY' &&
+import re, sys
+config, script = open(sys.argv[1]).read(), open(sys.argv[2]).read()
+shutdown = int(re.search(r"^shutdown_timeout = (\d+)$", config, re.M).group(1))
+abort = int(re.search(r"abort=\$\{RUNNER_ABORT_WAIT:-(\d+)\}", script).group(1))
+end, gone = (int(x) for x in re.search(r"end=\$\(\(since \+ limit - (\d+)\)\) gone=\$\(\(since \+ limit - (\d+)\)\)", script).groups())
+assert 300 < shutdown < abort <= end - gone, (shutdown, abort, end, gone)
+PY
+  ok "the cut has room to report its jobs: shutdown_timeout > 5 minutes, runner-retire's kill after it, the old manager's deletion after that" ||
+  fail "the cut's windows: $(grep -n '^shutdown_timeout' "$here/modules/projects/ci/files/config.toml.tftpl"; grep -n 'RUNNER_ABORT_WAIT:-\|since + limit' "$script")"
 
 # The watcher: on a change of the metadata (a new ETag), the startup script again; on none (a wait that times out
 # with the same ETag), nothing; each wait from the last ETag seen.

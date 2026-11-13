@@ -17,6 +17,9 @@
 #   plan:<stack>                main: the plan, saved (ci/tofu.sh plan), refused if ci/policy.sh refuses it
 #   apply:<stack>               main, automatic once its plan succeeds: applies exactly that saved plan
 #                               (ci/tofu.sh apply); the stack's environment, one apply at a time
+#   handoff                     main, 35 minutes after apply:ci (a new manager's handoff, capped at 30, is over):
+#                               no job left running on an old runner manager, the jobs its cut failed run again
+#                               (ci/handoff.sh, #54)
 #   drift                       the nightly schedule: a plan of every stack, and an issue on
 #                               github.com/tacplus-dev/cloud if anything differs; never applies
 #   plan:anthropic,             main, once the bootstrap org:admin rule's IDs are set below (#34): the anthropic
@@ -188,6 +191,22 @@ apply:ci:
   stage: projects
   needs: [tools, plan:ci]
   variables: { STACK: ci }
+
+# The end of a manager handoff (#54): once the old managers are gone (the handoff's cap, the ci stack's
+# manager_handoff_minutes, 30, with 5 to spare), on the new one, which alone runs the fleet then: the jobs an old one
+# left running fail back to GitLab and run again, and the ones its cut failed (runner_interrupted) run again
+# (ci/handoff.sh), with the GitLab token. After every apply of the ci stack: one that made no new manager finds
+# nothing to do.
+handoff:
+  extends: .gcp
+  stage: projects
+  needs: [apply:ci]
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/
+      when: delayed
+      start_in: 35 minutes
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/handoff.sh
 
 plan:dev:
   extends: .plan
