@@ -305,7 +305,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
 - **The Anthropic organization (#34; Jody's option A, 2026-11-10):** the stack `anthropic` owns each llmproxy
   deployment's workload identity (issuer, service account and its workspace membership, rule) from `modules/settings`
   (`deployments`, `llmproxy`), and adopts seatrials' hand-made ones by their IDs (`fdis_01JKxG3CyMXqfgcG8HoqorvT`,
-  `svac_01EoVk8wqp7sVYgBkRyyd5MT`, `fdrl_01Fvxu1oSKHN6rwtdZmRbGY8`, the membership in `wrkspc_017AfVbSBgLY399kXGDRtQ6e`);
+  `svac_01EoVk8wqp7sVYgBkRyyd5MT`, `fdrl_01Fvxu1oSKHN6rwtdZmRbGY8`) and makes the account's explicit membership of `wrkspc_017AfVbSBgLY399kXGDRtQ6e`
+  (it had none: the first live plan found no membership to import);
   `prevent_destroy` and an `archived_at` postcondition refuse a re-create under a new ID; `ci/policy.sh` refuses an
   adoption with a change, a rule of another scope than `workspace:developer`/`workspace:inference` and a non-developer
   account. The provider is our reproducible build of `ippontech/anthropic` 1.92.0 with go1.27.4 (#39)
@@ -315,10 +316,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   Tested against a mock provider and, with the real provider and the credential path, a stub of Anthropic's API
   (`tests/anthropic_plan_test.sh`). The bootstrap is made (Jody, 2026-11-11: rule `fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo`,
   account `svac_011SKzqJqvTtj2LmUFbbDztN`, issuer `gitlab-com`) and set in the CI file, so the pipeline on main plans
-  and applies the stack. **Not run yet:** no `plan:anthropic` has run (the GitLab project's pin of a commit that sets
-  them); the config is written from fleet-seatrials' record of the Console (llmproxy.yaml), not read from the org, so
-  that first plan shows whether the adoption is a no-op (the policy refuses it otherwise); the narrowing of seatrials'
-  rule to `workspace:inference` is the commit after the adoption.
+  and applies the stack. **Partly run:** the first `plan:anthropic` (pipeline 3057435167, 2026-11-12) exchanged through
+  the bootstrap rule and imported the issuer, account and rule with no error, and failed on the membership's import (no
+  explicit membership exists), now made instead; the next plan shows whether the adoption is otherwise a no-op (the
+  policy refuses it otherwise); the narrowing of seatrials' rule to `workspace:inference` is the commit after it.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

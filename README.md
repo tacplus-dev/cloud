@@ -1032,6 +1032,11 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
   adopts an identity with a change, so the config is what the Console holds, and a change is a commit of its own after.
   seatrials' rule narrows to `workspace:inference` that way, once adopted (Jody, 2026-11-10: llmproxy calls inference
   only), in place, with the same ID.
+- **The membership is made, not adopted:** a federated token acts in a workspace other than the organization's default
+  only once its account is an explicit member of it (the provider's `anthropic_service_account_workspace`). seatrials'
+  hand-made account was none: the first live plan (2026-11-12) found no membership to import, its workspace access
+  only the implicit default-workspace one every account has. So the stack makes it, the one write of the adoption's
+  apply; it has no ID llmproxy names, and one removed in the Console is made again by the next apply.
 - **Never made again under a new ID:** each identity is `prevent_destroy`, and the plan fails if it finds one archived
   (in the Console): a new one would have a new ID and break the deployment's config. One archived by hand is restored by
   hand, or its deployment's config changes in a commit.
@@ -1043,8 +1048,8 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
   (`ci/anthropic-provider.sh`), installed only from `bin/providers` and locked by its hashes; the security job scans it
   (govulncheck). A new release is a commit of its version, commit and SHA-256s, then `ci/lock.sh`.
 - **Tests:** the stack's plan against a mock provider, and against a stub of Anthropic's API with the real provider
-  and the pipeline's credential path (`tests/anthropic_plan_test.sh`): the adoption with no change, a Console edit planned
-  back, an archived identity refused, a widened bootstrap rule reported.
+  and the pipeline's credential path (`tests/anthropic_plan_test.sh`): the adoption with no change and the membership
+  made, a Console edit planned back, a membership removed in the Console made again, an archived identity refused, a widened bootstrap rule reported.
 
 **The pipeline's credential: no key.** Anthropic's service-account and federation endpoints accept no Admin API key,
 only an `org:admin` OAuth token; a person's login is short-lived, so the pipeline federates too. The jobs

@@ -7,10 +7,12 @@
 # api.json, built from the API's documented answers (anthropic-sdk-go's types), not recorded: the looper has no
 # Anthropic credential. The credential is the pipeline's, end to end: ci/lib.sh's ci_anthropic, the provider's
 # federation through ci/anthropic-token.sh, each exchange presenting a token of its own. So: the plan adopts seatrials'
-# issuer, account, membership and rule by their IDs with no change; it only reads; the bootstrap rule is read and
-# passes the check. Then, from the state of that adoption: a Console edit of the rule plans the update that puts it
-# back, with the same ID; an identity archived in the Console fails the plan rather than making a new one; a widened
-# bootstrap rule fails the check, and the drift lists it. Needs bin/ (ci/tools.sh), go, jq.
+# issuer, account and rule by their IDs with no change, and makes the account's membership of its workspace (the
+# account has only the implicit default-workspace one, as the first live plan found, 2026-11-12); it only reads; the
+# bootstrap rule is read and passes the check; the apply's one write is that membership. Then, from that state: a
+# Console edit of the rule plans the update that puts it back, with the same ID; a membership removed in the Console is
+# made again; an identity archived in the Console fails the plan rather than making a new one; a widened bootstrap
+# rule fails the check, and the drift lists it. Needs bin/ (ci/tools.sh), go, jq.
 #
 #   tests/anthropic_plan_test.sh
 set -uo pipefail
@@ -68,17 +70,22 @@ exchanges() { grep -c '^POST /v1/oauth/token 200$' "$work/requests"; }
 serve "$fixture"
 if plan; then
   ok "the stack plans against the API's answers, federated through the bootstrap rule"
-  for r in anthropic_federation_issuer anthropic_service_account anthropic_service_account_workspace anthropic_federation_rule; do
+  for r in anthropic_federation_issuer anthropic_service_account anthropic_federation_rule; do
     c=$(change "$r.llmproxy[\"seatrials\"]")
     jq -e '.actions == ["no-op"] and (.importing.id | test("^(fdis|svac|fdrl)_"))' <<< "$c" > /dev/null || fail "$r: $c"
   done
   jq -e '.after.id == "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8" and .after.target.service_account_id == "svac_01EoVk8wqp7sVYgBkRyyd5MT" and .after.issuer_id == "fdis_01JKxG3CyMXqfgcG8HoqorvT"' \
     <<< "$(change 'anthropic_federation_rule.llmproxy["seatrials"]')" > /dev/null &&
-    ok "seatrials' issuer, account, membership and rule: adopted by their IDs with no change" || fail "the adoption: $(others)"
-  [ -z "$(others)" ] && ok "nothing else planned" || fail "the plan also changes: $(others)"
+    ok "seatrials' issuer, account and rule: adopted by their IDs with no change" || fail "the adoption: $(others)"
+  jq -e '.actions == ["create"] and .importing == null and .after.service_account_id == "svac_01EoVk8wqp7sVYgBkRyyd5MT" and
+    .after.workspace_id == "wrkspc_017AfVbSBgLY399kXGDRtQ6e" and .after.workspace_role == "workspace_developer"' \
+    <<< "$(change 'anthropic_service_account_workspace.llmproxy["seatrials"]')" > /dev/null &&
+    ok "seatrials' account: made a member of its workspace, not adopted (it has only the implicit default one)" ||
+    fail "the membership: $(change 'anthropic_service_account_workspace.llmproxy["seatrials"]')"
+  [ "$(others)" = 'anthropic_service_account_workspace.llmproxy["seatrials"]' ] && ok "nothing else planned" || fail "the plan also changes: $(others)"
   jq -e '[.checks[] | select(.address.to_display == "check.admin")][0].status == "pass"' "$work/plan.json" > /dev/null &&
     ok "the bootstrap rule is read and passes the check" || fail "the bootstrap check: $(jq -c '.checks' "$work/plan.json")"
-  "$here/ci/policy.sh" plan "$work/plan.json" > /dev/null 2>&1 && ok "ci/policy.sh passes the adoption" || fail "ci/policy.sh refuses the adoption"
+  "$here/ci/policy.sh" plan "$work/plan.json" > /dev/null 2>&1 && ok "ci/policy.sh passes the adoption and the membership" || fail "ci/policy.sh refuses the adoption"
 else
   fail "the stack does not plan against the API's answers: $(grep -A6 'Error' "$work/out.txt" "$work/err.txt" | head -20)"
 fi
@@ -87,14 +94,28 @@ n=$(exchanges)
   ok "each of the plan's $n exchange(s) presented an ID token of its own" || fail "$n exchange(s), and $(grep claimed "$work/err.txt")"
 ! grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests" > /dev/null && ok "a plan only reads" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests")"
 
-# The adoption applied: an import writes the state and nothing else.
-if anthropic apply p.tfplan && ! grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests" > /dev/null; then
-  ok "the adoption applies, writing nothing to the API"
+# The adoption applied: the imports write the state only; the one write to the API adds the membership.
+add='POST /v1/organizations/service_accounts/svac_01EoVk8wqp7sVYgBkRyyd5MT/workspaces 200'
+if anthropic apply p.tfplan && [ "$(grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests")" = "$add" ]; then
+  ok "the adoption applies, its one write the membership"
 else
   fail "the adoption's apply: $(tail -5 "$work/out.txt" "$work/err.txt") $(grep -v '^GET ' "$work/requests")"
 fi
-serve "$fixture"
+# From here the API holds the membership too, as after that apply.
+added=$(edit added '.["GET /v1/organizations/service_accounts/svac_01EoVk8wqp7sVYgBkRyyd5MT/workspaces"].data += [.["POST /v1/organizations/service_accounts/svac_01EoVk8wqp7sVYgBkRyyd5MT/workspaces"]]')
+serve "$added"
 plan && [ -z "$(others)" ] && ok "after the adoption, nothing to change" || fail "after the adoption: $(others) $(tail -3 "$work/err.txt")"
+
+# A membership removed in the Console is made again: the API lists the implicit default one only.
+serve "$fixture"
+if plan; then
+  jq -e '.actions == ["create"] and .after.workspace_id == "wrkspc_017AfVbSBgLY399kXGDRtQ6e"' <<< "$(change 'anthropic_service_account_workspace.llmproxy["seatrials"]')" > /dev/null &&
+    [ "$(others)" = 'anthropic_service_account_workspace.llmproxy["seatrials"]' ] &&
+    ok "a membership removed in the Console: made again, nothing else" || fail "a removed membership: $(others)"
+else
+  fail "a removed membership: no plan: $(grep -A4 Error "$work/err.txt" | head)"
+fi
+fixture=$added
 
 # A Console edit of the rule (its subject widened to a prefix) is planned back, in place, with the same ID.
 serve "$(edit console-edit '.["GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"].match.subject_prefix = "spiffe://local.dev/*"')"

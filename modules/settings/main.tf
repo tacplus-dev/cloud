@@ -152,7 +152,8 @@ output "deployments" {
     # fleet-seatrials#46): Jody makes the client and adds the secret's versions in the Console.
     # Its llmproxy's Anthropic identity (#34), made by hand in the Console on 2026-10-24 and adopted by the anthropic
     # stack by these IDs, which its llmproxy names (fleet-seatrials deploy/bootstrap/services/llmproxy.yaml): the
-    # issuer is the fleet's kernel (OIDC discovery at its public name), the rule matches llmproxy's own identity.
+    # issuer is the fleet's kernel (OIDC discovery at its public name), the rule matches llmproxy's own identity. The
+    # account's membership of the workspace is made by the stack, not adopted: the hand-made account had none.
     # The rule narrows to workspace:inference once adopted (Jody, 2026-11-10): an adoption plans no change
     # (ci/policy.sh), so the narrowing is the commit after it.
     seatrials = {

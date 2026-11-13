@@ -4,8 +4,8 @@
 # The Anthropic organization (#34): for each deployment that runs llmproxy (modules/settings, deployments' llmproxy),
 # the workload identity its llmproxy reaches the Anthropic API with: the federation issuer (the fleet's OIDC issuer),
 # the service account and its workspace membership, and the rule that lets the issuer's tokens for llmproxy act as
-# that account. Made, changed and archived by this stack only; the hand-made ones are adopted by their IDs, so that
-# the IDs llmproxy names never change.
+# that account. Made, changed and archived by this stack only; the hand-made issuer, account and rule are adopted by
+# their IDs, so that the IDs llmproxy names never change.
 #
 # The provider's credential is no key: the job's GitLab ID tokens are exchanged, through the one org:admin rule made
 # by hand in the Console (modules/settings, anthropic), for a short-lived org:admin token (README, The Anthropic
@@ -71,6 +71,10 @@ resource "anthropic_service_account" "llmproxy" {
   }
 }
 
+# The account's membership of its workspace is made here, never adopted: a federated token acts in a workspace other
+# than the organization's default only once its account is an explicit member of it, and seatrials' hand-made
+# account was none (the first live plan's import found no membership, 2026-11-12). It has no ID llmproxy names: one
+# removed in the Console is gone from the next refresh, and the plan makes it again.
 resource "anthropic_service_account_workspace" "llmproxy" {
   for_each           = local.llmproxy
   service_account_id = anthropic_service_account.llmproxy[each.key].id
@@ -105,12 +109,6 @@ import {
 import {
   for_each = { for k, l in local.adopt : k => l.service_account.adopt if l.service_account.adopt != null }
   to       = anthropic_service_account.llmproxy[each.key]
-  id       = each.value
-}
-
-import {
-  for_each = { for k, l in local.adopt : k => "${l.service_account.adopt}:${l.workspace_id}" if l.service_account.adopt != null }
-  to       = anthropic_service_account_workspace.llmproxy[each.key]
   id       = each.value
 }
 
