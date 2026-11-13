@@ -358,5 +358,5 @@ in jody1-328023 do not carry over: in the new cluster it is on port 8443 of the 
   configuration (tacplus-dev/tacplus#315). The challenge zone's delegation and seatrials' move to its identity in `tacplus-dev` (copying the
   certificate's versions, no new order) wait for that move (README, Certificates). Follow-ups in PROPOSALS.md.
 - **Blocked on:** the host's grants on the parent folder, Jody's bootstrap run (README, What the host organization
-  provides; What Jody runs, in order), the host's grants to `cloud-admin-pipeline`, then the hub's steps (no issue). #4's
-  acceptance (`runner-image measure 20`, no first-job image-pull failure) waits for the runners' move off jody1-328023.
+  provides; What Jody runs, in order), the host's grants to `cloud-admin-pipeline`, then the hub's steps (no issue). The move off
+  jody1-328023 is #15; the runner pools' removal is #11 (No VMs outside GKE).
