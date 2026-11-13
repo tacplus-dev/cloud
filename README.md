@@ -867,16 +867,19 @@ pipeline identity does. From the `deployments` entry's `google_signin` (`modules
 
 - **The secret** `google-signin-<deployment>`, us-central1, made with no version. Its value is never in this repository,
   a plan or the state.
-- **Who adds versions:** the members of the protected GitLab variable `GCP_GOOGLE_SIGNIN_ADDERS` (comma-separated, as
+- **Who makes the client and adds versions:** the members of the protected GitLab variable `GCP_GOOGLE_SIGNIN_ADDERS` (comma-separated, as
   `GCP_RUNNER_TOKEN_ADDERS`; `ci/lib.sh` gives them to the dev stack as `google_signin_adders` and refuses one that is
   not a member), Jody's account today (the hosting note, above): `secretVersionAdder` on the secret alone, which adds
-  versions and reads none. Unset or empty, nobody adds them.
+  versions and reads none, and `roles/oauthconfig.editor` on the project `tacplus-dev` (#56), which Google Auth
+  Platform needs to make the client's branding and the client (`clientauthconfig.brands.create`,
+  `oauthconfig.verification.update`): a member binding, not authoritative. Unset or empty, nobody adds them.
 - **The reader:** the deployment's identity alone holds `secretAccessor` (fleet-seatrials' `apply` and `signin-secrets`
   jobs). Both bindings are authoritative: a grant added by hand is drift.
 
-**Jody's step**, once when the client is made (the bootstrap) and at each rotation: in the Console (APIs & Services,
-Credentials) make or rotate the web client, download its JSON, and add it as the secret's next version, in the Console's
-Secret Manager page of `google-signin-seatrials` (New version, upload the file) or with gcloud:
+**Jody's step**, once when the client is made (the bootstrap) and at each rotation: in the Console (Google Auth
+Platform: *Branding* once, then *Clients*) make or rotate the web client, download its JSON, and add it as the secret's
+next version, in the Console's Secret Manager page of `google-signin-seatrials` (New version, upload the file) or with
+gcloud:
 
 ```sh
 gcloud secrets versions add google-signin-seatrials --project=tacplus-dev --data-file=client_secret.json
@@ -887,7 +890,7 @@ Then fleet-seatrials' pipeline reads it, checks it with Google and installs it (
 sign-in client); its `signin-secrets` job's log says `google: the client secret from the secret google-signin-seatrials`.
 `secretVersionAdder` lists no secret and shows no version: the Console page is reached by its link
 (`https://console.cloud.google.com/security/secret-manager/secret/google-signin-seatrials/versions?project=tacplus-dev`)
-when the account holds no other role on `tacplus-dev`, and gcloud needs none. The output `deployments` names each one's
+when the account holds no Secret Manager role on `tacplus-dev`, and gcloud needs none. The output `deployments` names each one's
 `google_signin` (null without it).
 
 ### Interim: by hand in jody1-328023, until the cloud pipeline runs

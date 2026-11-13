@@ -41,3 +41,13 @@ resource "google_secret_manager_secret_iam_binding" "google_signin" {
   role      = each.value.role
   members   = local.google_signin_roles[each.value.role] == "deploy" ? [google_service_account.deploy[each.value.deployment].member] : var.google_signin_adders
 }
+
+# The adders also make (and rotate) the web client itself, in the Console's Google Auth Platform, its branding first
+# (#56): roles/oauthconfig.editor on the project, which brands.create and the clients need; Jody's account holds no
+# other role on it. A member binding, not authoritative: the project's other holders of the role are not this file's.
+resource "google_project_iam_member" "google_signin_adders" {
+  for_each = toset(var.google_signin_adders)
+  project  = google_project.dev.project_id
+  role     = "roles/oauthconfig.editor"
+  member   = each.key
+}

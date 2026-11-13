@@ -165,7 +165,7 @@ variable "runner_token_adders" {
 }
 
 variable "google_signin_adders" {
-  description = "Who adds the versions of the deployments' Google sign-in client secrets (google-signin.tf), in the Console: secretVersionAdder on each google-signin-<deployment>, which adds versions and reads none. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  description = "Who adds the versions of the deployments' Google sign-in client secrets (google-signin.tf), in the Console: secretVersionAdder on each google-signin-<deployment>, which adds versions and reads none, and roles/oauthconfig.editor on the project, which makes the web client in Google Auth Platform (#56). Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
   type        = list(string)
   default     = []
   validation {

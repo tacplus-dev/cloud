@@ -284,7 +284,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   its records shows in fleet-seatrials#27.
 - **The Google sign-in client's secret (#37; Jody, fleet-seatrials#46):** the dev stack's `google-signin.tf`, from a
   `deployments` entry's `google_signin`: the secret `google-signin-seatrials` (us-central1, no version), `secretAccessor`
-  for `seatrials-deploy` alone and `secretVersionAdder` for `google_signin_adders` alone, from the protected GitLab
+  for `seatrials-deploy` alone and `secretVersionAdder` for `google_signin_adders` alone (and, #56, a member binding of
+  `roles/oauthconfig.editor` on the project for each, to make the client in Google Auth Platform), from the protected GitLab
   variable `GCP_GOOGLE_SIGNIN_ADDERS` (`ci/lib.sh`, as the runners' token adders; Jody's account), who adds the client
   JSON by hand in the Console (Google has no API for a web client): authoritative bindings; output `deployments`
   `google_signin`. No project module or stack makes a secret version (`tests/secret_values_test.sh`). Tested with the

@@ -498,6 +498,12 @@ run "dev" {
     condition     = google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretAccessor"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretVersionAdder"].members == toset(["user:jody@example.com"])
     error_message = "Someone besides seatrials-deploy reads the Google sign-in secret, or someone besides the listed adders adds its versions."
   }
+  # The adders make the client in the Console's Google Auth Platform too, its branding first (#56): oauthconfig.editor
+  # on the project, for each of them and nobody else, a member binding (not authoritative).
+  assert {
+    condition     = toset([for m in values(google_project_iam_member.google_signin_adders) : "${m.project} ${m.member} ${m.role}"]) == toset(["tacplus-dev user:jody@example.com roles/oauthconfig.editor"])
+    error_message = "The Google sign-in adders do not hold roles/oauthconfig.editor on tacplus-dev, or someone else does."
+  }
   assert {
     condition     = output.deployments["seatrials"].google_signin == "projects/tacplus-dev/secrets/google-signin-seatrials"
     error_message = "The module does not give the deployment's Google sign-in secret."
@@ -1319,6 +1325,10 @@ run "google_signin_without_adders" {
   assert {
     condition     = google_secret_manager_secret_iam_binding.google_signin["seatrials/roles/secretmanager.secretAccessor"].members == toset([google_service_account.deploy["seatrials"].member]) && output.deployments["other"].google_signin == null
     error_message = "The Google sign-in secret is not read by the deployment's identity alone, or a deployment without it is given one."
+  }
+  assert {
+    condition     = length(google_project_iam_member.google_signin_adders) == 0
+    error_message = "Without adders, someone holds roles/oauthconfig.editor for the Google sign-in client."
   }
 }
 

@@ -19,7 +19,7 @@ variable "runner_token_adders" {
 }
 
 variable "google_signin_adders" {
-  description = "Who adds the versions of the deployments' Google sign-in client secrets, in the Console (#37): the protected GitLab variable GCP_GOOGLE_SIGNIN_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
+  description = "Who makes the deployments' Google sign-in clients and adds their secrets' versions, in the Console (#37, #56): the protected GitLab variable GCP_GOOGLE_SIGNIN_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
   type        = list(string)
   default     = []
 }
