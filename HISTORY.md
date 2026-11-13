@@ -40,3 +40,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-13 looper issue ci: cap a manager handoff's drain at 30 min (cut jobs retried on the new manager), so a swap doesn't freeze the fleet for hours (#48) (#51, 0506cf8; gates: full)
 - 2026-11-13 looper issue dev: a private Artifact Registry repository ci-images for cluster's own GitLab Runner images (cluster#21) (#45, 837bee8; gates: full)
 - 2026-11-13 looper issue dev: the Google sign-in adders cannot create the client: roles/oauthconfig.editor on tacplus-dev is missing (#56)
+- 2026-11-13 looper issue STATE.md: Blocked on names closed #4 (runner-image measure 20, removed with the COS rescope): the line is stale (#52)
