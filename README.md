@@ -1088,7 +1088,9 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
   llmproxy names (each `adopt` in `modules/settings`). An adoption plans no change: `ci/policy.sh` refuses a plan that
   adopts an identity with a change, so the config is what the Console holds, and a change is a commit of its own after.
   The refusal names each attribute that differs, its value in the Console and in the config (a sensitive one only by
-  name), as the plan's text is printed only once the policy passes.
+  name), as the plan's text is printed only once the policy passes; not what the provider computes (the rule's
+  `workspace_ids`). The second live plan (2026-11-13) listed seatrials' descriptions, its rule's audience
+  (`https://api.anthropic.com`) and token lifetime (600 seconds): they are in `modules/settings` as the Console holds them.
   seatrials' rule narrows to `workspace:inference` that way, once adopted (Jody, 2026-11-10: llmproxy calls inference
   only), in place, with the same ID.
 - **The membership is made, not adopted:** a federated token acts in a workspace other than the organization's default

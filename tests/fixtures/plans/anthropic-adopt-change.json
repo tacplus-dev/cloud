@@ -50,7 +50,10 @@
           },
           "attributes": {
             "k": "before-secret"
-          }
+          },
+          "workspace_ids": [
+            "wrkspc_017AfVbSBgLY399kXGDRtQ6e"
+          ]
         },
         "after": {
           "name": "llmproxy-seatrials",
@@ -66,7 +69,8 @@
           }
         },
         "after_unknown": {
-          "updated_at": true
+          "updated_at": true,
+          "workspace_ids": true
         },
         "before_sensitive": {},
         "after_sensitive": {

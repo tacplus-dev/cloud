@@ -71,6 +71,7 @@ passes "a clean plan" plan "$fx/plans/clean.json"
 passes "adoptions with no change, then an update and a create" plan "$fx/plans/anthropic-clean.json"
 refuses "an adoption with a change" 'anthropic_federation_rule.llmproxy["seatrials"] is adopted with a change' plan "$fx/plans/anthropic-adopt-change.json"
 # It says what differs, the Console's value then the config's: the plan's text is printed only once the policy passes.
+# Not a list known only after apply (the rule's workspace_ids), element by element as "null here".
 refuses "an adoption with a change, what differs" 'is adopted with a change (attributes.k: sensitive; description: "llmproxy for seatrials" in the Console, null here; match.audience: "https://api.anthropic.com" in the Console, null here; oauth_scope: "workspace:developer" in the Console, "workspace:inference" here): an adoption plans none' plan "$fx/plans/anthropic-adopt-change.json"
 if "$policy" plan "$fx/plans/anthropic-adopt-change.json" 2>&1 | grep -q secret; then fail "an adoption with a change: prints a sensitive value"
 else ok "an adoption with a change: prints no sensitive value"; fi

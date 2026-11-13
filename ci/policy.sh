@@ -185,10 +185,12 @@ plan_check() {
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
         (select(.type | startswith("anthropic_")) | select(.change.importing != null)
          # What differs, the value in the Console (before) then in the config (after), as the text of the plan is printed
-         # only once the policy passes: not what is known only after apply (its timestamps), nor a sensitive value.
+         # only once the policy passes: not what is known only after apply (its timestamps, or a list the provider
+         # computes, as the workspace_ids of a rule: nor its elements), nor a sensitive value.
          | (.change.before // {}) as $b | (.change.before_sensitive // {}) as $bs | (.change.after_sensitive // {}) as $as
          | ([[($b, $after) | paths(type != "object" and type != "array")] | unique[] as $q
-             | ($q | map(tostring) | join(".")) as $k | select(any($unknown[]; . == $k) | not)
+             | ($q | map(tostring) | join(".")) as $k
+             | select(any(range(1; ($q | length) + 1) as $n | $q[:$n] | map(tostring) | join("."); IN($unknown[])) | not)
              | select(($b | getpath($q)) != ($after | getpath($q)))
              | if any(range(1; ($q | length) + 1) as $n | ($bs, $as) | try getpath($q[:$n]) catch null; . == true) then "\($k): sensitive"
                else "\($k): \($b | getpath($q) | tojson) in the Console, \($after | getpath($q) | tojson) here" end]

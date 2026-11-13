@@ -368,8 +368,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   the bootstrap rule and imported the issuer, account and rule with no error, and failed on the membership's import (no
   explicit membership exists), now made instead. The second (pipeline 3064308469, 2026-11-13) was refused: the account
   and the rule are adopted with a change, which the refusal did not say (the plan's text is printed only once the policy
-  passes); it now names each attribute that differs, the Console's value and the config's, so the next plan says what
-  to write. The narrowing of seatrials' rule to `workspace:inference` is the commit after the adoption.
+  passes); it now names each attribute that differs, the Console's value and the config's. The third (pipeline
+  3066773640, job 18022609528) listed them: the account's and the rule's descriptions, the rule's audience and its token
+  lifetime (600, not the default 3600), now written as the Console holds them; the next plan should adopt with no
+  change. The narrowing of seatrials' rule to `workspace:inference` is the commit after the adoption.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

@@ -61,6 +61,7 @@ resource "anthropic_federation_issuer" "llmproxy" {
 resource "anthropic_service_account" "llmproxy" {
   for_each          = local.llmproxy
   name              = each.value.service_account.name
+  description       = try(each.value.service_account.description, null)
   organization_role = "developer"
   lifecycle {
     prevent_destroy = true
@@ -83,14 +84,16 @@ resource "anthropic_service_account_workspace" "llmproxy" {
 }
 
 resource "anthropic_federation_rule" "llmproxy" {
-  for_each     = local.llmproxy
-  name         = each.value.rule.name
-  issuer_id    = anthropic_federation_issuer.llmproxy[each.key].id
-  match        = { subject_prefix = each.value.rule.subject }
-  target       = { service_account_id = anthropic_service_account.llmproxy[each.key].id }
-  oauth_scope  = each.value.rule.oauth_scope
-  workspace_id = each.value.workspace_id
-  depends_on   = [anthropic_service_account_workspace.llmproxy]
+  for_each               = local.llmproxy
+  name                   = each.value.rule.name
+  description            = try(each.value.rule.description, null)
+  issuer_id              = anthropic_federation_issuer.llmproxy[each.key].id
+  match                  = { subject_prefix = each.value.rule.subject, audience = try(each.value.rule.audience, null) }
+  target                 = { service_account_id = anthropic_service_account.llmproxy[each.key].id }
+  oauth_scope            = each.value.rule.oauth_scope
+  workspace_id           = each.value.workspace_id
+  token_lifetime_seconds = try(each.value.rule.token_lifetime_seconds, null)
+  depends_on             = [anthropic_service_account_workspace.llmproxy]
   lifecycle {
     prevent_destroy = true
     postcondition {

@@ -133,8 +133,9 @@ output "deployments" {
     identity alone reads. Optionally (#34): llmproxy, its llmproxy's identity in the Anthropic organization, which the
     anthropic stack owns: the federation issuer (its fleet's OIDC issuer, url), the service account (an explicit member
     of workspace_id with workspace_role) and the rule that lets the issuer's tokens whose sub is subject act as that
-    account in workspace_id with oauth_scope; each adopt, the ID of the one made by hand that the stack adopts rather
-    than makes (null: it makes it).
+    account in workspace_id with oauth_scope (and, when set, only for audience, its tokens living
+    token_lifetime_seconds; unset, the provider's defaults); each description (optional), its text in the Console; each
+    adopt, the ID of the one made by hand that the stack adopts rather than makes (null: it makes it).
   EOT
   value = {
     # Its pipeline still runs as seatrials-deploy@jody1-328023 against the interim secrets and zone there (README,
@@ -153,7 +154,9 @@ output "deployments" {
     # Its llmproxy's Anthropic identity (#34), made by hand in the Console on 2026-10-24 and adopted by the anthropic
     # stack by these IDs, which its llmproxy names (fleet-seatrials deploy/bootstrap/services/llmproxy.yaml): the
     # issuer is the fleet's kernel (OIDC discovery at its public name), the rule matches llmproxy's own identity. The
-    # account's membership of the workspace is made by the stack, not adopted: the hand-made account had none.
+    # account's membership of the workspace is made by the stack, not adopted: the hand-made account had none. The
+    # descriptions, the rule's audience and its token lifetime are the Console's, as the refused plan:anthropic of
+    # 2026-11-13 listed them (job 18022609528).
     # The rule narrows to workspace:inference once adopted (Jody, 2026-11-10): an adoption plans no change
     # (ci/policy.sh), so the narrowing is the commit after it.
     seatrials = {
@@ -165,10 +168,23 @@ output "deployments" {
       init_secrets             = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
       google_signin            = true
       llmproxy = {
-        workspace_id    = "wrkspc_017AfVbSBgLY399kXGDRtQ6e"
-        issuer          = { name = "seatrials", url = "https://seatrials.tacplus.dev", adopt = "fdis_01JKxG3CyMXqfgcG8HoqorvT" }
-        service_account = { name = "llmproxy-seatrials", workspace_role = "workspace_developer", adopt = "svac_01EoVk8wqp7sVYgBkRyyd5MT" }
-        rule            = { name = "llmproxy-seatrials", subject = "spiffe://local.dev/system/services/llmproxy", oauth_scope = "workspace:developer", adopt = "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8" }
+        workspace_id = "wrkspc_017AfVbSBgLY399kXGDRtQ6e"
+        issuer       = { name = "seatrials", url = "https://seatrials.tacplus.dev", adopt = "fdis_01JKxG3CyMXqfgcG8HoqorvT" }
+        service_account = {
+          name           = "llmproxy-seatrials"
+          description    = "llmproxy on the seatrials proof fleet (seatrials.tacplus.dev); tokens by federation only"
+          workspace_role = "workspace_developer"
+          adopt          = "svac_01EoVk8wqp7sVYgBkRyyd5MT"
+        }
+        rule = {
+          name                   = "llmproxy-seatrials"
+          description            = "llmproxy on the seatrials fleet mints its own kernel-signed assertion; inference only"
+          subject                = "spiffe://local.dev/system/services/llmproxy"
+          audience               = "https://api.anthropic.com"
+          token_lifetime_seconds = 600
+          oauth_scope            = "workspace:developer"
+          adopt                  = "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"
+        }
       }
     }
   }
