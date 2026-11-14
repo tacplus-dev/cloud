@@ -157,8 +157,9 @@ output "deployments" {
     # account's membership of the workspace is made by the stack, not adopted: the hand-made account had none. The
     # descriptions, the rule's audience and its token lifetime are the Console's, as the refused plan:anthropic of
     # 2026-11-13 listed them (job 18022609528).
-    # The rule narrows to workspace:inference once adopted (Jody, 2026-11-10): an adoption plans no change
-    # (ci/policy.sh), so the narrowing is the commit after it.
+    # The rule is narrowed to workspace:inference (Jody, 2026-11-10: llmproxy calls inference only), in the commit after
+    # the adoption (apply:anthropic job 18024991252): an adoption plans no change (ci/policy.sh); this is an update in
+    # place, the same ID.
     seatrials = {
       gitlab_project           = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
       images                   = { registry = "seatrials", bucket = "seatrials-build", account_id = "seatrials-build", days = 7 }
@@ -182,7 +183,7 @@ output "deployments" {
           subject                = "spiffe://local.dev/system/services/llmproxy"
           audience               = "https://api.anthropic.com"
           token_lifetime_seconds = 600
-          oauth_scope            = "workspace:developer"
+          oauth_scope            = "workspace:inference"
           adopt                  = "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"
         }
       }

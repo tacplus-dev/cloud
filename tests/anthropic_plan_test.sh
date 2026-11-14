@@ -9,8 +9,10 @@
 # federation through ci/anthropic-token.sh, each exchange presenting a token of its own. So: the plan adopts seatrials'
 # issuer, account and rule by their IDs with no change, and makes the account's membership of its workspace (the
 # account has only the implicit default-workspace one, as the first live plan found, 2026-11-12); it only reads; the
-# bootstrap rule is read and passes the check; the apply's one write is that membership. Then, from that state: a
-# Console edit of the rule plans the update that puts it back, with the same ID; a membership removed in the Console is
+# bootstrap rule is read and passes the check; the apply's one write is that membership. That adoption is replayed as it
+# was applied, with the rule's scope as the Console held it; then the repository's settings narrow it to
+# workspace:inference, an update in place that the policy passes and whose apply writes the rule only. Then, from that
+# state: a Console edit of the rule plans the update that puts it back, with the same ID; a membership removed in the Console is
 # made again; an identity archived in the Console fails the plan rather than making a new one; a widened bootstrap
 # rule fails the check, and the drift lists it. Needs bin/ (ci/tools.sh), go, jq.
 #
@@ -44,6 +46,11 @@ edit() { jq "$2" "$fixture" > "$work/$1.json" && echo "$work/$1.json"; }
 # The repository as it is (ci/ for the token command, bin/ for the providers), the stack's state local.
 mkdir -p "$work/repo" && cp -r "$here/stacks" "$here/modules" "$here/ci" "$work/repo/" && ln -s "$here/bin" "$work/repo/bin"
 find "$work/repo/stacks" -name .terraform -prune -exec rm -rf {} +
+# The adoption as it was planned and applied (b83660e, apply:anthropic job 18024991252): seatrials' rule as the Console
+# held it, workspace:developer. Its narrowing to workspace:inference, the repository's own settings, comes after.
+settings=$work/repo/modules/settings/main.tf
+sed -i 's/oauth_scope            = "workspace:inference"/oauth_scope            = "workspace:developer"/' "$settings"
+grep -q 'oauth_scope            = "workspace:developer"' "$settings" || { echo "FAIL seatrials' rule is not workspace:inference in modules/settings"; exit 1; }
 stack=$work/repo/stacks/anthropic
 printf 'terraform {\n  backend "local" {}\n}\n' > "$stack/stub_override.tf"
 # shellcheck source=ci/tofurc.sh
@@ -116,6 +123,33 @@ else
   fail "a removed membership: no plan: $(grep -A4 Error "$work/err.txt" | head)"
 fi
 fixture=$added
+
+# The narrowing, from the adopted state: the rule's scope to workspace:inference, in place, the same ID, nothing else; the
+# policy passes it (no adoption now); the apply's one write is the rule's update. Then nothing is left to change.
+cp "$here/modules/settings/main.tf" "$settings"
+rule='GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8'
+narrowed=$(edit narrowed ".[\"$rule\"] |= (.oauth_scope = \"workspace:inference\" | .updated_at = \"2026-11-14T02:00:00Z\" | .updated_by_actor_id = \"svac_01CloudAdmin\") |
+  .[\"POST /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8\"] = .[\"$rule\"]")
+serve "$fixture"
+if plan; then
+  c=$(change 'anthropic_federation_rule.llmproxy["seatrials"]')
+  jq -e '.actions == ["update"] and .importing == null and .before.oauth_scope == "workspace:developer" and .after.oauth_scope == "workspace:inference" and
+    .after.id == "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8" and .after.workspace_id == "wrkspc_017AfVbSBgLY399kXGDRtQ6e"' <<< "$c" > /dev/null &&
+    [ "$(others)" = 'anthropic_federation_rule.llmproxy["seatrials"]' ] &&
+    ok "seatrials' rule narrows to workspace:inference in place, the same ID, nothing else" || fail "the narrowing: $(others) $c"
+  "$here/ci/policy.sh" plan "$work/plan.json" > /dev/null 2>&1 && ok "ci/policy.sh passes the narrowing" || fail "ci/policy.sh refuses the narrowing: $("$here/ci/policy.sh" plan "$work/plan.json" 2>&1)"
+  ! grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests" > /dev/null && ok "the narrowing's plan only reads" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests")"
+  serve "$narrowed"
+  if anthropic apply p.tfplan && [ "$(grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests")" = 'POST /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8 200' ]; then
+    ok "the narrowing applies, its one write the rule's update"
+  else
+    fail "the narrowing's apply: $(tail -5 "$work/out.txt" "$work/err.txt") $(grep -v '^GET ' "$work/requests")"
+  fi
+  plan && [ -z "$(others)" ] && ok "after the narrowing, nothing to change" || fail "after the narrowing: $(others) $(tail -3 "$work/err.txt")"
+else
+  fail "the narrowing: no plan: $(grep -A4 Error "$work/err.txt" | head)"
+fi
+fixture=$narrowed
 
 # A Console edit of the rule (its subject widened to a prefix) is planned back, in place, with the same ID.
 serve "$(edit console-edit '.["GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"].match.subject_prefix = "spiffe://local.dev/*"')"

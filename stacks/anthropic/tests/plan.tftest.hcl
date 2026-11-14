@@ -3,7 +3,7 @@
 #
 # The anthropic stack's plan against a mock provider (no credential, no Anthropic; #34): one identity per deployment
 # that runs llmproxy, seatrials' its rule for llmproxy's own subject alone, in its workspace, as a developer account,
-# with a workspace scope; nothing org-level; and the bootstrap rule only read, and checked.
+# with the scope workspace:inference; nothing org-level; and the bootstrap rule only read, and checked.
 
 mock_provider "anthropic" {
   mock_resource "anthropic_federation_issuer" {
@@ -35,8 +35,8 @@ run "stack" {
     error_message = "seatrials' rule matches other tokens than llmproxy's own (an exact subject, no prefix)."
   }
   assert {
-    condition     = contains(["workspace:developer", "workspace:inference"], anthropic_federation_rule.llmproxy["seatrials"].oauth_scope) && anthropic_federation_rule.llmproxy["seatrials"].workspace_id == "wrkspc_017AfVbSBgLY399kXGDRtQ6e" && anthropic_federation_rule.llmproxy["seatrials"].applies_to_all_workspaces != true
-    error_message = "seatrials' rule is not a workspace scope in its one workspace."
+    condition     = anthropic_federation_rule.llmproxy["seatrials"].oauth_scope == "workspace:inference" && anthropic_federation_rule.llmproxy["seatrials"].workspace_id == "wrkspc_017AfVbSBgLY399kXGDRtQ6e" && anthropic_federation_rule.llmproxy["seatrials"].applies_to_all_workspaces != true
+    error_message = "seatrials' rule is not workspace:inference in its one workspace (llmproxy calls inference only)."
   }
   assert {
     condition     = anthropic_service_account.llmproxy["seatrials"].name == "llmproxy-seatrials" && anthropic_service_account.llmproxy["seatrials"].organization_role == "developer"

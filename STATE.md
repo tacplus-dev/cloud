@@ -370,8 +370,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   and the rule are adopted with a change, which the refusal did not say (the plan's text is printed only once the policy
   passes); it now names each attribute that differs, the Console's value and the config's. The third (pipeline
   3066773640, job 18022609528) listed them: the account's and the rule's descriptions, the rule's audience and its token
-  lifetime (600, not the default 3600), now written as the Console holds them; the next plan should adopt with no
-  change. The narrowing of seatrials' rule to `workspace:inference` is the commit after the adoption.
+  lifetime (600, not the default 3600), written as the Console holds them. The fourth (pipeline 3067066143, jobs
+  18024991251/2, 2026-11-14) adopted with no change: 3 imported, the membership added. seatrials' rule is now narrowed
+  to `workspace:inference` in a commit of its own (an update in place, the same ID), applied by the next pin.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's

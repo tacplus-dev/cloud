@@ -1091,8 +1091,8 @@ them; nobody clicks in the Console. Its output `llmproxy` gives each deployment'
   name), as the plan's text is printed only once the policy passes; not what the provider computes (the rule's
   `workspace_ids`). The second live plan (2026-11-13) listed seatrials' descriptions, its rule's audience
   (`https://api.anthropic.com`) and token lifetime (600 seconds): they are in `modules/settings` as the Console holds them.
-  seatrials' rule narrows to `workspace:inference` that way, once adopted (Jody, 2026-11-10: llmproxy calls inference
-  only), in place, with the same ID.
+  seatrials' rule was narrowed to `workspace:inference` that way, in the commit after its adoption (Jody, 2026-11-10:
+  llmproxy calls inference only): an update in place, with the same ID.
 - **The membership is made, not adopted:** a federated token acts in a workspace other than the organization's default
   only once its account is an explicit member of it (the provider's `anthropic_service_account_workspace`). seatrials'
   hand-made account was none: the first live plan (2026-11-12) found no membership to import, its workspace access
