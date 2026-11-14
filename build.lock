@@ -1,5 +1,6 @@
 # The build image of tacplus-dev/cloud, by digest (#25; looper#71): the CI image, ci/gitlab-project.gitlab-ci.yml's
-# default.image (tacplus build 2.6.10's digest, the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554, #43; with go1.27.4, #39), in which this repository's gates (gates.yaml) already run. It
+# default.image (tacplus build 2.6.12's digest, rebuilt with linux-libc-dev 6.12.117-1, DSA-6628-1, tacplus-dev/tacplus#711, #59; without
+# OpenEXR since 2.6.10, tacplus-dev/tacplus#554, #43; with go1.27.4, #39), in which this repository's gates (gates.yaml) already run. It
 # is no tacplus project, so it has no tacplus.lock; the build pipeline reads this pin the way it reads one. Moved
 # with the CI image, never alone (tests/ci_test.sh): a new digest is a change like any other, landed on the full gates.
-build_image: ghcr.io/tacplus-dev/tacplus/build:2.6.10@sha256:828add1a92dbe5788c6d0b300141c2a57ef5864cbba79abccf66c7457795f85b
+build_image: ghcr.io/tacplus-dev/tacplus/build:2.6.12@sha256:d4be2c7a77aad5af473a0317ab21f497680a30d8c1e47f30b76e157f5eb3eef7

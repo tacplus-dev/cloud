@@ -12,8 +12,9 @@
 # among them, #39), fixed by building them with the latest Go, nor is the google provider's x/net, built with v0.62.0
 # (ci/google-provider.sh, #39), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
-# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest (build:2.6.10, #43: its gh's x/net, its zlib
-# and, without OpenEXR, tacplus-dev/tacplus#554), but for its gh's x/crypto/openpgp (GO-2026-5932).
+# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest (build:2.6.12, #59: its linux-libc-dev's six
+# kernel CVEs, DSA-6628-1, tacplus-dev/tacplus#711; build:2.6.10, #43: its gh's x/net, its zlib and, without OpenEXR,
+# tacplus-dev/tacplus#554), but for its gh's x/crypto/openpgp (GO-2026-5932).
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
 # binaries, by pin:
 #
@@ -22,7 +23,7 @@
 #   tflint 0.65.0, tflint-ruleset-google 0.41.0           GO-2026-5932 6860 6866
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   Trivy 0.76.1 (ci/tools.sh, #10)                       GO-2026-5932 6860 6865 6866
-#   the CI image build:2.6.10 (#43): its gh               GO-2026-5932 (Trivy)
+#   the CI image build:2.6.12 (#59): its gh               GO-2026-5932 (Trivy)
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, the google provider, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the providers come by lock-file hash and the tools by SHA-256. No release with x/crypto past v0.58.0 yet."

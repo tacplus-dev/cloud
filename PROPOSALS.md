@@ -456,4 +456,6 @@ the looper then marks it `promoted` or `declined` here with the date.
   (a), if this repository may build an image (it needs an image build in this pipeline, as the helper image's proposal
   above). Why: Debian's kernel advisories come every few weeks, and each one turns the security job red on main, which
   skips every plan and apply (#59: six HIGH CVEs in `linux-libc-dev` 6.12.116-1, fixed in 6.12.117-1, DSA-6628-1),
-  until tacplus rebuilds and this repository moves its digest. This changes nothing in the scan's policy.
+  until tacplus rebuilds and this repository moves its digest. (b) is what #59 did: tacplus#711 rebuilt every line
+  within two hours of the red job, and the pin moved to build:2.6.12 the same morning; the job was red, and every
+  plan and apply skipped, for the hours between. This changes nothing in the scan's policy.
