@@ -45,3 +45,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-13 looper issue Runner pools as configured need 45 CPUs; tacplus-ci's quota is 32, so the build pool never gets its second VM (#55, 01dcb68; gates: full)
 - 2026-11-13 looper issue Runner manager handover leaves jobs dead but "running" in GitLab, and cut jobs are not retried (#54, 0e02367; gates: full)
 - 2026-11-14 looper issue Anthropic workload identity for llmproxy (issuer, rule, service account) created and managed by the pipeline, not the Console (#34, 7c32c81; gates: full)
+- 2026-11-14 looper issue handoff.sh fails on GitLab's rate limit (HTTP 429) with jobs still to run again (#57, 79237ce; gates: full)
