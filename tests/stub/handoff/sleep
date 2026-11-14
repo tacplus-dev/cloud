@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub sleep for tests/handoff_test.sh: logs "sleep SECONDS" to STUB_HANDOFF/calls and returns at once.
+set -euo pipefail
+echo "sleep $*" >> "$STUB_HANDOFF/calls"

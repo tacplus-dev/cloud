@@ -4,8 +4,9 @@
 #
 # A stub curl for tests/handoff_test.sh: `curl -sS -X METHOD -o OUT -D HEADERS -w '%{http_code}' -H @AUTH URL`, as
 # ci/handoff.sh calls it. It answers from STUB_HANDOFF/api.json, a map of "METHOD path?query" (the path under
-# /api/v4) to {"body": ..., "status": 200 by default, "next": the X-Next-Page header, none by default}; anything else
-# is a 404. It logs each call ("METHOD path?query") to STUB_HANDOFF/calls and the header file's lines to
+# /api/v4) to {"body": ..., "status": 200 by default, "next": the X-Next-Page header, "retry_after": the Retry-After
+# header, none by default, "then": the answer to the same call after this one, this one again by default}; anything
+# else is a 404. It logs each call ("METHOD path?query") to STUB_HANDOFF/calls and the header file's lines to
 # STUB_HANDOFF/headers.
 set -euo pipefail
 out=/dev/stdout headers=/dev/null url='' method=GET
@@ -24,6 +25,10 @@ done
 key="$method ${url#https://gitlab.com/api/v4}"
 echo "$key" >> "$STUB_HANDOFF/calls"
 answer=$(jq -c --arg k "$key" '.[$k] // {"status": 404, "body": {"message": "404 Not Found"}}' "$STUB_HANDOFF/api.json")
+if jq -e 'has("then")' <<< "$answer" > /dev/null; then
+  jq --arg k "$key" '.[$k] = .[$k].then' "$STUB_HANDOFF/api.json" > "$STUB_HANDOFF/api.next" && mv "$STUB_HANDOFF/api.next" "$STUB_HANDOFF/api.json"
+fi
 jq -c '.body' <<< "$answer" > "$out"
-jq -r 'if .next then "HTTP/2 200\r\nx-next-page: \(.next)\r\n" else "HTTP/2 200\r\n" end' <<< "$answer" > "$headers"
+jq -r '"HTTP/2 \(.status // 200)\r\n" + (if .next then "x-next-page: \(.next)\r\n" else "" end) +
+  (if .retry_after then "retry-after: \(.retry_after)\r\n" else "" end)' <<< "$answer" > "$headers"
 jq -r '.status // 200' <<< "$answer" | tr -d '\n'

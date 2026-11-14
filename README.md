@@ -586,13 +586,16 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   it only after 8. A job still waiting for a VM when the cut comes does not see the abort, and one gitlab-runner did
   not report is left `running` all the same: the **handoff job** (`ci/handoff.sh`, #54) fails those back and runs
   every cut job again. It runs 35 minutes after `apply:ci` (the cap, and 5 minutes), so on the new manager, which by
-  then alone runs the fleet's runners (those whose managers include its own); on each, for every other manager, it
-  cancels a job still `running` and force-cancels one `canceling` (a plain cancel waits for a runner that is gone:
+  then alone runs the fleet's runners (those whose managers include its own); on each, for every other manager of
+  this handoff (one that contacted GitLab since an hour before its pipeline began, not every one the runner ever had:
+  #57), it cancels a job still `running` and force-cancels one `canceling` (a plain cancel waits for a runner that is gone:
   on 2026-11-13 the hub had to force them), then retries it, and retries each job failed there as
   `runner_interrupted` since its pipeline began that is still its pipeline's (not run again by its own `retry` or a
   person). GitLab's `retry: when:` does accept `runner_interrupted` (reason 33), but tacplus-dev/looper's jobs name
   only `runner_system_failure`, `scheduler_failure` and `unknown_failure` (PROPOSALS.md), and on 2026-11-13 its
-  hourly kicker restarted only what was ready then: the handoff job does not wait for either. It uses the gitlab
+  hourly kicker restarted only what was ready then: the handoff job does not wait for either. GitLab's rate limit
+  (HTTP 429, 18 calls of the first live handoff on 2026-11-14, #57) it waits out, as `Retry-After` says or backing off,
+  and makes the call again, while the wait ends 5 minutes before the job's time limit. It uses the gitlab
   stack's token (Owner of tacplus-dev, `api`), so a job it retries runs as that token's user. An older manager still
   there 2 minutes before the cap (its watcher or `runner-retire` not running) the new one deletes itself, and its
   jobs, unreported, are the handoff job's too. What the cap trades: a job longer than the drain (a repository

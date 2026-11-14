@@ -157,7 +157,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   gitlab stack's token (README, A handoff with jobs in flight: the drill). GitLab's `retry: when: runner_interrupted`
   would retry a cut job at once; tacplus-dev/looper's jobs do not name it (PROPOSALS.md). Tested: `tests/handoff_test.sh`
   against a stub GitLab API, `tests/manager_startup_test.sh` (the windows), the plan tests (the config; the new build
-  runner-manager-3c8d4bad), `tests/ci_test.sh` (the job). Not yet seen live: the next new build's handoff, and that
+  runner-manager-3c8d4bad), `tests/ci_test.sh` (the job). Its first live run (2026-11-14, pin b83660e) ran the cut
+  jobs it reached again, then failed on GitLab's rate limit (HTTP 429 on 18 calls, #57): it now waits a 429 out
+  (`Retry-After`, or backing off) within the job's time limit, asks only about the managers of this handoff (contacted
+  since an hour before its pipeline), and reads every page of a manager's failed jobs back to a day before the
+  pipeline (it stopped after the first). Not yet seen live: a handoff since #57, and that
   the token may retry jobs on tacplus-dev/looper's protected main and environments.
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
