@@ -445,3 +445,15 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **The pool check more often than nightly** (looper, #53). What: a schedule of its own (hourly) running only
   `ci/pools.sh`, without the tools job's builds, filing its own issue while a pool cannot make a VM. Why: the drift is
   nightly; a stall like #53's is seen the next night unless someone runs the schedule.
+- **A CI image without the C toolchain, or Debian's kernel headers accepted by rule** (looper, #59, 2026-11-14). What:
+  the CI image need not carry `linux-libc-dev`: nothing built here needs it (every Go build in `ci/` is
+  `CGO_ENABLED=0`; no C is compiled), and no kernel from it runs (the jobs run on the runner VM's COS kernel). But
+  tacplus's build image cannot drop it: it comes by `libc6-dev` and `build-essential` (tacplus `images/base.packages`),
+  which the image's own C, Rust and Swift builds need. So the choice is (a) a CI image of this repository's own, from
+  `debian:trixie-slim` with only what the gates and the plan/apply jobs use (OpenTofu and the tools are fetched by
+  `ci/tools.sh` anyway), built and pinned by digest as `build.lock` pins tacplus's today, or (b) keep tacplus's image and
+  take each kernel advisory batch as a re-pin once tacplus rebuilds (tacplus-dev/tacplus#711, as #554). Recommended:
+  (a), if this repository may build an image (it needs an image build in this pipeline, as the helper image's proposal
+  above). Why: Debian's kernel advisories come every few weeks, and each one turns the security job red on main, which
+  skips every plan and apply (#59: six HIGH CVEs in `linux-libc-dev` 6.12.116-1, fixed in 6.12.117-1, DSA-6628-1),
+  until tacplus rebuilds and this repository moves its digest. This changes nothing in the scan's policy.
