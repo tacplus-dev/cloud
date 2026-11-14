@@ -47,3 +47,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-14 looper issue Anthropic workload identity for llmproxy (issuer, rule, service account) created and managed by the pipeline, not the Console (#34, 7c32c81; gates: full)
 - 2026-11-14 looper issue handoff.sh fails on GitLab's rate limit (HTTP 429) with jobs still to run again (#57, 79237ce; gates: full)
 - 2026-11-14 looper issue tests/manager_startup_test.sh: 'runner-retire, cap' fails at times (timing) (#58, 303fd8b; gates: full)
+- 2026-11-14 looper issue security job red on main: 6 new HIGH kernel CVEs in the CI image's linux-libc-dev (build:2.6.10); every plan and apply is skipped (#59, 7dfd1a4; gates: full)
