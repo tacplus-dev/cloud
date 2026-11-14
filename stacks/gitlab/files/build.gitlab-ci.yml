@@ -23,6 +23,10 @@
 # gates.yaml), and "base": the commit their LOOPER_GATES_BASE names (the main
 # a manager's land is rebased on, or a report's branch point). A manager's
 # merge and a report's --build pass the set their diff calls for (repo-looper).
+# "wait" is the seconds the requester waits for its verdict (LOOPER_BUILD_WAIT,
+# looper#130; repo-looper passes it once this project's copy declares it): a gates job that starts later than that after the pipeline's
+# creation writes the verdict "abandoned: no verdict wanted after Nh" and runs
+# no gates. A nightly, a release and a verify run pass none: never abandoned.
 # A release runs on this project's protected tag <repo>/vX.Y.Z, with
 # "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
 # does the publish job get its GCP identity (tacplus-dev/tacplus#223).
@@ -85,6 +89,10 @@ spec:
       description: "The commit the gate sets' LOOPER_GATES_BASE names, in full (40 hex)"
       default: ""
       regex: '^([0-9a-f]{40})?$'
+    wait:
+      description: "The seconds the requester waits for the verdict: a gates job starting later runs no gates (empty: no limit)"
+      default: ""
+      regex: '^([0-9]+)?$'
     smoke:
       description: "The macOS smoke: a web run on main whose one manual job checks the Mac runner (no repo, sha or tag)"
       type: boolean
@@ -137,6 +145,7 @@ variables:
   BUILD_TAG: "$[[ inputs.tag ]]"
   BUILD_GATES: "$[[ inputs.gates ]]"
   BUILD_BASE: "$[[ inputs.base ]]"
+  BUILD_WAIT: "$[[ inputs.wait ]]"
   BUILD_SMOKE: "$[[ inputs.smoke ]]"
   BUILD_RUNNER_IMAGE: "$[[ inputs.runner_image ]]"
   BUILD_NIGHTLY: "$[[ inputs.nightly ]]"
