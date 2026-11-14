@@ -35,3 +35,8 @@ output "looper_wif_provider" {
   description = "The looper project's provider (projects/N/locations/global/workloadIdentityPools/P/providers/R): its GCP_WIF_PROVIDER."
   value       = google_iam_workload_identity_pool_provider.looper.name
 }
+
+output "manager" {
+  description = "The runner manager's name, runner-manager-<its build's hash> (#46): a new build is a new manager."
+  value       = google_compute_instance.manager.name
+}

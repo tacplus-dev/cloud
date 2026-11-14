@@ -439,12 +439,14 @@ at boot and the OS's own container runtime (#4; `tacplus-dev/roadmap:decisions/b
 which replaced the baked image of tacplus-dev/looper#43). No job is placed on a VM before that runtime answers. Job
 containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-2026-11-03.md`; below, The pools).
 
-- **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until `docker info` answers
-  the user the manager connects as (`files/config.toml.tftpl`) and the VM gets an HTTPS answer from
-  `https://registry.gitlab.com/v2/`, the helper image's registry (each try bounded to ten seconds; any HTTP status
-  counts): a fresh VM is up before its egress through Cloud NAT works, and its first job failed pulling the helper
-  image (#50). A VM not ready by then is removed. That user, `runner`,
-  is created by the OS's guest agent from the SSH key the fleeting plugin sets, in the OS's `docker` group.
+- **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until the OS's container
+  runtime has pulled the runner's helper image, by digest, for the user the manager connects as
+  (`files/config.toml.tftpl`; each pull bounded to two minutes): the job's first step, through the daemon's own path
+  (its DNS, its proxy, Cloud NAT). A fresh VM is up before its egress works, and its first job failed pulling the
+  helper image (#50); an HTTPS answer from the VM itself was not enough, and it failed again (#61, twice on
+  2026-11-14). A VM not ready by then is removed. That user, `runner`, is created by the OS's guest agent from the
+  SSH key the fleeting plugin sets, in the OS's `docker` group. Cloud NAT logs the connections it drops (errors only,
+  #61): a pull that still fails on NAT leaves its cause in the ci project's Cloud Logging.
 - **The VM.** No startup-script, and no OS update (`cos-update-strategy = update_disabled`): the image changes only
   with its pin. COS's root is read-only, so a job's builds stay in the executor's own volume (no host `/builds`); the
   jobs still get the host's Docker socket until looper's build jobs replace it (PROPOSALS.md).
@@ -560,9 +562,13 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   config** (a pool raised, a tag moved: `runner-config`, `runner-pools`, `runner-groups`) is an in-place metadata update of the running
   manager: its watcher (`runner-config-watch`, which the startup script installs) sees the metadata change and runs
   the startup script again, which rewrites `config.toml`; gitlab-runner reloads it by itself, with no restart and no
-  job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk or
-  the zone) replaces the manager `create_before_destroy`, after its objects are in the bucket: its name is the build's
-  hash (`runner-manager-<8 hex>`), so the new one is up before the old one goes.
+  job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk,
+  the zone, or a pool's `[runners.autoscaler]` but its policy) replaces the manager `create_before_destroy`, after its
+  objects are in the bucket: its name is the build's hash (`runner-manager-<8 hex>`), so the new one is up before the
+  old one goes. The autoscaler is the build (#61): gitlab-runner reads it once, at a pool's first job, and a reload
+  changes only its policy (v19.5.3, `executors/internal/autoscaler/provider.go`), so #50's ready check, pushed in
+  place, was not live until gitlab-runner restarted; and a restart in place would remove every pool VM, jobs and all
+  (below), which a new manager's handoff drains first.
 - **No job lost to a new manager (#48).** A new manager's gitlab-runner removes every pool VM it did not create, jobs
   and all (`no data on pre-existing instance so removing for safety`: it cannot resume another manager's jobs), and
   deleting the old manager kills its jobs anyway; on 2026-11-12 the two together killed every looper job. So the old

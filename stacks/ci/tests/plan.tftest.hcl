@@ -210,6 +210,11 @@ run "ci" {
     condition     = google_compute_router_nat.runners.enable_dynamic_port_allocation && google_compute_router_nat.runners.min_ports_per_vm >= 1024 && google_compute_router_nat.runners.max_ports_per_vm >= 16384
     error_message = "The runners' NAT does not allocate ports dynamically, from at least 1024 up to 16384 a VM."
   }
+  # A connection NAT drops is logged, errors only (#61): a VM's failed pull leaves a record of its cause, if NAT's.
+  assert {
+    condition     = google_compute_router_nat.runners.log_config[0].enable && google_compute_router_nat.runners.log_config[0].filter == "ERRORS_ONLY"
+    error_message = "The runners' NAT does not log its errors."
+  }
   assert {
     condition     = google_project.ci.folder_id == "folders/222" && google_project.ci.billing_account == "000000-111111-222222" && !google_project.ci.auto_create_network && google_project.ci.deletion_policy == "PREVENT"
     error_message = "The project is not in its folder, billed, without a default network and protected from deletion."
@@ -287,8 +292,8 @@ run "ci" {
   }
   # The pools' VMs are vanilla Container-Optimized OS: nothing installed at boot, no startup-script, no OS update
   # (the pin is the only way their OS changes); the manager connects as runner, which the guest agent creates with
-  # the OS's docker group, and waits, at most ten minutes, for the OS's own container runtime to answer and for an
-  # HTTPS answer from the helper image's registry (#50: a fresh VM is up before its egress, Cloud NAT, works).
+  # the OS's docker group, and waits, at most ten minutes, until the OS's own container runtime has pulled the helper
+  # image (#61: a fresh VM is up before its egress works, and an HTTPS answer from the VM itself, #50, was not enough).
   assert {
     condition     = alltrue([for t in google_compute_instance_template.pool : length(t.metadata) == 1 && t.metadata["cos-update-strategy"] == "update_disabled"])
     error_message = "A pool's VMs run a startup-script or update their OS."
@@ -298,8 +303,8 @@ run "ci" {
     error_message = "The manager does not connect as runner."
   }
   assert {
-    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until docker info >/dev/null 2>&1 && curl -so /dev/null --max-time 10 https://registry.gitlab.com/v2/; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2
-    error_message = "A pool does not wait, bounded, for its VM's container runtime and its egress to registry.gitlab.com."
+    condition     = length(regexall("instance_ready_command = \"timeout 600 sh -c 'until timeout 120 docker pull registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564 >/dev/null 2>&1; do sleep 2; done'\"", google_compute_instance.manager.metadata["runner-config"])) == 2
+    error_message = "A pool does not wait, bounded, until its VM's container runtime has pulled the helper image itself."
   }
   # Job containers share the pools' VMs (decisions/looper-job-per-issue-2026-11-03.md, #5): each pool runs its
   # capacity of jobs on a VM, each job's container limited in CPU and memory (no swap), the disk bounded per VM (its
@@ -936,5 +941,158 @@ run "manager_build_replaced" {
   assert {
     condition     = google_compute_instance.manager.name != "runner-manager-3c8d4bad" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
+  }
+}
+
+# What replaces the manager and what is pushed to it (#61): gitlab-runner reads a pool's [runners.autoscaler] once,
+# and a reload changes only its policy, so the rest of it is the manager's build, like the startup script: a change
+# to it is a new manager (its handoff, #48, drains the old one's jobs first), never config pushed in place, which the
+# running gitlab-runner would not apply (#50's ready check, until it restarted). The policy and the job settings are
+# pushed: gitlab-runner reloads them.
+run "manager_build" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      shared = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 4, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+}
+
+run "manager_build_policy_pushed" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      shared = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 4, max_instances = 1, idle_count = 0, idle_time = "15m"
+        job          = { cpus = "2", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  assert {
+    condition     = output.manager == run.manager_build.manager
+    error_message = "A change to a pool's policy or its jobs' settings, which gitlab-runner reloads, replaces the manager."
+  }
+}
+
+run "manager_build_autoscaler_replaces" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      shared = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 2, max_instances = 3, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  assert {
+    condition     = output.manager != run.manager_build.manager
+    error_message = "A change to a pool's autoscaler (its capacity, its VMs), which gitlab-runner reads only once, does not replace the manager."
+  }
+}
+
+run "manager_build_ready_check_replaces" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      shared = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 4, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  assert {
+    condition     = output.manager != run.manager_build.manager
+    error_message = "A change to the pools' ready check (the helper image it pulls), which gitlab-runner reads only once, does not replace the manager."
   }
 }

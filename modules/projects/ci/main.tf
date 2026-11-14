@@ -98,6 +98,12 @@ resource "google_compute_router_nat" "runners" {
   enable_endpoint_independent_mapping = false
   min_ports_per_vm                    = 1024
   max_ports_per_vm                    = 16384
+  # A connection NAT drops (no port left, an allocation failed) is logged, errors only (#61): the pools' VMs log nothing
+  # of their own (no account), and a fresh VM's first pull timed out with no record of why.
+  log_config {
+    enable = true
+    filter = "ERRORS_ONLY"
+  }
 }
 
 # The manager reaches its workers over SSH (the docker-autoscaler executor): the one port-22 rule, internal and by
