@@ -235,13 +235,16 @@ retiring &&
   ok "runner-retire, a drain that ends early: gitlab-runner drained (SIGQUIT to it alone) and disabled, nothing cut, then its VM deleted" || fail "runner-retire: $(cat "$work/out" "$stub/events")"
 
 # runner-retire, a drain that hits the cap: the jobs not done by runner-drain-until are cut (SIGTERM to gitlab-runner
-# alone: it aborts them, failed as runner_interrupted, to run again on the successor), then its VM deleted.
+# alone: it aborts them, failed as runner_interrupted, to run again on the successor), then its VM deleted. Only the
+# order is asserted (#58): how many drain checks fit before the end depends on the clock (one, when the end's second
+# has come by runner-retire's first check).
 echo $(($(date +%s) + 1)) > "$stub/attributes/runner-drain-until"; echo 100000 > "$stub/drain"; echo 1 > "$stub/abort"
 retiring 0.2 && python3 - "$stub/events" <<'PY' && [ ! -e "$stub/compute/instances/runner-manager-19769182.json" ] &&
 import sys
 ev = [l.rstrip("\n") for l in open(sys.argv[1])]
 cut = ev.index("systemctl kill --kill-whom=main --signal=SIGTERM gitlab-runner")
-assert ev.index("systemctl stop --no-block gitlab-runner") < cut - 2 and ev[cut - 1] == "systemctl is-active gitlab-runner", ev
+stop = ev.index("systemctl stop --no-block gitlab-runner")
+assert stop < cut - 1 and all(e == "systemctl is-active gitlab-runner" for e in ev[stop + 1:cut]), ev
 assert ev[-1] == "DELETE zones/us-central1-b/instances/runner-manager-19769182" and not any("SIGKILL" in e for e in ev), ev
 PY
   grep -qF "runner-retire: the drain's end" "$work/out" &&
