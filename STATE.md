@@ -1,11 +1,13 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by the looper (#54).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-14 by the looper (#59).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6.10` by digest (#43: the first 2.6 build without OpenEXR, tacplus-dev/tacplus#554,
-  whose 16 CVEs failed the security job on 2.6.8 and 2.6.4; go1.27.4 since 2.6.8, #39; its `gh`'s x/net and its zlib
-  fixed, so no CI image entry is left in `security-exceptions.yaml` but GO-2026-5932, its `gh`'s x/crypto); OpenTofu 1.13.2, providers
+  `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
+  6.12.117-1, DSA-6628-1, whose six HIGH kernel CVEs in 6.12.116-1 failed the security job on 2.6.10 on 2026-11-14; no
+  OpenEXR since 2.6.10, #43, tacplus-dev/tacplus#554, whose 16 CVEs failed it on 2.6.8 and 2.6.4; go1.27.4 since 2.6.8,
+  #39; its `gh`'s x/net and its zlib fixed, so no CI image entry is left in `security-exceptions.yaml` but GO-2026-5932,
+  its `gh`'s x/crypto); OpenTofu 1.13.2, providers
   `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock files), tflint 0.65.0 (google ruleset
   0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0, govulncheck v1.1.4 (built
   from their modules; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and gitleaks brotli v1.2.7, #24) and
@@ -324,12 +326,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-13 by th
   first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
   standard library ones by building them with the latest Go (go1.27.4 since #39), gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had one, its `gh`'s x/net
   CVE-2026-78661, accepted (#27) until build:2.6.10 (#43) fixed it with zlib's and dropped OpenEXR (tacplus-dev/tacplus#554):
-  on that digest the security job passes, 0 failing findings (run here 2026-11-12); #23's (kin-openapi) are fixed by the kubernetes
+  on that digest the security job passed, 0 failing findings (run here 2026-11-12), until 2026-11-14 03:31Z, when Trivy's
+  database gained Debian's fix for six HIGH kernel CVEs in its `linux-libc-dev` 6.12.116-1 (DSA-6628-1) and the job went
+  red on main, skipping every plan and apply (#59): build:2.6.12 (tacplus-dev/tacplus#711) carries 6.12.117-1, and on its
+  digest Trivy 0.76.1 reports no HIGH or CRITICAL finding with a fix (run here 2026-11-14, both platforms). Each kernel
+  advisory batch recurs this way until the image question in PROPOSALS.md is decided; #23's (kin-openapi) are fixed by the kubernetes
   provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
   brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
-- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.10's, #43)
+- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.12's, #59)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`.
