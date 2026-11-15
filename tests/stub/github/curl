@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub curl for tests/nightly_builds_test.sh: `curl -sS -o OUT -w '%{http_code}' URL`, as ci/nightly-builds.sh
+# calls it. It answers a GET of http://HOST/PATH from the file STUB_GITHUB/HOST/PATH (query and all), with the status
+# in that file's .code (200 without it), and 404 when there is no such file. It logs each URL to STUB_GITHUB/calls.
+set -euo pipefail
+out=/dev/stdout url=''
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) out=$2; shift ;;
+    -w) shift ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+echo "$url" >> "$STUB_GITHUB/calls"
+f=$STUB_GITHUB/${url#http://}
+if [ -f "$f" ]; then cp "$f" "$out"; cat "$f.code" 2>/dev/null || printf 200; else echo '404: Not Found' > "$out"; printf 404; fi
