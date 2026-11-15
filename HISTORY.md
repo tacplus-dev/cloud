@@ -50,3 +50,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-14 looper issue security job red on main: 6 new HIGH kernel CVEs in the CI image's linux-libc-dev (build:2.6.10); every plan and apply is skipped (#59, 7dfd1a4; gates: full)
 - 2026-11-15 looper issue security: GO-2026-6860 and GO-2026-6866 (x/net html) have fixed releases for tflint (0.66.0) and Trivy (0.76.2); the exceptions still name them (#62, 62ac8a1; gates: full)
 - 2026-11-15 looper issue ci: the shared runner VM fails new jobs at preparation while it is full (18 runner_system_failure in an hour) (#63, d850d08; gates: full)
+- 2026-11-15 looper issue ci: a fresh VM's first job still fails pulling the helper image after #50 (twice on 2026-11-14) (#61, ca0e523; gates: full)
