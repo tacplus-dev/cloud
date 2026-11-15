@@ -67,7 +67,7 @@ pin a2 main build.lock && echo 'unavailable' > "$STUB_GITHUB/raw/tacplus-dev/a2/
 ! run check && [ ! -s "$work/out" ] && ok "and fails check, which reports nothing" || fail "check on a 503: $(cat "$work/out" "$work/err")"
 rm "$STUB_GITHUB/raw/tacplus-dev/a2/main/build.lock" "$STUB_GITHUB/raw/tacplus-dev/a2/main/build.lock.code"
 
-page=$STUB_GITHUB/api/orgs/tacplus-dev/repos?per_page=100\&page=2
+page="$STUB_GITHUB/api/orgs/tacplus-dev/repos?per_page=100&page=2"
 cp "$page" "$work/page2"
 echo '{"message": "API rate limit exceeded"}' > "$page" && echo 403 > "$page.code"
 ! run update && cmp -s "$file" "$work/before" && grep -q 'HTTP 403: {"message": "API rate limit exceeded"}' "$work/err" &&
