@@ -350,7 +350,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
 - **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.12's, #59)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
-  `build.lock` that is not the CI file's `default.image`.
+  `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
+  tacplus-dev/looper#113 (2026-11-15): ca0e523's, pipeline 3070014440, green on the gates full, its security report one
+  LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedules (#26; looper#71, #84):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
   `build_ci_commit` copied as is (`stacks/gitlab/files/`), the hub's copy adopted by import, checked against GitHub and
@@ -358,8 +360,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
   before; the new trigger before the old one goes); and one schedule per repository of
-  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC; tacplus-dev/website, pinned by its `build.lock`, 06:00 UTC, #31). Tested with the
-  stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
+  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC; tacplus-dev/website, pinned by its `build.lock`, 06:00 UTC, #31;
+  tacplus-dev/cloud, 07:00 UTC, #25). Tested with the stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
   `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
   whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
   looper, show there.
