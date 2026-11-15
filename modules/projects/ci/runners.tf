@@ -128,6 +128,16 @@ resource "google_compute_instance_group_manager" "pool" {
   version {
     instance_template = google_compute_instance_template.pool[each.key].self_link_unique
   }
+  # A template change replaces every VM, one still creating on the old template included: OPPORTUNISTIC (the default)
+  # left two VMs retrying forever on a template the quota refused (#29), and a running VM on the template it booted. No
+  # surge, so never more VMs than the manager asked for (the quota holds max_instances); all may go at once, their jobs
+  # lost as with any replaced VM.
+  update_policy {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_surge_fixed       = 0
+    max_unavailable_fixed = max(1, each.value.max_instances)
+  }
   # A VM its group did not stop (a spot VM reclaimed, a VM failed) is left as it is, not repaired (#53): the plugin
   # deletes it, as it does every stopped VM, and the autoscaler's next one goes where there is capacity, which is what
   # upstream's README recommends. A repair recreates it in its own zone, and one in a zone out of spot t2a is retried
@@ -169,12 +179,14 @@ resource "google_compute_region_instance_group_manager" "pool" {
   instance_lifecycle_policy {
     default_action_on_failure = "DO_NOTHING"
   }
+  # PROACTIVE, as the zonal group's (#29): a template change reaches every VM. A regional group needs surge plus
+  # unavailable at least its zones' count.
   update_policy {
-    type                         = "OPPORTUNISTIC"
+    type                         = "PROACTIVE"
     minimal_action               = "REPLACE"
     instance_redistribution_type = "NONE"
     max_surge_fixed              = 0
-    max_unavailable_fixed        = length(each.value.zones)
+    max_unavailable_fixed        = max(length(each.value.zones), each.value.max_instances)
   }
   # The manager's autoscaler sizes the group: its idle VMs, and the VMs its jobs need.
   lifecycle {

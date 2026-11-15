@@ -265,6 +265,12 @@ run "ci" {
     condition     = alltrue([for g in concat(values(google_compute_instance_group_manager.pool), values(google_compute_region_instance_group_manager.pool)) : g.target_size == 0])
     error_message = "A pool's instance group is not empty at rest."
   }
+  # A template change reaches every VM, one still creating included (#29): the group replaces them itself, never
+  # above the size the manager set. A regional group's unavailable count is at least its zones'.
+  assert {
+    condition     = alltrue([for g in concat(values(google_compute_instance_group_manager.pool), values(google_compute_region_instance_group_manager.pool)) : length(g.update_policy) == 1 && g.update_policy[0].type == "PROACTIVE" && g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0 && g.update_policy[0].max_unavailable_fixed > 0]) && google_compute_region_instance_group_manager.pool["no-account"].update_policy[0].max_unavailable_fixed == 3
+    error_message = "A pool's instance group does not replace its VMs proactively, with no surge, on a template change."
+  }
   # A VM its group did not stop (a spot VM reclaimed, 2026-11-13 10:26Z) is left stopped, not repaired: the plugin
   # deletes it and the autoscaler's next VM goes where there is capacity (#53), as upstream's README recommends. A
   # repair recreates it in its own zone, retried there forever when that zone is out of capacity.

@@ -106,7 +106,9 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **Reused VMs collect images** (looper, #5). What: bound what a reused VM keeps: a large `max_use_count` on the shared
   pool (the VM replaced after N jobs), or a pruning step the manager runs between jobs. Why: the always-on VM is never
   replaced, so every image a job pulls stays on its disk until it fills; the 50 GB set aside for images is a guess.
-- **Replace the always-on VM on a bump** (looper, #5). What: a COS bump (or a change to the pool's template) also
+- **Replace the always-on VM on a bump** (looper, #5): done by #29 (every pool's group has a PROACTIVE update policy,
+  minimal action REPLACE, no surge: a template change replaces every VM on an old template, running or still creating).
+  What: a COS bump (or a change to the pool's template) also
   replaces the shared pool's running VM: the instance group's update policy, or a step in the apply. Why: with VMs
   reused, a VM already up keeps the image it booted, so the bump does not reach the always-on VM until it goes.
 - **The rest of the job containers' hardening** (looper, #5). What: `cap_drop = ["ALL"]`, a non-root user and a
