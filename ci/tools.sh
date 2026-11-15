@@ -48,8 +48,8 @@ die() { echo "tools.sh: $*" >&2; exit 1; }
 
 tofu_version=1.13.2
 tofu_sum=h1:iC+P5kFxXbBiTWm2bb8CkoTiq3IcU9BBZZVtQr9fsb8=
-tflint_version=0.65.0
-tflint_sum=h1:R+3+mkZuO8eCQy0bzkP9Pz1JPmNePXnOXX2T6K142j4=
+tflint_version=0.66.0
+tflint_sum=h1:anTkUbGDrYnTuvTS8EVixlZhcGswJM8YDn6YuDwjcbI=
 tflint_google_version=0.41.0   # .tflint.hcl names the same version
 tflint_google_sum=h1:f1FcPYLq1WxGqeSK8QV2JfXZB3O4QY7ChCFfOwjBjcs=
 shellcheck_version=0.11.0
@@ -66,23 +66,23 @@ klauspost_compress=github.com/klauspost/compress@v1.20.2
 brotli=github.com/andybalholm/brotli@v1.2.7
 govulncheck_version=v1.1.4
 govulncheck_sum=h1:Ju8QsuyhX3Hk8ma3CesTbO8vfJD9EvUBgHvkxHBzj0I=
-trivy_version=0.76.1
-trivy_sum=h1:xzXcxZpfkZpTxAHzfuG3KS5BRP17KG70+c0uFFwZUU4=
+trivy_version=0.76.2
+trivy_sum=h1:RYBcQklHCFOHg/sfYSfe8v4/W5H2rAZrP5THPWY5F+A=
 
 # The SHA-256 of each download, and of each of our builds (srcbuild: tofu, tflint, its ruleset, trivy).
 case $(uname -m) in
   aarch64|arm64) arch=arm64 sc_arch=aarch64
     tofu_sha=9a0b800592049ecf6a46f2bb85c2be5eef40629cf622cbe86fb87a14f0d735e4
-    tflint_sha=6b8a1597aa76882b241c18a5d47189c81350b2e66f0da86097b6f92d38031e43
+    tflint_sha=404b5046e9abd961dcacc275c6cf6cce09c38c996d30059879030eb61052861b
     tflint_google_sha=932d8448fc1f3bbdbcd73bd608f499b0971fe8679d6f6ff584506df2575a46c0
     shellcheck_sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
-    trivy_sha=b6ff7d266b3b0a00c0ad5fb15785e4a458bf46d427059cae771e0975b16a5280 ;;
+    trivy_sha=aa705a98fc231d77911a927ac4befeb3e8730950975aac55feff4aa821994341 ;;
   x86_64|amd64) arch=amd64 sc_arch=x86_64
     tofu_sha=11f9f212f0319c691d23be8155cbacfd8711eb70bb41563ba6c03758fe1f343d
-    tflint_sha=1083943c5bae26197f78d550134d324b5bfa95e212acc1d25dade10bf39b4e6d
+    tflint_sha=dbf51dd97b53173ad9100f11f223bea96159e3c3c1656fc6b9cfa247882246ce
     tflint_google_sha=2ab3ff771be9efedaaf7e61fd93a3917440a0ea19a2f24cdd38d2b1806009496
     shellcheck_sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
-    trivy_sha=8eec523a45b922f1dd97aba7db0d825e7d46a65230db1a10b05a1f54da33b328 ;;
+    trivy_sha=ea0e230e2e651de6862218ef82cc364c0d5f8c464d30e89205d4ae0121be067b ;;
   *) die "no pinned tools for $(uname -m)" ;;
 esac
 case ${1:-} in '') security=no ;; security) security=yes ;; *) die "usage: ci/tools.sh [security]" ;; esac

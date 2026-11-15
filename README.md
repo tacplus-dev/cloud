@@ -101,8 +101,8 @@ that Jody plays, on a commit already applied to dev.
 
 ### Determinism
 
-- Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.65.0 and its google ruleset
-  0.41.0, shellcheck 0.11.0, Trivy 0.76.1 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
+- Every tool, provider and image is pinned by version and digest: OpenTofu 1.13.2, tflint 0.66.0 and its google ruleset
+  0.41.0, shellcheck 0.11.0, Trivy 0.76.2 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
   `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack), `gitlab` 19.5.0 and `anthropic` 1.92.0 (ippontech's, the anthropic stack) providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
   `-lockfile=readonly`), the `gitlab`, `kubernetes`, `google` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
@@ -186,17 +186,18 @@ moves to the first upstream release with the fix (#3):
   ldflags), with no VCS stamp, so reproducibly: each build is refused unless its SHA-256 is the pinned one. yq, gitleaks,
   OSV-Scanner and govulncheck are built with the same Go. Each goes back to upstream's release when one is built on a
   fixed Go (PROPOSALS.md).
-- **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.65.0 and its ruleset 0.41.0:
+- **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.66.0 and its ruleset 0.41.0:
   x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
-  TLS), and none of them has a fixed release yet.
+  TLS), and none of them has a fixed release yet. tflint 0.66.0 and Trivy 0.76.2 have x/net v0.62.0, so x/net html's
+  GO-2026-6860 and GO-2026-6866 name only OpenTofu and the ruleset (#62).
 
 - **Accepted until 2026-12-04** (#10): gitleaks v8.30.1's xz (GO-2025-3922), with no gitleaks release past it yet.
 - **gitleaks and OSV-Scanner are built with the fixed klauspost/compress and brotli** (#24): `ci/tools.sh` builds each
   from its pinned module in a copy of its source that requires klauspost/compress v1.20.2 (GO-2026-6865, a panic on
   two-block frames) and, for gitleaks, brotli v1.2.7 (GO-2026-6888, excessive allocation decompressing crafted
   streams), checked against the Go checksum database, until their releases require them. **Accepted until
-  2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2 and Trivy 0.76.1, which decode only
+  2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2 and Trivy 0.76.2, which decode only
   pinned, trusted inputs; each pin moves when its upstream ships the fix.
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
   klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
