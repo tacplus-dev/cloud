@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#62).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#61).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -41,8 +41,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
 - **Runner image and readiness (#4):** the pools boot Container-Optimized OS for arm64, pinned by image name in
   `modules/settings` (`cos_arm64_image`, never a family: the module and `ci/policy.sh` refuse one), vanilla
   (`decisions/builds-in-containers-2026-11-03.md`): no startup-script, nothing installed at boot, OS updates off, the
-  OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
-  and the VM reaches `https://registry.gitlab.com/v2/` (`instance_ready_command`; #50: egress before the first job). No baked image and no bake identity (superseded). Tested against mock providers only.
+  OS's own Docker. Every pool waits, bounded to ten minutes, until the connecting user's Docker has pulled the helper
+  image by digest, each pull bounded to two minutes (`instance_ready_command`; #61: the job's first step through the
+  daemon's own path, since #50's HTTPS answer from the VM still let a fresh VM's first job time out pulling it, twice on
+  2026-11-14). A pool's `[runners.autoscaler]` but its policy is the manager's build (#61): gitlab-runner 19.5.3 reads it
+  once and a reload changes only the policy, so #50's check, pushed in place, was not live until a restart; a change to
+  it is now a new manager (runner-manager-9c4d2d4d, a 30-minute handoff at apply). Cloud NAT `runners` logs its errors
+  (`ERRORS_ONLY`, #61). No baked image and no bake identity (superseded). Tested against mock providers only (the plan
+  tests); not yet seen live: three cloud pipelines in a row passing `tools` on fresh VMs, which the hub reports on #61.
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
   one always-on t2a-standard-8 (three until #55) with no slots since 2026-11-10 (Jody: every looper runs when it wants; a second VM on demand past 13 jobs since #63; up to 13 jobs a
   VM, each may use the whole VM), on a 154 GB pd-balanced disk since #63 (350 GB pd-standard until then: on 2026-11-15 its IO, at the cap under 24
@@ -121,8 +127,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   (a drain that ends early, one that hits the cap, on both managers' side) and the plan tests (the setting; the new
   build runner-manager-3daaeddf). Not yet seen live: the first apply of it creates runner-manager-3daaeddf and caps
   the drain of 4c24f5f4 and e66cee62 (whichever are left); that the cut jobs fail as `runner_interrupted` (gitlab-runner
-  19.5.3's source says so) and the kicker starts them again shows only then (since #54, the build it applies is
-  runner-manager-3c8d4bad).
+  19.5.3's source says so) and the kicker starts them again shows only then (since #61, the build it applies is
+  runner-manager-9c4d2d4d).
 - **The build pool made no VM (#53):** from about 10:25Z on 2026-11-13 every build job logged `unable to acquire
   instance within the configured timeout of 15m0s`, after the 3-hour tacplus full gates lost their VM at 10:26:40Z,
   most likely reclaimed. Not confirmed: nobody but the pipeline reads the ci project's groups. The groups repaired a
@@ -130,7 +136,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   is out, counted by the autoscaler as coming, and the reaper took creations only. Now every group's
   `instance_lifecycle_policy` does nothing on a failure (`DO_NOTHING`, the fleeting plugin's recommendation: it
   deletes the stopped VM and the autoscaler's next one goes where there is room), and the reaper also deletes a VM
-  *recreating* on a capacity or quota error (a new manager build, runner-manager-3c8d4bad since #54: its handoff empties the
+  *recreating* on a capacity or quota error (a new manager build, runner-manager-9c4d2d4d since #61: its handoff empties the
   groups, a stuck recreation too). Where a report reads the reason: the drift job's pool check (`ci/pools.sh`), in
   the drift issue: each VM a group cannot make with its error, a stopped VM it keeps, each group's errors of the last
   24 hours by error and zone, and every quota of us-central1 and the project 80% used or more; nightly, or now by
