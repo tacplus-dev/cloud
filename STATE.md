@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-14 by the looper (#59).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#62).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -8,10 +8,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-14 by th
   OpenEXR since 2.6.10, #43, tacplus-dev/tacplus#554, whose 16 CVEs failed it on 2.6.8 and 2.6.4; go1.27.4 since 2.6.8,
   #39; its `gh`'s x/net and its zlib fixed, so no CI image entry is left in `security-exceptions.yaml` but GO-2026-5932,
   its `gh`'s x/crypto); OpenTofu 1.13.2, providers
-  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock files), tflint 0.65.0 (google ruleset
+  `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack) and `gitlab` 19.5.0 (lock files), tflint 0.66.0 (google ruleset
   0.41.0), shellcheck 0.11.0, and the security job's gitleaks v8.30.1, OSV-Scanner v2.7.0, govulncheck v1.1.4 (built
   from their modules; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and gitleaks brotli v1.2.7, #24) and
-  Trivy 0.76.1, all pinned by checksum (`ci/tools.sh`). Since #39 (GO-2026-6859, net/http) everything but shellcheck
+  Trivy 0.76.2 (tflint 0.66.0 and Trivy 0.76.2 since #62: x/net v0.62.0), all pinned by checksum (`ci/tools.sh`). Since #39 (GO-2026-6859, net/http) everything but shellcheck
   is built here with **go1.27.4**: OpenTofu, tflint, its ruleset and Trivy from their release's module source (pinned
   by module hash and by the build's SHA-256, `srcbuild`), yq and the scanners from their modules, and the four
   providers from their tags, reproducibly, each by its pinned SHA-256 (`ci/gitlab-provider.sh`, #3, x/net v0.62.0;
@@ -318,7 +318,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-14 by th
 - **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
   provider, tflint and its ruleset carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
-  when its fix ships (PROPOSALS.md).
+  when its fix ships (PROPOSALS.md). x/net html's GO-2026-6860 and GO-2026-6866 name OpenTofu and the ruleset only since
+  tflint 0.66.0 and Trivy 0.76.2 (#62).
 - **Security job (#10):** `security` (`ci/security.sh`), on every push, merge request and nightly, before `plan:folder`:
   OSV-Scanner on the tree, `govulncheck -mode=binary` on every pinned binary (the tools, the scanners, both providers,
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
