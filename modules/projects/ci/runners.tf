@@ -212,7 +212,7 @@ resource "google_compute_instance" "manager" {
 
   # Never without a manager (#46): every runner of the fleet is its, and the apply that replaces it runs on one of them.
   # A new build replaces it, the new manager up before the old one goes (its name is the build's, so both can be);
-  # a new config (a pool raised, a tag moved) is an in-place metadata update, which the running manager's watcher
+  # a new config (a pool's idle VMs or its jobs' limits, a tag moved) is an in-place metadata update, which the running manager's watcher
   # applies (files/manager-startup.sh) with no restart and no job lost. And never a job lost to a new one (#48): the
   # old one is forgotten, not destroyed. The new one tells it to retire, and it deletes itself once its jobs are done
   # (the apply's own among them), before the new one's gitlab-runner starts on emptied groups (files/manager-startup.sh).
@@ -241,10 +241,15 @@ locals {
 }
 
 # The manager's build: what it is made of and boots from, the VM (its image, machine type, disk and zone; a stop
-# for an update would take every runner down with it, as a replacement would), the startup script, and GitLab Runner
-# and the fleeting plugin from the bucket by SHA-256 (#40). A change to any of it replaces the manager, and its name,
-# the build's hash, lets the new one be made before the old one goes (#46). The config, the rest of its metadata, is
-# not the build: it is pushed to the running manager.
+# for an update would take every runner down with it, as a replacement would), the startup script, GitLab Runner
+# and the fleeting plugin from the bucket by SHA-256 (#40), and each pool's autoscaler but its policy (#61). A change
+# to any of it replaces the manager, and its name, the build's hash, lets the new one be made before the old one goes
+# (#46). The config, the rest of its metadata, is not the build: it is pushed to the running manager, which reloads
+# it. Not the autoscaler: gitlab-runner reads it once, at a pool's first job, and a reload changes only its policy
+# (v19.5.3, executors/internal/autoscaler/provider.go), so #50's ready check, pushed in place, was not live until
+# gitlab-runner restarted. Nor may the manager restart it in place: a gitlab-runner that starts removes every pool VM
+# it finds, jobs and all ("no data on pre-existing instance so removing for safety"); a new manager's handoff drains
+# them first, capped (#51).
 locals {
   manager_build = {
     image                  = var.image
@@ -255,6 +260,8 @@ locals {
     startup-script         = file("${path.module}/files/manager-startup.sh")
     runner-sha256          = var.runner.runner_sha256
     fleeting-plugin-sha256 = var.runner.plugin_sha256
+    # Each pool's [runners.autoscaler] as config.toml has it, up to its policy, which comes last.
+    autoscaler = regexall("(?ms)^ *\\[runners\\.autoscaler\\].*?\\[\\[runners\\.autoscaler\\.policy\\]\\]", local.manager_config)
   }
   manager_name = "runner-manager-${substr(sha256(jsonencode(local.manager_build)), 0, 8)}"
   manager_metadata = {

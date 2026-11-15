@@ -1,16 +1,22 @@
 # The runner manager's /etc/gitlab-runner/config.toml, rendered by tacplus-dev/cloud (modules/projects/ci) into the
 # manager's metadata (runner-config). Each @TOKEN:<pool>@ is replaced at boot with the pool's runner token, read
 # from Secret Manager (files/manager-startup.sh): no token is in this file or the metadata. No job is placed on a VM
-# before its container runtime answers the user the manager connects as (looper#43); one not ready in ten minutes
-# is removed. The VMs are Container-Optimized OS, whose root is read-only: a job's builds stay in the executor's own
-# volume, not a host directory. Job containers share a VM (capacity_per_instance), each within its pool's CPU and
-# memory limits, without swap; the VMs are reused (max_use_count = 0), and each job's containers and volumes are
-# removed when it ends (disable_cache: no cache volume outlives its job). No job is privileged, and none gets the
-# host's Docker socket (decisions/looper-job-per-issue-2026-11-03.md, #5). The helper image each job runs beside is
-# upstream's for the runner's version, by digest, which the pools' VMs pull at the job's start: the manager installs no
-# helper-images package (#40; built here, a follow-up in PROPOSALS.md). A forced stop (a handoff's cut, #51) gives
-# the aborted jobs 7 minutes to tell GitLab (#54): gitlab-runner waits up to 5 for each to finish, and at the default
-# 30 seconds it exited first, leaving them `running`; files/manager-startup.sh's runner-retire waits longer than this.
+# before its container runtime has pulled the helper image for the user the manager connects as (looper#43, #61): the
+# job's first step, through the daemon's own path (its DNS, its proxy, Cloud NAT), which an HTTPS answer from the VM
+# itself (#50) did not prove; each pull is bounded to two minutes, and a VM not ready in ten is removed. The VMs are
+# Container-Optimized OS, whose root is read-only: a job's builds stay in the executor's own volume, not a host
+# directory. Job containers share a VM (capacity_per_instance), each within its pool's CPU and memory limits, without
+# swap; the VMs are reused (max_use_count = 0), and each job's containers and volumes are removed when it ends
+# (disable_cache: no cache volume outlives its job). No job is privileged, and none gets the host's Docker socket
+# (decisions/looper-job-per-issue-2026-11-03.md, #5). The helper image each job runs beside is upstream's for the
+# runner's version, by digest, which each pool VM pulls before it is ready: the manager installs no helper-images
+# package (#40; built here, a follow-up in PROPOSALS.md). A forced stop (a handoff's cut, #51) gives the aborted jobs
+# 7 minutes to tell GitLab (#54): gitlab-runner waits up to 5 for each to finish, and at the default 30 seconds it
+# exited first, leaving them `running`; files/manager-startup.sh's runner-retire waits longer than this.
+#
+# gitlab-runner reads a pool's [runners.autoscaler] once, when its first job starts, and a reload changes only its
+# policy (#61; v19.5.3, executors/internal/autoscaler/provider.go): the rest of that section is the manager's build
+# (runners.tf), not config pushed to it in place.
 concurrent = 100
 check_interval = 3
 shutdown_timeout = 420
@@ -37,7 +43,7 @@ shutdown_timeout = 420
     capacity_per_instance = ${pool.capacity}
     max_use_count = 0
     max_instances = ${pool.max_instances}
-    instance_ready_command = "timeout 600 sh -c 'until docker info >/dev/null 2>&1 && curl -so /dev/null --max-time 10 https://registry.gitlab.com/v2/; do sleep 2; done'"
+    instance_ready_command = "timeout 600 sh -c 'until timeout 120 docker pull ${helper_image} >/dev/null 2>&1; do sleep 2; done'"
     [runners.autoscaler.plugin_config]
       name = "${pool.group.name}"
       project = "${project}"

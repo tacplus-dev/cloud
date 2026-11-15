@@ -460,3 +460,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   until tacplus rebuilds and this repository moves its digest. (b) is what #59 did: tacplus#711 rebuilt every line
   within two hours of the red job, and the pin moved to build:2.6.12 the same morning; the job was red, and every
   plan and apply skipped, for the hours between. This changes nothing in the scan's policy.
+- **The pool VMs' and the manager's journals in Cloud Logging** (looper, #61, 2026-11-15). What: a logging account
+  for the pools' VMs (`logging.logWriter` only, no other right: today `service_account = false` on most pools) or COS's
+  `google-logging-enabled`, and the Ops Agent (or journald forwarding) on the runner manager. Why: a pool VM is deleted
+  after `idle_time` and the manager's gitlab-runner journal stays on it, so #61's two failed helper pulls left only the
+  job trace; the cause could not be shown from the VM's own evidence, and the hub logs in to no VM.
