@@ -359,10 +359,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   linted by GitLab's `ci/lint` in `plan:gitlab` before every plan (`ci/build-ci.sh`; `update` bumps it); a pipeline
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
-  before; the new trigger before the old one goes); and one schedule per repository of
-  `stacks/gitlab/nightly-builds.yaml` (inputs `repo`, `nightly: true`; tacplus-dev/looper, 05:00 UTC; tacplus-dev/website, pinned by its `build.lock`, 06:00 UTC, #31;
-  tacplus-dev/cloud, 07:00 UTC, #25). Tested with the stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
-  `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
+  before; the new trigger before the old one goes); and one schedule per pinned repository of
+  `stacks/gitlab/pinned-repositories.yaml` (inputs `repo`, `nightly: true`; 25 repositories, each at a minute and hour
+  of its name's SHA-256: tacplus-dev/looper 18:52, cluster 09:46, website 18:33, cloud 15:12 UTC), which `ci/nightly-builds.sh update` writes from GitHub and the drift's `check` keeps honest
+  (#33). Tested with the
+  stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
+  `tests/build_ci_test.sh` (stub curl), `tests/nightly_builds_test.sh` (stub GitHub) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
   whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
   looper, show there.
 - **tacplus-dev/build's runner settings (#35):** a project whose jobs are tagged `build` (or any tag only tacplus-dev's
