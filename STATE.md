@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#61).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#29).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -59,8 +59,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
-  after 30 days. Plan tests cover the cache's IAM, the federation, the lifecycles and the pools' settings, against
-  mock providers only.
+  after 30 days. A pool's group, zonal or regional, replaces its VMs proactively on a template change, no surge
+  (#29): one still creating on an old template, which OPPORTUNISTIC retried forever, and a running one on the template
+  it booted, both go; all of a pool's VMs may go at once, their jobs with them. Not yet seen live: the first `apply:ci`
+  of it sets the policy on the live groups. Plan tests cover the cache's IAM, the federation, the lifecycles, the
+  pools' settings and the groups' update policy, against mock providers only.
 - **The manager's binaries (#40):** GitLab Runner v19.5.3 (#44, the release tacplus-dev/cluster runs, cluster#21) and
   the fleeting plugin v1.3.1 built here with go1.27.4, x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6,
   reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the tools job:
