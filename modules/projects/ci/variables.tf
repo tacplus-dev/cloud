@@ -55,6 +55,12 @@ variable "manager_machine_type" {
   type        = string
 }
 
+variable "manager_disk_gb" {
+  description = "The runner manager's pd-balanced boot disk, in GB (modules/settings ci_disks: counted against SSD_TOTAL_GB with the pools' SSD-backed disks, #63). Part of the manager's build: a change replaces it (a handoff)."
+  type        = number
+  default     = 20
+}
+
 variable "manager_handoff_minutes" {
   description = "The cap on a manager handoff (#51): a new manager starts taking jobs at most this long after it boots. The old one drains until 12 minutes before it, then the jobs still on it are cut (failed as runner_interrupted, with up to 8 minutes to tell GitLab, #54; the cloud pipeline's handoff job runs them again); the last minutes delete the old manager and empty the groups."
   type        = number

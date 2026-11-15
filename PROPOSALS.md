@@ -465,3 +465,24 @@ the looper then marks it `promoted` or `declined` here with the date.
   `google-logging-enabled`, and the Ops Agent (or journald forwarding) on the runner manager. Why: a pool VM is deleted
   after `idle_time` and the manager's gitlab-runner journal stays on it, so #61's two failed helper pulls left only the
   job trace; the cause could not be shown from the VM's own evidence, and the hub logs in to no VM.
+- **The SSD quota raised, the build pool on pd-balanced, the shared share back to 12 GB** (looper, #63, 2026-11-15).
+  What: `SSD_TOTAL_GB` in us-central1 raised from 500 to 1500 or so (a request to Google, Jody's; then
+  `ci_disks.ssd_quota_gb`), then the build pool's 450 GB disk pd-balanced like the shared pool's (four builds share
+  it: 337 read and 675 write IOPS, 54 MiB/s today, against 3000 IOPS and 140 MiB/s), and the shared pool's job share
+  back to 12 GB (8 since #63, to fit two 154 GB disks, deploy, cluster and two managers in 498 of 500). Why: #63's
+  cause was a pd-standard disk shared by a VM's jobs and its Docker, and the build pool is the same shape; the shared
+  pool fits the quota only with 2 GB to spare, which the drift's quota check reports from 80% used.
+- **The pool check reads the VMs' load** (looper, #63). What: `ci/pools.sh` also reads, for each pool VM, Cloud
+  Monitoring's `compute.googleapis.com/instance/disk/throttled_write_ops_count` and `throttled_read_ops_count`
+  against `write_ops_count` and `read_ops_count`, and `instance/cpu/utilization`, over the last 24 hours (the
+  Monitoring API, `gcloud auth print-access-token`, curl and jq; a stub for `tests/pools_test.sh`), and reports a VM
+  whose disk was throttled, say, a tenth of an hour or more. Why: on #63 nobody but the pipeline and the hub could
+  read the VM, and the looper named the cause from `/proc` inside a job container on it; a reported throttled disk
+  would have named it the morning before. Memory needs an agent COS does not run: a job's own `/proc/meminfo` is the
+  only memory reading, and the looper's recap could log it.
+- **What writes a terabyte a day on the shared VM** (looper, #63). What: find what the shared VM writes (1.18 TB in
+  its first 30 hours on 2026-11-15, about 11 MB/s sustained, 37 MB/s in a 120 s sample with 16 jobs: Docker's
+  json-file logs of the jobs' output, the loopers' checkpoints and transcripts, the tools' caches, or the overlay's
+  copy-up), and cut what need not be written (a `tmpfs` for a cache, a `log-opts` size, fewer checkpoints). Why: the
+  writes are what filled the pd-standard disk's queue on #63; pd-balanced serves five times the bytes, and the same
+  writes would fill it at about 70 jobs; less written is a cheaper disk and a faster job.

@@ -468,7 +468,7 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 
 | Pool | Runner | VMs | Jobs per VM, each |
 |---|---|---|---|
-| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **one always on, a second on demand** (`idle_count = 1`, `max_instances = 2` since #63; three until #55, one until #63): t2a-standard-8, 206 GB pd-standard | no slots (Jody, 2026-11-10): up to 13 jobs a VM (#63; 25 until then), each may use all 8 CPUs and 28g, no swap, 12 GB of disk |
+| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **one always on, a second on demand** (`idle_count = 1`, `max_instances = 2` since #63; three until #55, one until #63): t2a-standard-8, 154 GB pd-balanced (#63; 350 GB pd-standard until then) | no slots (Jody, 2026-11-10): up to 13 jobs a VM (#63; 25 until then), each may use all 8 CPUs and 28g, no swap, 8 GB of disk (12 until #63) |
 | `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) | **on demand, from zero** (`idle_count = 0`, `max_instances = 1` since #63, two until then; spot until #55): t2a-standard-8, 450 GB pd-standard, in whichever of us-central1-a, -b and -f has the capacity (#49) | 4 builds a VM (4 at once), each may use 4 CPUs and 14g |
 | `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2 (#55), 80 GB | 2: 2 CPUs, 6g, 25 GB |
 | `cluster` | tacplus-dev/cluster, also tacplus-dev/cloud's own pipeline, protected; tags `cluster`, `cloud` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 70 GB | 2: 2 CPUs, 7g, 20 GB |
@@ -517,6 +517,31 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
   managers (a handoff) need more: shared 16, build 8, cluster 4, deploy 2 and the managers 2 are 32. A pool over it
   makes its last VM fail `QUOTA_EXCEEDED` (the build pool's second, 2026-11-13). Raising a pool, or a machine type,
   needs room under it, or the quota raised first (a request to Google, then `ci_cpus.quota`).
+- **A full shared VM queues its jobs, it does not fail them (#63).** The capacity is the runner's only admission: a
+  VM with a free slot gets the job whatever its load, and a job whose preparation the VM cannot serve fails
+  (`runner_system_failure`), it does not wait; so the capacity must be what the VM serves at once. On 2026-11-15 from
+  03:03Z, 24 looper jobs on the one shared VM: from 03:28Z every job placed on it failed at preparation, Docker not
+  answering `containers/create` within 120 s (`creating cache volume: set volume permissions: create permission
+  container`), 18 in the first hour and every new job from 04:28Z, while the running jobs ran on. The cause, read on
+  the VM at 06:50Z with about 16 jobs (the looper of #63, from its job container: `/proc/pressure`,
+  `/proc/diskstats`, `/proc/meminfo`): its 350 GB pd-standard disk (525 write IOPS, 42 MiB/s) at its cap, busy 92%
+  of a 120 s sample, 393 writes a second at 61 ms each behind a queue of 25, every task on the VM stalled on IO 15%
+  of the time (1.5 hours of such stalls in the 30 hours since boot); CPU contended (load 21 to 35 on 8 CPUs) but never
+  stalled; memory idle (2.4 GB anonymous of 32, 29 GB available). Docker's `containers/create` writes the container's
+  config and layer and commits containerd's metadata, each write waiting its turn behind the jobs'. Not the memory,
+  and not the jobs' limits (a looper job's container used 200 to 260 MB of its 28g). So the shared pool's disk is
+  **pd-balanced** (3000 IOPS and 140 MiB/s from its first GB: ten times the writes, five times the bytes), 8 GB a job
+  (the VM held 67 GB for 16 jobs and its images) and 50 GB for the OS and the images: 154 GB a VM, under the SSD quota
+  (next). The stopgap's 13 jobs a VM stands (26 over two VMs). The always-on VM up at the time keeps its pd-standard
+  disk until it is replaced (PROPOSALS.md, replace the always-on VM on a bump): the second VM, and every VM after,
+  boot the new template. Cloud Monitoring's series for 03:00Z–04:30Z (`instance/disk/write_ops_count`,
+  `throttled_write_ops_count`, `cpu/utilization`; no memory series: COS runs no agent) are the hub's to read, with
+  its viewer role; the pipeline's pool check does not read them yet (PROPOSALS.md).
+- **The SSD quota (#63).** `ci_disks` in `modules/settings` keeps tacplus-ci's `SSD_TOTAL_GB` in us-central1 (500) and
+  the manager's boot disk (20 GB pd-balanced); the ci stack's test refuses pools whose pd-balanced, pd-ssd or
+  pd-extreme disks, each pool at its `max_instances`, and two managers (a handoff) need more: shared 2 x 154, deploy
+  80, cluster 70 and the managers 40 are 498. A pool over it makes its last VM fail `QUOTA_EXCEEDED`, as over the CPU
+  quota. The build pool's 450 GB is pd-standard: pd-balanced for it too is the quota raised first (PROPOSALS.md).
 - **The build pool on demand (#55).** On 2026-11-13 five build VMs were preempted, each under 10 minutes old, taking
   their builds with them (`runner_system_failure`), and the tacplus gates (about 3 hours) never finished on spot. The
   build pool is on demand since, still from zero: about $0.31/h a VM, paid only while builds run.

@@ -97,6 +97,14 @@ run "settings" {
     condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 2
     error_message = "The shared pool is not one always-on t2a-standard-8 and a second on demand (13 jobs a VM, #63; Jody 2026-11-14)."
   }
+  # A full shared VM queues its jobs, it does not fail them (#63): on 2026-11-15 its 350 GB pd-standard disk (525
+  # write IOPS, 42 MiB/s, shared by 24 jobs and Docker) stopped Docker answering containers/create within 120 s, and
+  # every job placed on the VM failed runner_system_failure for hours while the VM's memory sat idle. The pool's disk
+  # is pd-balanced (3000 IOPS and 140 MiB/s from its first GB), sized for its jobs under the SSD quota (below).
+  assert {
+    condition     = output.runner_pools.shared.disk_type == "pd-balanced" && output.runner_pools.shared.job.disk_gb == 8 && output.runner_pools.shared.os_disk_gb == 50
+    error_message = "The shared pool's disk is not pd-balanced, 8 GB a job and 50 GB for the OS and the images (#63: a pd-standard disk shared by its jobs stalled Docker, and every job placed on the full VM failed)."
+  }
   # Every pool at its peak fits tacplus-ci's CPU quota (#55): each pool's max_instances VMs, and two managers (a
   # handoff), never more CPUs than CPUS_ALL_REGIONS, or a pool's VM fails QUOTA_EXCEEDED (the second build VM,
   # 2026-11-13). A t2a-standard-N has N CPUs.
@@ -104,9 +112,17 @@ run "settings" {
     condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])])) <= output.ci_cpus.quota
     error_message = "The pools' VMs at their max_instances and two managers need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N."
   }
+  # Every pool's SSD-backed disks at its peak fit tacplus-ci's SSD quota (#63): each pool on pd-balanced, pd-ssd or
+  # pd-extreme, its max_instances VMs' disks (capacity times a job's share, plus the OS's), and the managers' boot
+  # disks (a handoff), never more GB than SSD_TOTAL_GB in us-central1, or a pool's VM fails QUOTA_EXCEEDED and never
+  # comes, as a VM over the CPU quota did on 2026-11-13.
   assert {
-    condition     = output.runner_pools.shared.job.cpus == "8" && output.runner_pools.shared.job.memory == "28g" && output.runner_pools.shared.job.memory_swap == "28g" && output.runner_pools.shared.capacity * output.runner_pools.shared.job.disk_gb + output.runner_pools.shared.os_disk_gb <= 500
-    error_message = "A shared pool's job may not use the whole VM's CPUs and all but 4 GB of its memory, without swap, or the VM's disk is over 500 GB."
+    condition     = output.ci_disks.ssd_quota_gb == 500 && output.ci_disks.manager_disk_gb == 20 && sum(concat([for p in values(output.runner_pools) : contains(["pd-balanced", "pd-ssd", "pd-extreme"], p.disk_type) ? p.max_instances * (p.capacity * p.job.disk_gb + p.os_disk_gb) : 0], [output.ci_cpus.managers * output.ci_disks.manager_disk_gb])) <= output.ci_disks.ssd_quota_gb
+    error_message = "The pools' SSD-backed disks at their max_instances and the managers' need more GB than tacplus-ci's SSD_TOTAL_GB quota in us-central1 (500)."
+  }
+  assert {
+    condition     = output.runner_pools.shared.job.cpus == "8" && output.runner_pools.shared.job.memory == "28g" && output.runner_pools.shared.job.memory_swap == "28g"
+    error_message = "A shared pool's job may not use the whole VM's CPUs and all but 4 GB of its memory, without swap."
   }
   assert {
     condition     = output.runner_pools.shared.runner == { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false } && !output.runner_pools.shared.service_account
@@ -353,8 +369,8 @@ run "ci" {
     error_message = "A pool mounts the host's /builds, which COS's read-only root does not have."
   }
   assert {
-    condition     = google_compute_instance.manager.boot_disk[0].initialize_params[0].image == "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-    error_message = "The manager does not boot the pinned Ubuntu image."
+    condition     = google_compute_instance.manager.boot_disk[0].initialize_params[0].image == "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024" && google_compute_instance.manager.boot_disk[0].initialize_params[0].size == 20 && google_compute_instance.manager.boot_disk[0].initialize_params[0].type == "pd-balanced"
+    error_message = "The manager does not boot the pinned Ubuntu image from a 20 GB pd-balanced disk (the SSD quota counts it, #63)."
   }
   assert {
     condition     = google_compute_instance.manager.metadata["runner-pools"] == "no-account with-account"

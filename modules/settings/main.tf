@@ -282,11 +282,27 @@ locals {
   shared_machine_type = "t2a-standard-8"
   # How many jobs a machine type runs at once. Jody, 2026-11-10: "If it's a looper and it wants to run, it runs,
   # period" (as on his Mac): no slots. A job is not a reservation of CPUs or memory; the jobs share the VM like
-  # processes, and 25 is a ceiling no day reaches, not a slot count.
+  # processes, and the capacity is a ceiling, not a slot count. But it is the only admission the runner has: a VM
+  # with a free slot gets the job, whatever its load, and a job whose preparation the VM cannot serve fails
+  # (runner_system_failure), it does not wait. So the ceiling is what the VM serves at once (#63; the disk below).
   # 13 a t2a-standard-8 since #63 (26 over the pool's two VMs): on 2026-11-15 one VM with 24 jobs stopped answering
   # Docker (containers/create over 120 s) and every new job failed runner_system_failure for hours. A VM starts when
   # the ones before it are full, so the second starts at the 14th job.
   shared_capacity = { "t2a-standard-8" = 13, "t2a-standard-16" = 25 }
+
+  # The shared pool's disk: pd-balanced since #63, pd-standard until then. A pd-standard disk serves 0.75 read and 1.5
+  # write IOPS and 0.12 MiB/s a GB (the 350 GB of 2026-11-15: 525 write IOPS, 42 MiB/s; the 206 GB of the stopgap:
+  # 309 and 25), and a VM's jobs share it with Docker, whose containers/create writes the container's config and
+  # layer and commits containerd's metadata, each write waiting its turn behind the jobs'. Read on the VM on
+  # 2026-11-15 06:50Z (the looper of #63, from its job container: /proc/pressure, /proc/diskstats, /proc/meminfo),
+  # with about 16 jobs: the disk busy 92% of a 120 s sample, writing 37.7 MB/s (its cap), 393 writes a second at
+  # 61 ms each, a queue of 25; every task on the VM stalled on IO 15% of the time (PSI io full), 1.5 hours of such
+  # stalls in the 30 hours since boot; CPU contended (load 21 to 35 on 8 CPUs, PSI cpu some 43%) but never stalled;
+  # memory idle (2.4 GB anonymous of 32, 29 GB available, PSI memory full 5 minutes in 30 hours). The disk, not the
+  # memory or the jobs' limits, is what 24 jobs exhausted. pd-balanced serves 3000 IOPS and 140 MiB/s from its
+  # first GB (6 IOPS and 0.28 MiB/s a GB above 500 GB): ten times the writes, five times the bytes, for about
+  # $0.10 a GB-month against $0.04. It counts against SSD_TOTAL_GB (ci_disks below), so the disk is sized under it.
+  shared_disk_type = "pd-balanced"
 
   # The job containers' settings, the agents' and the builds' kept apart (#5): the shared pool runs both under one
   # registration, so with one setting, today the builds' (the same as the agents'). If the build jobs need settings
@@ -299,8 +315,10 @@ locals {
     build = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
     # The shared pool's (Jody, 2026-11-10, no slots): a job may use the whole VM's CPUs and all but 4 GB of its
     # memory (the OS's, Docker's and the runner's), so one job can't starve the VM's own processes. Its disk share is
-    # what a looper job needs (its checkout and its tools' caches); the disk is the VM's, shared.
-    shared = { cpus = "8", memory = "28g", memory_swap = "28g", disk_gb = 12, security_opt = [] }
+    # what a looper job needs (its checkout and its tools' caches); the disk is the VM's, shared. 8 GB since #63 (12
+    # until then): the VM of 2026-11-15 held 67 GB for about 16 jobs and its images, under 4 GB a job with the
+    # images, and the pd-balanced disk is sized under SSD_TOTAL_GB (ci_disks below).
+    shared = { cpus = "8", memory = "28g", memory_swap = "28g", disk_gb = 8, security_opt = [] }
   }
 }
 
@@ -317,7 +335,8 @@ output "runner_pools" {
     jody1-328023 is a later issue, which unpauses them.
   EOT
   value = {
-    # pd-standard (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, two 250 GB balanced disks). Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
+    # pd-standard until #63 (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, then two 250 GB balanced disks); pd-balanced since,
+    # sized under that quota (shared_disk_type and ci_disks below). Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
     # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
     # runners take the looper jobs (tacplus-dev/looper#84).
     # The always-on nodes (Jody, 2026-11-10, then three): every looper and control job, with no slots (capacity
@@ -331,7 +350,7 @@ output "runner_pools" {
     # runs while more than 13 jobs do (about $0.31/h) and goes 30 minutes after. Its 8 CPUs are the build pool's
     # second VM's (ci_cpus below). Interim, as the pool is: the in-cluster runners replace it (tacplus-dev/looper#84).
     shared = {
-      machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
+      machine_type    = local.shared_machine_type, disk_type = local.shared_disk_type, os_disk_gb = 50
       capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 2, idle_count = 1, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
@@ -396,5 +415,22 @@ output "ci_cpus" {
     quota                = 32
     manager_machine_type = "t2a-standard-1"
     managers             = 2
+  }
+}
+
+output "ci_disks" {
+  description = <<-EOT
+    tacplus-ci's SSD-backed disks (#63): ssd_quota_gb, its SSD_TOTAL_GB in us-central1 (the project's limit, 500, as
+    Google set it; a raise is a request to Google, then this line), which every pd-balanced, pd-ssd and pd-extreme
+    disk of the region counts against; and manager_disk_gb, the runner manager's pd-balanced boot disk (the ci
+    module's). The ci stack's test refuses pools whose SSD-backed disks, each pool at its max_instances, and the
+    managers' (ci_cpus.managers of them, a handoff) need more GB than the quota: a pool's VM over it fails
+    QUOTA_EXCEEDED, as a VM over the CPU quota did on 2026-11-13, and the shared pool's second VM would never come.
+    Today: shared 2 x 154, deploy 80, cluster 70, managers 2 x 20: 498 of 500. The build pool's 450 GB is pd-standard
+    (its builds share a disk four at a time; pd-balanced for it too is the quota raised first, PROPOSALS.md).
+  EOT
+  value = {
+    ssd_quota_gb    = 500
+    manager_disk_gb = 20
   }
 }

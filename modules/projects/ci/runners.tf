@@ -254,7 +254,7 @@ locals {
   manager_build = {
     image                  = var.image
     machine_type           = var.manager_machine_type
-    disk_gb                = 20
+    disk_gb                = var.manager_disk_gb
     disk_type              = "pd-balanced"
     zone                   = var.zone
     startup-script         = file("${path.module}/files/manager-startup.sh")
