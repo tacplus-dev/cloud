@@ -94,8 +94,8 @@ run "settings" {
     error_message = "The pools are not shared, build, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 25 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
-    error_message = "The shared pool is not one always-on t2a-standard-8 with no slots (25 jobs a VM, Jody 2026-11-10; one VM, #55)."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 2
+    error_message = "The shared pool is not one always-on t2a-standard-8 and a second on demand (13 jobs a VM, #63; Jody 2026-11-14)."
   }
   # Every pool at its peak fits tacplus-ci's CPU quota (#55): each pool's max_instances VMs, and two managers (a
   # handoff), never more CPUs than CPUS_ALL_REGIONS, or a pool's VM fails QUOTA_EXCEEDED (the second build VM,

@@ -44,9 +44,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-14 by th
   OS's own Docker. Every pool waits, bounded to ten minutes, until `docker info` answers the connecting user
   and the VM reaches `https://registry.gitlab.com/v2/` (`instance_ready_command`; #50: egress before the first job). No baked image and no bake identity (superseded). Tested against mock providers only.
 - **Shared pools and the build cache (#5):** three pools (README, The pools): `shared`, one always-on t2a-standard-8
-  one always-on t2a-standard-8 (three until #55) with no slots since 2026-11-10 (Jody: every looper runs when it wants; up to 25 jobs a
+  one always-on t2a-standard-8 (three until #55) with no slots since 2026-11-10 (Jody: every looper runs when it wants; a second VM on demand past 13 jobs since #63; up to 13 jobs a
   VM, each may use the whole VM), every looper and control job, a tacplus-dev group runner tagged `arm64`,
-  `autoscale`, `autoscale-16`; builds on the `build` pool, up to two on-demand t2a-standard-8s from zero (spot until #55), eight builds at a time,
+  `autoscale`, `autoscale-16`; builds on the `build` pool, one on-demand t2a-standard-8 from zero (two until #63; spot until #55), four builds at a time,
   tagged `arm64`, `build`; `deploy` and `cluster`, protected and on demand. Job containers
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only

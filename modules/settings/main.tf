@@ -283,7 +283,10 @@ locals {
   # How many jobs a machine type runs at once. Jody, 2026-11-10: "If it's a looper and it wants to run, it runs,
   # period" (as on his Mac): no slots. A job is not a reservation of CPUs or memory; the jobs share the VM like
   # processes, and 25 is a ceiling no day reaches, not a slot count.
-  shared_capacity = { "t2a-standard-8" = 25, "t2a-standard-16" = 25 }
+  # 13 a t2a-standard-8 since #63 (26 over the pool's two VMs): on 2026-11-15 one VM with 24 jobs stopped answering
+  # Docker (containers/create over 120 s) and every new job failed runner_system_failure for hours. A VM starts when
+  # the ones before it are full, so the second starts at the 14th job.
+  shared_capacity = { "t2a-standard-8" = 13, "t2a-standard-16" = 25 }
 
   # The job containers' settings, the agents' and the builds' kept apart (#5): the shared pool runs both under one
   # registration, so with one setting, today the builds' (the same as the agents'). If the build jobs need settings
@@ -324,9 +327,12 @@ output "runner_pools" {
     # through Workload Identity Federation (the ci module's build cache).
     # One always-on node since #55 (Jody, 2026-11-13: "we will need to bring the cost back down ASAP"): three, 24 CPUs
     # always on, left the build pool's second VM over CPUS_ALL_REGIONS (ci_cpus below), and builds queued for an hour.
+    # A second VM on demand since #63 (Jody, 2026-11-14: "Ok you can raise the VMs"): one stays always on, the second
+    # runs while more than 13 jobs do (about $0.31/h) and goes 30 minutes after. Its 8 CPUs are the build pool's
+    # second VM's (ci_cpus below). Interim, as the pool is: the in-cluster runners replace it (tacplus-dev/looper#84).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 1, idle_time = "30m"
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 2, idle_count = 1, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
       spot            = false
@@ -344,9 +350,11 @@ output "runner_pools" {
     # On demand since #55 (Jody, 2026-11-13: "do whatever you think best"): five spot VMs were preempted that day, each
     # under 10 minutes old, and the tacplus gates (about 3 hours) never finished on one. On-demand t2a-standard-8 is
     # about $0.31/h, paid only while builds run: a spot VM that never finishes a build is the dearer one.
+    # One VM, four builds at once, since #63: the second VM's 8 CPUs went to the shared pool's second VM (ci_cpus
+    # below). Back to two when the quota is raised or the shared pool is back to one.
     build = {
       machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = 4, max_instances = 2, idle_count = 0, idle_time = "15m"
+      capacity        = 4, max_instances = 1, idle_count = 0, idle_time = "15m"
       job             = local.jobs.build
       service_account = false
       spot            = false
@@ -382,7 +390,7 @@ output "ci_cpus" {
     request to Google, then this line); the manager's machine type, and how many managers run at once at most (a
     handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
     CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
-    Today: shared 8, build 16, cluster 4, deploy 2, managers 2: 32.
+    Today: shared 16, build 8, cluster 4, deploy 2, managers 2: 32.
   EOT
   value = {
     quota                = 32
