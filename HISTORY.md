@@ -52,3 +52,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-15 looper issue ci: the shared runner VM fails new jobs at preparation while it is full (18 runner_system_failure in an hour) (#63, d850d08; gates: full)
 - 2026-11-15 looper issue ci: a fresh VM's first job still fails pulling the helper image after #50 (twice on 2026-11-14) (#61, ca0e523; gates: full)
 - 2026-11-15 looper issue Pin the build: a committed build.lock naming this repository's build image by digest (#25, ff584be; gates: full)
+- 2026-11-15 looper issue ci: the runner pools' instance groups keep stuck VM creations on the old template (OPPORTUNISTIC): a template change never reaches them (#29, 969b063; gates: full)
