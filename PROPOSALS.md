@@ -517,14 +517,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   moving each `tacplus.token` to version 2. Why: the hub does not hand-copy runner tokens (Jody, 2026-11-16, #64); today
   `build`'s and `control`'s were typed once, and the adders' role is the one write grant to a person this pipeline makes
   (**The runners' token adders' account**, above). `infra` already shows the pattern.
-- **The switch-over to `infra` is a commit** (looper, #64, 2026-11-16; designed on #66, 2026-11-16, awaiting Jody and
-  a ROADMAP line linking #66). What: when cluster's pipeline has applied `infra`
-  and `apply:gitlab` has written its token (README, The cluster pipeline), one commit in `stacks/gitlab/main.tf` sets
-  `infra`'s `paused = false` and the `cluster` and `deploy` pools' `paused = true` (today every pool's is `false`, in one
-  expression), then the pools go with #11. Why: `paused` is the stack's; a runner unpaused or paused in GitLab's UI
-  is drift the next `apply:gitlab` undoes, so the hub's switch-over (cluster's README, The infra runner) is a pull
-  request here, not a hand step. #66's design: the pools' `paused` from `contains(["cluster", "deploy"], k)`,
-  `plan.tftest.hcl`'s two `paused` assertions inverted, `tests/gitlab_plan_test.sh` showing only in-place updates;
-  its risks are the pipelines then running inside the cluster they apply (a replacement of the cluster or its normal
-  pool kills its own job) and no way back by pipeline if `infra` takes no job (the hub unpauses the `cluster` pool by
-  hand, then a revert commit).
+- **The switch-over to `infra` is a commit** (looper, #64, 2026-11-16; built by #66, 2026-11-16: `stacks/gitlab/main.tf`
+  unpauses `infra` and pauses the `cluster` and `deploy` pools, `contains(["cluster", "deploy"], k)`; README, The cluster
+  pipeline, says why, and the break-glass if `infra` takes no job). Left: one cloud and one cluster pipeline green on
+  `infra` (the hub, on #66), then #11 removes the pools' runners and VMs.
+- **A guard against a pipeline replacing the cluster it runs in** (looper, #66, 2026-11-16; Jody's question 4 of #66's
+  design, unanswered). What: `ci/policy.sh` refuses a plan of `dev` that replaces or deletes the cluster, its normal
+  pool or the `ci` namespace, unless the hub opts in for that pipeline (a protected variable, say). Why: since #66 the
+  `cloud` and `cluster` jobs run on `infra`, in that pool: such a plan stops its own job mid-apply, and with `infra`
+  gone no job takes the fix (README, The cluster pipeline, the break-glass). Not built: a feature, needing design.

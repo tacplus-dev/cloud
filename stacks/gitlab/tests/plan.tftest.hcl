@@ -3,8 +3,8 @@
 #
 # The gitlab stack's plan against a stub GitLab and stub secrets (mock providers: no token, no cloud): the stack
 # plans, and its module, with the stack's inputs, gives protected settings, variables from Secret Manager by
-# version, paused runners whose tokens go to Secret Manager only (the pools' to the ci project's, the in-cluster infra
-# runner's to the dev project's gitlab-runner-infra, #64), and memberships of other projects that read only (Reporter,
+# version, runners whose tokens go to Secret Manager only (the pools' to the ci project's, the in-cluster infra
+# runner's to the dev project's gitlab-runner-infra, #64), infra taking the jobs the paused cluster and deploy pools took (#66), and memberships of other projects that read only (Reporter,
 # 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -46,9 +46,9 @@ run "stack" {
     error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra runner (#64)."
   }
   # The infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): a tacplus-dev group runner for
-  # the cloud, cluster and deploy pipelines, those three tags and no other, untagged off, protected refs only, paused
-  # until the hub's switch-over, its token the dev project's gitlab-runner-infra (version 1, the first of an empty
-  # secret), which no person types.
+  # the cloud, cluster and deploy pipelines, those three tags and no other, untagged off, protected refs only, unpaused
+  # at the switch-over (#66), its token the dev project's gitlab-runner-infra (version 1, the first of an empty secret),
+  # which no person types.
   assert {
     condition     = output.runners["infra"].type == "group_type" && output.runners["infra"].group_id == 88
     error_message = "The infra runner is not a group runner of tacplus-dev."
@@ -58,20 +58,25 @@ run "stack" {
     error_message = "The infra runner's tags are not cloud, cluster and deploy, and no other, or it takes untagged jobs."
   }
   assert {
-    condition     = output.runners["infra"].access_level == "ref_protected" && output.runners["infra"].paused
-    error_message = "The infra runner takes unprotected refs, or is registered unpaused: the hub unpauses it at the switch-over."
+    condition     = output.runners["infra"].access_level == "ref_protected" && !output.runners["infra"].paused
+    error_message = "The infra runner takes unprotected refs, or is paused: it takes the cloud, cluster and deploy jobs since the switch-over (#66)."
   }
   assert {
     condition     = output.runners["infra"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-infra"
     error_message = "The infra runner's token is not written to the dev project's gitlab-runner-infra, tacplus-dev/cluster's tacplus.token."
   }
-  # The pools' runners keep taking jobs, and each one's token goes to its own secret of the ci project.
+  # The switch-over (#66): the cluster and deploy pools' runners are paused, infra taking their jobs, until #11 removes
+  # them; shared and build keep taking jobs. Each pool's token goes to its own secret of the ci project.
   assert {
-    condition     = alltrue([for k, r in output.runners : !r.paused && r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if k != "infra"])
-    error_message = "A pool's runner is paused, or its token does not go to the ci project's runner-token-<pool>."
+    condition     = toset([for k, r in output.runners : k if r.paused]) == toset(["cluster", "deploy"])
+    error_message = "The paused runners are not the cluster and deploy pools' (#66): infra, shared and build take jobs."
   }
-  # The cluster and deploy pools carry the tags infra takes over, and no other runner does: the switch-over pauses them
-  # as it unpauses infra, and no job is taken twice or left without a runner.
+  assert {
+    condition     = alltrue([for k, r in output.runners : r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if k != "infra"])
+    error_message = "A pool's token does not go to the ci project's runner-token-<pool>."
+  }
+  # The cluster and deploy pools carry the tags infra takes over, and no other runner does: the switch-over paused them
+  # as it unpaused infra, so no unpaused runner but infra takes a cloud, cluster or deploy job.
   assert {
     condition     = toset([for k, r in output.runners : k if length(setintersection(r.tags, toset(["cloud", "cluster", "deploy"]))) > 0]) == toset(["cluster", "deploy", "infra"])
     error_message = "A runner besides the cluster and deploy pools and infra carries cloud, cluster or deploy."

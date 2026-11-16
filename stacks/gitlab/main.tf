@@ -67,22 +67,23 @@ module "gitlab" {
     trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
     schedules = local.nightly_builds
   }
-  # Every pool takes jobs (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the loopers' always-on
-  # node), build (on demand, from zero), deploy (fleet-seatrials') and cluster (tacplus-dev/cluster's and this
-  # repository's own pipeline), replacing jody1-328023's runners.
+  # The pools replaced jody1-328023's runners (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the
+  # loopers' always-on node) and build (on demand, from zero) take jobs; deploy (fleet-seatrials') and cluster
+  # (tacplus-dev/cluster's and this repository's own pipeline) are paused since the switch-over (#66), infra below
+  # taking their tags' jobs, until #11 removes them and their VMs. Pausing stops new pickups, not a running job.
   runners = merge(
     {
       for k, p in module.settings.runner_pools : k => merge(p.runner, {
-        paused       = false
+        paused       = contains(["cluster", "deploy"], k)
         token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
       })
     },
     # The in-cluster infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): the cloud, cluster
     # and deploy pipelines' jobs, on protected refs only, in the dev cluster, so the runner VMs can go (#11). Registered
-    # here, by nobody else, paused: the hub unpauses it at the switch-over (cluster's README, The infra runner), pausing
-    # the cluster and deploy pools above, which carry the same tags, in the same step. Its token is the first version of
-    # the dev stack's secret gitlab-runner-infra, the version its file names, written by this pipeline, so that no
-    # person or agent ever types it; cluster-admin-pipeline alone reads it.
+    # here, by nobody else, paused until the switch-over (#66; cluster's README, The infra runner), which unpaused it
+    # and paused the cluster and deploy pools above, which carry the same tags, in the same commit. Its token is the
+    # first version of the dev stack's secret gitlab-runner-infra, the version its file names, written by this
+    # pipeline, so that no person or agent ever types it; cluster-admin-pipeline alone reads it.
     { infra = local.infra_runner },
   )
 }
@@ -94,7 +95,7 @@ locals {
     project      = null
     tags         = ["cloud", "cluster", "deploy"]
     protected    = true
-    paused       = true
+    paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-infra"
     description  = "tacplus-dev infra (tacplus-dev/cloud: the cluster, ci namespace, normal pool; protected refs; cloud, cluster and deploy pipelines)"
   }

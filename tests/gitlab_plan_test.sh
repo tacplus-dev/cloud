@@ -12,8 +12,9 @@
 # .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and one nightly
 # schedule that builds every pinned repository (#67, tacplus-dev/looper#164); it adopts tacplus-dev/build itself with no change, group runners on and shared
 # runners off (#35), and with group runners off, as before the hub's hand change, it turns them on and changes nothing
-# else; it creates the in-cluster infra runner, a tacplus-dev group runner of protected refs, paused, and its token's
-# version in the dev project's gitlab-runner-infra (#64); it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
+# else; it creates the in-cluster infra runner, a tacplus-dev group runner of protected refs, unpaused since the
+# switch-over (#66), and its token's version in the dev project's gitlab-runner-infra (#64), and the pools' runners,
+# the cluster and deploy pools' paused (#66); it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
 # it. The fixture is built from the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot
 # read tacplus-dev/cloud's settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
 #
@@ -108,16 +109,20 @@ if plan; then
     ok "tacplus-dev/build: adopted (by its ID) with no change, group runners on and shared runners off as the hub set them (#35)" ||
     fail "tacplus-dev/build's runner settings: $(jq -c 'del(.before, .after) + {after: (.after | {group_runners_enabled, shared_runners_enabled})}' <<< "$project")"
   # The infra runner (#64; tacplus-dev/cluster#25): a group runner of tacplus-dev (the fixture's 3003), tags cloud,
-  # cluster and deploy, untagged off, protected refs only, paused; its token, known only at apply, the first version of
-  # the dev project's gitlab-runner-infra.
+  # cluster and deploy, untagged off, protected refs only, unpaused since the switch-over (#66); its token, known only
+  # at apply, the first version of the dev project's gitlab-runner-infra.
   runner=$(change 'module.gitlab.gitlab_user_runner.runner["infra"]')
   jq -e '.actions == ["create"] and .after.runner_type == "group_type" and .after.group_id == 3003 and
-    (.after.tag_list | sort) == ["cloud", "cluster", "deploy"] and .after.untagged == false and .after.paused == true and .after.access_level == "ref_protected"' <<< "$runner" > /dev/null &&
-    ok "the infra runner: a tacplus-dev group runner, tags cloud, cluster and deploy, untagged off, protected refs only, paused (#64)" ||
+    (.after.tag_list | sort) == ["cloud", "cluster", "deploy"] and .after.untagged == false and .after.paused == false and .after.access_level == "ref_protected"' <<< "$runner" > /dev/null &&
+    ok "the infra runner: a tacplus-dev group runner, tags cloud, cluster and deploy, untagged off, protected refs only, unpaused (#64, #66)" ||
     fail "the infra runner: $(jq -c 'del(.before)' <<< "$runner")"
   token=$(change 'module.gitlab.google_secret_manager_secret_version.runner_token["infra"]')
   jq -e '.actions == ["create"] and .after.secret == "projects/tacplus-dev/secrets/gitlab-runner-infra" and .after_unknown.secret_data == true' <<< "$token" > /dev/null &&
     ok "its token: a version of the dev project's gitlab-runner-infra, known only at apply (#64)" || fail "the infra runner's token: $(jq -c 'del(.before)' <<< "$token")"
+  # The switch-over (#66): the cluster and deploy pools' runners paused, infra taking their jobs; shared, build and infra not.
+  paused=$(jq -cS '[.resource_changes[] | select(.type == "gitlab_user_runner") | {(.index): .change.after.paused}] | add' "$work/plan.json")
+  [ "$paused" = '{"build":false,"cluster":true,"deploy":true,"infra":false,"shared":false}' ] &&
+    ok "the cluster and deploy pools' runners paused, infra, shared and build not (#66)" || fail "the runners' paused: $paused"
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"

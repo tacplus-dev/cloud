@@ -42,7 +42,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   made by hand and only read here.
 - **GitLab settings:** this project's protected `main` and environments, its protected project variables (values from
   Secret Manager by version, never in this repository), the runner registrations: the `ci` pools' and the in-cluster
-  `infra` runner's (registered **paused** until the hub's switch-over: below, The cluster pipeline), each one's token
+  `infra` runner's (unpaused at the switch-over, #66, which paused the `cluster` and `deploy` pools: below, The cluster
+  pipeline), each one's token
   written to its Secret Manager secret by this pipeline, and the read-only memberships of other projects,
   each with an expiry: `tacplus-looper-bot` a Reporter of tacplus-dev/build, for the looper's nightly recap (below,
   Memberships); and tacplus-dev/build's `.gitlab-ci.yml`, its pipeline trigger, whose token is tacplus-dev/looper's
@@ -730,18 +731,25 @@ the hub does, steps 4 and 7, are this pipeline's):
 - **The `infra` runner (#64; tacplus-dev/cluster#25, its README, The infra runner):** the in-cluster runner of the
   cloud, cluster and deploy pipelines, so the runner VMs can go (#11). The **gitlab stack registers it** (`stacks/gitlab/main.tf`,
   `infra`), and nothing else does: a tacplus-dev group runner, tags `cloud`, `cluster` and `deploy` and no other, "run
-  untagged jobs" off, protected refs only (`ref_protected`), **paused**; and it writes the runner's authentication
+  untagged jobs" off, protected refs only (`ref_protected`), registered paused and **unpaused at the switch-over**
+  (#66, below); and it writes the runner's authentication
   token as `gitlab-runner-infra`'s **version 1** (the first version of the empty secret the dev stack made, the version
   cluster's `infra.yaml` names), as this pipeline (its owner of the folder `dev`), the way it keeps the VM pools' tokens
   in `tacplus-ci`. **The token never leaves the pipeline:** GitLab gives it to the stack's apply, which writes it to
   Secret Manager, where `cluster-admin-pipeline` alone reads it into the runner's Secret; it is in the gitlab stack's
   state (PROPOSALS.md, Secret values out of plans and state), in no output, log or plan file, and no person or agent
   types it. A re-registration (the runner replaced) writes a new version and disables the old: its number moves, and a
-  pull request in tacplus-dev/cluster moves `tacplus.token` to it. **The switch-over is the hub's** (cluster's README): once
-  `apply:gitlab` has written the token and cluster's pipeline has applied `infra`, unpause `infra` and pause the
-  `cluster` and `deploy` pools' runners, which carry the same tags, in one step; then one cloud and one cluster pipeline
-  green on it, then #11. Unpausing it is a change of `paused` here, not a hand step that drifts: the next commit sets
-  `paused = false` on `infra` and the pools' runners go with #11.
+  pull request in tacplus-dev/cluster moves `tacplus.token` to it. **The switch-over** (#66; cluster's README): once
+  `apply:gitlab` had written the token and cluster's pipeline had applied `infra`, one commit to `stacks/gitlab/main.tf`
+  unpaused `infra` and paused the `cluster` and `deploy` pools' runners, which carry the same tags, so no job goes to a
+  VM and a green pipeline is `infra`'s; then one cloud and one cluster pipeline green on it, then #11 removes the
+  pools' runners and VMs. `paused` is the stack's: a runner paused or unpaused in GitLab's UI is drift the next
+  `apply:gitlab` undoes. Pausing stops new pickups, not a running job, so the `apply:gitlab` that pauses the `cluster`
+  pool finishes on it. Since then the `cloud`, `cluster` and `deploy` jobs run inside the cluster they apply: a plan
+  replacing the cluster, its normal pool or the `ci` namespace stops its own job mid-apply. **Break-glass, if `infra`
+  takes no job** (its token, image or node): the `cloud` jobs, a revert's apply among them, stay pending, so the hub
+  unpauses the `cluster` pool's runner by hand in GitLab, lands the revert of the switch-over, whose `apply:gitlab`
+  runs on that pool, and the stack matches GitLab again.
 - **Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12):** the Artifact Registry Docker
   repository `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, for the GitLab Runner and helper images
   tacplus-dev/cluster builds itself (crane, no container runtime) and its `gitlab-runner/pin.yaml` names by digest.
