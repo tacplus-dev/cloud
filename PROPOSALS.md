@@ -292,7 +292,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   `force_destroy` set first, or emptied), and the `cloudbuild` API; the registry stays, written by the build pool's
   identity. Why: Cloud Build is for now, by Jody's decision on #20.
 - **cluster-admin-pipeline's clusterViewer conditioned on the cluster** (looper, #20, 2026-11-07). What: the same
-  condition the deployments' get-credentials has (`resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`).
+  condition the deployments' get-credentials has (`resource.name ==
+  "projects/tacplus-dev/zones/us-central1-a/clusters/dev"`, a zonal cluster's name, #71).
   Why: #20 says "as cluster-admin-pipeline has it", but its grant has no condition; with one cluster in the project it
   changes nothing today, and it would keep a second cluster out of its reach.
 - **The test IdP's environment protected, in the federation** (looper, #20, 2026-11-07). What: join

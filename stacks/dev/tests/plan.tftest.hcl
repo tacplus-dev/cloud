@@ -364,10 +364,12 @@ run "dev" {
     condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
     error_message = "The module does not give the runners' token secrets, or the cluster's API for the kubernetes provider."
   }
-  # get-credentials on dev (#20): the deployment's identity and its environment accounts view the cluster dev alone.
+  # get-credentials on dev (#20): the deployment's identity and its environment accounts view the cluster dev alone. The
+  # condition names it as GKE checks a zonal cluster, projects/<project>/zones/<zone>/clusters/<name>: the locations/
+  # form is a regional cluster's, and never matched dev (#71: container.clusters.get 403).
   assert {
-    condition     = toset(keys(google_project_iam_member.cluster_viewer)) == toset(["deploy/seatrials", "environment/seatrials/test-idp"]) && alltrue([for m in google_project_iam_member.cluster_viewer : m.role == "roles/container.clusterViewer" && m.condition[0].expression == "resource.name == \"projects/tacplus-dev/locations/us-central1-a/clusters/dev\""])
-    error_message = "The deployment's identity and its environment accounts do not view the cluster dev, and it alone (container.clusterViewer, conditioned on its name)."
+    condition     = toset(keys(google_project_iam_member.cluster_viewer)) == toset(["deploy/seatrials", "environment/seatrials/test-idp"]) && alltrue([for m in google_project_iam_member.cluster_viewer : m.role == "roles/container.clusterViewer" && m.condition[0].expression == "resource.name == \"projects/tacplus-dev/zones/us-central1-a/clusters/dev\""])
+    error_message = "The deployment's identity and its environment accounts do not view the cluster dev, and it alone (container.clusterViewer, conditioned on its zonal name)."
   }
   assert {
     condition     = google_project_iam_member.cluster_viewer["deploy/seatrials"].member == "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com" && google_project_iam_member.cluster_viewer["environment/seatrials/test-idp"].member == "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"

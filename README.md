@@ -891,8 +891,10 @@ of its zone, and its environment accounts' (`environment_certificates`, by envir
 from the same `deployments` entry:
 
 - **The cluster's credentials:** its identity, and each of its environment accounts, holds `roles/container.clusterViewer`
-  conditioned on `resource.name == "projects/tacplus-dev/locations/us-central1-a/clusters/dev"`: `get-credentials` on
-  `dev` and nothing else of GKE. Its rights inside the cluster are tacplus-dev/cluster's (`deployments.yaml`).
+  conditioned on `resource.name == "projects/tacplus-dev/zones/us-central1-a/clusters/dev"`: `get-credentials` on
+  `dev` and nothing else of GKE. That is a zonal cluster's name as GKE checks it; the `locations/` form is a regional
+  cluster's, and never matched `dev` (#71: `container.clusters.get` 403). Its rights inside the cluster are
+  tacplus-dev/cluster's (`deployments.yaml`).
 - **Its images** (`images`), on Cloud Build, for now (Jody, 2026-11-06: once builds move to the cluster's build pool,
   tacplus-dev/looper#84, these roles and the bucket come out). Its identity holds `roles/cloudbuild.builds.editor` and
   `roles/serviceusage.serviceUsageConsumer` on the project and `roles/iam.serviceAccountUser` on the builds' own account

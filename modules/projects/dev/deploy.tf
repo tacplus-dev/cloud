@@ -22,8 +22,9 @@
 # other role.
 
 locals {
-  # The cluster as IAM conditions name it.
-  cluster_resource = "projects/${var.project_id}/locations/${var.cluster.zone}/clusters/${var.cluster.name}"
+  # The cluster as IAM conditions name it: a zonal cluster's name is projects/<project>/zones/<zone>/clusters/<name>
+  # (IAM's resource attributes, GKE); the locations/ form is a regional cluster's, and never matched dev (#71).
+  cluster_resource = "projects/${var.project_id}/zones/${var.cluster.zone}/clusters/${var.cluster.name}"
   images           = { for k, d in var.deployments : k => d.images if d.images != null }
   environment_accounts = merge([for k, d in var.deployments : {
     for e, a in d.environment_accounts : "${k}/${e}" => { deployment = k, environment = e, account_id = a }
