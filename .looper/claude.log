@@ -1,0 +1,377 @@
+= init
+I'll start by reading the issue's current comments, the decision record, and the `ci` stack to see what the removal touches.
+> Bash gh issue view 11 --repo tacplus-dev/cloud --comments 2>&1 | tail -60; echo ---; gh issue view 84 --repo tacplus-dev/looper --json state,title,closedAt 2>&1
+< author:	jodydadescott association:	member edited:	false status:	none -- The looper of cloud starts this issue with its limit 4h capped at 3h58m by this job (https://gitlab.com/tacplus-dev/looper/-/jobs/17750344502), which ends sooner: the run stops by itself before then, its work checkpointed, and t...
+looper#84 closed today, so the removal is no longer blocked. Now I'll read the repo layout, the `ci` stack, the decision record, README, STATE.md, and the tests.
+> Bash ls && echo --- && ls stacks stacks/* 2>/dev/null | head -80 && echo --- && ls tests ci scripts 2>/dev/null && echo --- && cat gates.yaml generated.yaml 2>/dev/null && echo --- && git log --oneline | head -5
+< Exit code 2 HISTORY.md LICENSE PROPOSALS.md README.md ROADMAP.md STATE.md bootstrap build.lock ci gates.yaml modules security-exceptions.yaml stacks tests --- stacks: anthropic ci dev folder gitlab  stacks/anthropic: main.tf tests versions.tf  stacks/ci: main.tf tests versions.tf  stacks/dev: main.t...
+> Bash cat gates.yaml; echo ---; git log --oneline | head -5; echo ---; wc -l stacks/ci/main.tf README.md STATE.md PROPOSALS.md ci/checks.sh ci/policy.sh ci/pools.sh ci/runner.sh tests/ci_plan_test.sh tests/ci_test.sh tests/pools_test.sh tests/manager_startup_test.sh tests/policy_test.sh; ls stacks/ci/test...
+< # The gate map of tacplus-dev/cloud (#25; tacplus-dev/looper README: Gates scaled to the diff): the gates a land # and the build pipeline run, in the image build.lock pins, with no Docker and no credential. One set, full: the # pinned tools into bin/ (ci/tools.sh), every lint (ci/lint.sh all) and th...
+> Read /builds/looper/cloud/issues/11/stacks/ci/main.tf
+< 1	# Copyright (c) 2026 Jody Scott 2	# SPDX-License-Identifier: Apache-2.0 3	# 4	# The ci project: runners, the build cache, the GitHub Apps' keys and their federation. Its folder is the folder 5	# stack's; its billing account is the bootstrap project's. 6	 7	variable "parent_folder" { 8	  descriptio...
+> Read /builds/looper/cloud/issues/11/stacks/ci/tests/plan.tftest.hcl
+> Read /builds/looper/cloud/issues/11/ci/policy.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# What no change here may do, checked twice: in the source on every push (the validate job), and in each saved 6	# plan before it is applied (ci/tofu.sh plan). Refused: 7	#   - a service-account key...
+< 1	# Copyright (c) 2026 Jody Scott 2	# SPDX-License-Identifier: Apache-2.0 3	# 4	# The ci stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no cloud): 5	# the stack plans, and its module, with the stack's inputs, gives the runners, the buckets and the Git...
+> Read /builds/looper/cloud/issues/11/ci/pools.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# The drift job's pool check (#53): why a runner pool makes no VM, where a report can read it. Only the pipeline 6	# reads the ci project's instance groups; on 2026-11-13 the build pool made no VM f...
+> Read /builds/looper/cloud/issues/11/ci/runner.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# GitLab Runner and its googlecloud fleeting plugin, the runner manager's two binaries, built from their source (#40). 6	# Upstream's releases (v19.5.3, v1.3.1) are built with go1.26.10 (GO-2026-685...
+> Read /builds/looper/cloud/issues/11/ci/checks.sh
+> Read /builds/looper/cloud/issues/11/tests/ci_plan_test.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# The repository's tests: every tests/*_test.sh, then `tofu test` of each stack (its plan under a stub parent 6	# folder, with empty projects: mock providers, no credentials). The test job's, and th...
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# Plans the ci stack with its real providers (our google build) against a stub API (tests/stubapi), from the state the 6	# crashed apply of 2026-11-12 left (#47): tests/fixtures/ci/deposed.tfstate, ...
+> Read /builds/looper/cloud/issues/11/tests/ci_test.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# Tests ci/gitlab-project.gitlab-ci.yml and ci/pin.sh: the file parses; every job runs on the project's runner (tag 6	# cloud), in the pinned image (by digest). The pipelines GitLab makes of it, by ...
+> Read /builds/looper/cloud/issues/11/tests/pools_test.sh
+> Read /builds/looper/cloud/issues/11/tests/policy_test.sh
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# Tests ci/pools.sh, the drift job's pool check (#53), against a stub gcloud over JSON fixtures (tests/stub/pools, 6	# tests/fixtures/pools): of the runner pools' groups, zonal or regional, it repor...
+< 1	#!/usr/bin/env bash 2	# Copyright (c) 2026 Jody Scott 3	# SPDX-License-Identifier: Apache-2.0 4	# 5	# Tests ci/policy.sh: in the source, it refuses a module that creates a service-account key, names allUsers or 6	# allAuthenticatedUsers, or resolves at plan time what a commit does not fix (timesta...
+> Read /builds/looper/cloud/issues/11/STATE.md
+< 1	# State: cloud 2	 3	Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#29). 4	 5	- **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image 6	  `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt...
+> Bash ls -R tests/fixtures/ci tests/fixtures/pools tests/fixtures/policy tests/fixtures/plans tests/stub/pools tests/stub/manager modules/projects stacks/gitlab/files bootstrap | head -120; echo ---; cat ci/lint.sh; echo ---; cat security-exceptions.yaml
+< bootstrap: bootstrap.sh  modules/projects: ci dev  modules/projects/ci: files github-apps.tf main.tf outputs.tf runner-bin.tf runners.tf storage.tf variables.tf versions.tf  modules/projects/ci/files: config.toml.tftpl manager-startup.sh  modules/projects/dev: certificates.tf cluster-pipeline.tf dep...
+> Bash gh api repos/tacplus-dev/roadmap/contents/decisions/only-vms-are-k8s-nodes-2026-11-04.md -H 'Accept: application/vnd.github.raw' 2>&1; echo ---; gh issue view 9 --repo tacplus-dev/cloud --json title,state,body -q '.title + " [" + .state + "]\n" + .body' 2>&1 | head -60; echo ---; gh issue view 7 --r...
+> Grep runner-manager|runner_manager|instance_template|instance_group_manager|compute_instance|gitlab-runner-mgr|manager_startup|runner-pools|pools\.sh|runner\.sh|cloud#9|#9\b|move-off-jody1|move off jody1|jody1-328023
+= task_started
+= task_notification
+< # The only VMs are Kubernetes nodes (Jody, 2026-11-04)  Jody, 2026-11-04: "I realize Kubernetes has nodes, and those nodes are running on VMs, but those are the only VMs that we're going to have. So I want to make sure that everything you're talking about understands that those VMs will be nodes wit...
+< <persisted-output> Output too large (38.3KB). Full output saved to: /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/toolu_01UFSvXmy1VRd5cqjuxtzqgp.txt  Preview (first 2KB): modules/gitlab/main.tf:104:  description...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Read /builds/looper/cloud/issues/11/stacks/ci/tests/plan.tftest.hcl
+< 627	      } 628	    } 629	    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" } 630	    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = ...
+> Bash for f in modules/projects/ci/main.tf modules/projects/ci/runners.tf modules/projects/ci/runner-bin.tf modules/projects/ci/variables.tf modules/projects/ci/outputs.tf modules/projects/ci/storage.tf modules/projects/ci/versions.tf; do echo "=== $f"; cat -n "$f"; done
+< <persisted-output> Output too large (43.9KB). Full output saved to: /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/bwvoa1gf4.txt  Preview (first 2KB): === modules/projects/ci/main.tf      1	# Copyright (c) 2026 J...
+> Bash for f in modules/settings/main.tf modules/gitlab/main.tf modules/gitlab/variables.tf modules/gitlab/outputs.tf stacks/gitlab/main.tf; do echo "=== $f"; cat -n "$f"; done
+< <persisted-output> Output too large (58.3KB). Full output saved to: /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/beqk05gmw.txt  Preview (first 2KB): === modules/settings/main.tf      1	# Copyright (c) 2026 Jody...
+> Bash for f in ci/gitlab-project.gitlab-ci.yml ci/tools.sh ci/drift.sh ci/lib.sh ci/security.sh ci/audit.sh; do echo "=== $f"; cat -n "$f"; done; echo "=== handoff.sh head"; head -40 ci/handoff.sh
+< <persisted-output> Output too large (67.9KB). Full output saved to: /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/bn07s4jz8.txt  Preview (first 2KB): === ci/gitlab-project.gitlab-ci.yml      1	# Copyright (c) 20...
+> Bash for f in tests/apis_test.sh tests/audit_test.sh tests/security_test.sh tests/tofu_test.sh tests/providers_test.sh tests/hosting_test.sh tests/handoff_test.sh; do echo "=== $f"; head -40 "$f"; done; echo; grep -n "runner\|manager\|pool\|ssh\|22" tests/apis_test.sh tests/audit_test.sh tests/security_t...
+< === tests/apis_test.sh #!/usr/bin/env bash # Copyright (c) 2026 Jody Scott # SPDX-License-Identifier: Apache-2.0 # # The audit of the APIs the stacks call (#16): every google resource and data source type in modules/ and stacks/ is # named below with the API it calls, and each API with the project i...
+> Bash grep -n "^#\+ " README.md; echo ---; grep -n -i "runner\|manager\|pool\|MIG\|jody1\|move off\|ssh\|instance" README.md | wc -l
+< 1:# cloud 13:## What it manages 50:## Layout 65:## How it runs 102:### Determinism 116:### The network rules 158:### Known vulnerabilities 213:### Security checks 238:### How a change flows 252:## Bootstrap 275:### What the host organization provides 310:### What Jody runs, in order 344:### Before t...
+> Bash ls tests/fixtures/live tests/fixtures/ci tests/stub/manager tests/stub/pools tests/stub/handoff tests/stub/live 2>/dev/null; echo ---; grep -rn "runner\|manager" tests/fixtures/live/*.json 2>/dev/null | head -20; echo ---; grep -rln "runner-manager\|runner_manager\|instance_template\|instance_group_...
+< tests/fixtures/ci: api.json deposed.tfstate  tests/fixtures/live: clean dirty-ci dirty-dev  tests/stub/handoff: curl sleep  tests/stub/live: gcloud  tests/stub/manager: compute-api curl id systemctl useradd  tests/stub/pools: gcloud --- --- tests/fixtures/plans/instance-access-config.json tests/fixt...
+= thinking_tokens
+= thinking_tokens
+> Read /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/bwvoa1gf4.txt
+< 1	=== modules/projects/ci/main.tf 2	     1	# Copyright (c) 2026 Jody Scott 3	     2	# SPDX-License-Identifier: Apache-2.0 4	     3	# 5	     4	# The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, shared by job containers), the build 6	     5	# cache, and the GitHub Apps' keys in...
+> Read /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/beqk05gmw.txt
+> Read /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/bn07s4jz8.txt
+< 1	=== modules/settings/main.tf 2	     1	# Copyright (c) 2026 Jody Scott 3	     2	# SPDX-License-Identifier: Apache-2.0 4	     3	# 5	     4	# The constants every stack shares, in one place: the parent folder this runs in, the region, the projects' IDs, the 6	     5	# pipeline's identity and the runne...
+< 1	=== ci/gitlab-project.gitlab-ci.yml 2	     1	# Copyright (c) 2026 Jody Scott 3	     2	# SPDX-License-Identifier: Apache-2.0 4	     3	# 5	     4	# The .gitlab-ci.yml of the GitLab project gitlab.com/tacplus-dev/cloud, kept here (github.com/tacplus-dev/cloud 6	     5	# ci/gitlab-project.gitlab-ci.ym...
+> Read /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/bn07s4jz8.txt
+< 654	   112	  z=$(sed -n 's|^ *zone *= *"\([a-z][a-z0-9-]*\)"$|\1|p' "$ci_here/../modules/settings/main.tf") 655	   113	  [ -n "$p" ] && [ -n "$z" ] && [ "$(printf '%s\n' "$z" | wc -l)" = 1 ] || 656	   114	    { echo "dns: modules/settings/main.tf names no dev project or no single zone" >&2; return 1...
+> Bash sed -n 1,120p README.md
+< # cloud  The pipeline that owns tacplus-dev's cloud accounts. Every change to GCP and GitLab configuration is a commit here, applied by a pipeline. People, the hub included, have read-only access.  Design: tacplus-dev/roadmap#2 and `tacplus-dev/roadmap:decisions/cloud-pipeline-2026-11-02.md` (approv...
+> Bash sed -n 400,700p README.md
+< <persisted-output> Output too large (30.3KB). Full output saved to: /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/badgrgods.txt  Preview (first 2KB): within 30 days, in the drift issue. A commit of a later date ...
+> Bash sed -n 116,160p README.md; echo ======; sed -n 1015,1075p README.md; echo =====; sed -n 1187,1214p README.md
+< ### The network rules  `decisions/network-exposure-2026-11-03.md` and `cluster-node-pools-2026-11-03.md` (tacplus-dev/roadmap), with Jody's answers on #7 (2026-11-04), are in the stacks, and `ci/policy.sh plan` refuses every saved plan that breaks one, before it is applied:  - **One public IP:** the...
+> Bash grep -n -i "runner\|manager\|pool\|MIG\|ssh\|#11\b" PROPOSALS.md | head -60; echo ====; grep -n -i "runner\|manager\|pools\|ssh\|instance" tests/apis_test.sh tests/settings_test.sh tests/secret_values_test.sh tests/iam_ready_test.sh tests/dns_test.sh tests/expiry_test.sh | head -40; echo ====; cat t...
+< 7:  folder `bootstrap`, `tacplus-bootstrap`, the state bucket, `cloud-admin-pipeline`, its WIF pool and provider and its 12:  cluster without a default pool (`initial_node_count = 0`) instead of `remove_default_node_pool`, which google 8.x 15:- **Restart the runner manager when a token changes** (lo...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Read /builds/looper/cloud/homes/looper-11/.claude/projects/-builds-looper-cloud-issues-11/aaa005c2-6ff5-4714-ab89-b02bf27c5b9e/tool-results/badgrgods.txt
+< 1	within 30 days, in the drift issue. A commit of a later date renews it; the pipeline applies it. 2	 3	## The build pipeline 4	 5	#26 (tacplus-dev/looper#71, #84; tacplus-dev/roadmap 6	`suggestions/2026-11-06-pin-every-repository-so-the-build-pipeline-and-its-security-checks-run-anywhere.md`, step ...
+> Bash sed -n 160,400p README.md
+> Read /builds/looper/cloud/issues/11/PROPOSALS.md
+< `govulncheck -mode=binary` of every pinned binary is clean, or each finding left is accepted in `security-exceptions.yaml` (the form looper-scan reads, tacplus-dev/looper#49) with its reason and an expiry, and its pin moves to the first upstream release with the fix (#3):  - **The `gitlab` provider ...
+< 1	# Proposals: cloud 2	 3	Written by loopers. Each proposal: what, why, links. Jody promotes accepted ones into ROADMAP.md (via an agent); 4	the looper then marks it `promoted` or `declined` here with the date. 5	 6	- **The bootstrap's own resources under the pipeline** (looper, #1, 2026-11-03). Wha...
+> Bash sed -n 40,120p tests/apis_test.sh; echo ====; sed -n 40,80p tests/audit_test.sh; echo ====; cat tests/fixtures/live/dirty-ci/firewall-rules.json tests/fixtures/live/dirty-ci/instances.json tests/fixtures/live/clean/firewall-rules.json tests/fixtures/live/clean/instances.json tests/fixtures/live/clea...
+< # Both, where Google documents neither and no apply has shown which, or where it is seen as the caller's but the # project needs it too: enabling it in both costs nothing. declare -A counts=(   # Resource Manager, Cloud Billing and Service Usage count against the caller (the project they change may ...
+> Bash grep -n "runner\|manager\|pool\|handoff\|instance" tests/apis_test.sh tests/settings_test.sh tests/tofu_test.sh tests/stub/tofu 2>/dev/null | grep -iv "workloadIdentityPool\|wif_pool\|gitlab-com" | head -30; echo ====; grep -rn "manager\|runner\|handoff\|pools" tests/stub/github tests/stub/gcloud te...
+< tests/apis_test.sh:21:  [google_active_folder]=cloudresourcemanager tests/apis_test.sh:22:  [google_folder]=cloudresourcemanager tests/apis_test.sh:23:  [google_project_iam]=cloudresourcemanager tests/apis_test.sh:27:  [google_iam_workload_identity_pool]=iam tests/apis_test.sh:28:  [google_secret_ma...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash sed 's|^here=\$(cd "\$(dirname "\$0")/.." \&\& pwd)$|here=/builds/looper/cloud/issues/11|' ci/tools.sh > /tmp/tools-11.sh && grep -n '^here=' /tmp/tools-11.sh && (nohup bash /tmp/tools-11.sh > /tmp/tools-11.log 2>&1 & echo "pid $!" > /tmp/tools-11.pid; cat /tmp/tools-11.pid)
+< 45:here=/builds/looper/cloud/issues/11 pid 1262
+> Bash cd /tmp && gh issue view 84 --repo tacplus-dev/looper --comments 2>&1 | grep -v '^$' | tail -80
+<    build`/`template` stay until the redesign retires them, never run against GCP); until the jobs move onto those    pools a fresh worker installs and restarts Docker at boot under its first job, which fails in preparation and is -  retried; the VMs get no fix (Jody, 2026-11-06): #84 moves every loo...
+> Bash cd /tmp && gh issue view 6 --repo tacplus-dev/cluster --json state,title -q '.title+" ["+.state+"]"'; gh issue view 20 --repo tacplus-dev/cluster --json state,title -q '.title+" ["+.state+"]"'; gh issue view 21 --repo tacplus-dev/cluster --json state,title -q '.title+" ["+.state+"]"'; echo ---; gh a...
+> Bash cd /tmp && gh api 'repos/tacplus-dev/cluster/git/trees/main?recursive=1' -q '.tree[].path' 2>/dev/null | grep -i -E "runner|gitlab" | head -30
+< CI in the cluster: GitLab Runner (Kubernetes executor) via the cluster pipeline; builds on the spot pool, control jobs on the normal pool; no privileged pods [CLOSED] In-cluster build jobs fail at once: HOME is / for run_as_user 1000 (git config --global: //.gitconfig Permission denied) [CLOSED] Sec...
+< ci/gitlab-project.gitlab-ci.yml ci/runner-images.sh ci/runner-tokens.sh gitlab-runner gitlab-runner/fetch.sh gitlab-runner/pin.yaml gitlab-runner/release gitlab-runner/release/.gitlab-ci.yml gitlab-runner/release/.gitlab gitlab-runner/release/.gitlab/branch.release.yml gitlab-runner/release/.gitlab/...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp && gh issue list --repo tacplus-dev/cluster --state open --limit 50 --json number,title,labels -q '.[] | "\(.number) [\(.labels|map(.name)|join(","))] \(.title)"'; echo "--- looper open"; gh issue list --repo tacplus-dev/looper --state open --limit 80 --json number,title,labels -q '.[] | "\(...
+> Bash cd /tmp && gh api repos/tacplus-dev/roadmap/contents/ROADMAP.md -H 'Accept: application/vnd.github.raw' 2>/dev/null | grep -n -i -E "runner|vm|cloud#11|#11|gke|in-cluster|docker" | head -40; echo "--- roadmap items"; gh api repos/tacplus-dev/roadmap/contents/items -q '.[].name' 2>/dev/null | head -4...
+= task_started
+= task_notification
+< 18 [bug,approved] Hub: register and apply the in-cluster runners and cluster's own pipeline (README, What the hub does 1–7) 8 [bug,approved] security fails on main: the CI image build:2.5 (2.5.11) carries 7 fixed HIGH Debian CVEs (ImageMagick deb13u14, apt 3.0.4) --- looper open 163 [bug,approved,lo...
+< 50:2. **Service releases**: every service tags `vMAJOR.MINOR.PATCH` (from `v0.1.0`, `0.x` until 2026-12-01) and 63:5. **Tenant deletion is complete** (`decisions/tenant-deletion-2026-10-27.md`): tacplus-dev/oauth#11 (providers --- roadmap items _template.md doppelganger-fleet-service.md explore-prot...
+> Bash cd /tmp && gh api repos/tacplus-dev/cluster/contents/STATE.md -H 'Accept: application/vnd.github.raw' 2>/dev/null | grep -n -i -E "runner|paused|unpause|tag|cloud|deploy|applied|live" | head -50; echo "--- cluster PROPOSALS"; gh api repos/tacplus-dev/cluster/contents/PROPOSALS.md -H 'Accept: applica...
+< 7:- **Target (#7):** tacplus-dev/cloud's cluster `dev` (us-central1-a) in the project `tacplus-dev` (seabeam.net), as 8:  `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`; seatrials' deploy account and the runners' token 9:  secrets (`gitlab-runner-build`, `gitlab-runner-control`, versio...
+> Bash cd /tmp && gh api repos/tacplus-dev/cluster/contents/gitlab-runner/runners/control.yaml -H 'Accept: application/vnd.github.raw' 2>/dev/null | head -60; echo ---; gh api repos/tacplus-dev/cluster/contents/gitlab-runner/runners/build.yaml -H 'Accept: application/vnd.github.raw' 2>/dev/null | grep -n -...
+> Bash cd /tmp && gh issue view 20 --repo tacplus-dev/cluster --comments 2>&1 | grep -v '^$' | tail -40; echo ====; gh issue view 42 --repo tacplus-dev/fleet-seatrials --json body,labels -q '.labels|map(.name)|join(",")' 2>&1; gh issue view 42 --repo tacplus-dev/fleet-seatrials --json body -q .body 2>&1 | ...
+< # The control runner: the tacplus-dev group's jobs tagged `arm64, control` (the looper's kicker, reports, managers # and scans, once they move here: tacplus-dev/looper#84), each a pod on the normal pool. Its tags are its own, never # the VM runners' (`autoscale`, `autoscale-16`, `gce`: ci/policy.sh)...
+< edited:	false status:	none -- The run ended before finishing (exit 0). Its commits are queued with the manager of cluster, which merges them after the run and gives its verdict here. Its work in progress is on [`looper/cluster-20`](https://github.com/tacplus-dev/cluster/tree/looper/cluster-20). Its ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /tmp && gh issue view 18 --repo tacplus-dev/cluster --json body -q .body | head -40; echo ====; gh issue view 163 --repo tacplus-dev/looper --json body -q .body | head -25; echo ====; gh issue view 73 --repo tacplus-dev/looper --json body -q .body | head -20
+< Accepted by Jody, 2026-11-09 (suggestion: [The hub's in-cluster runner setup as an issue, in looper#84's Blocked-by](https://github.com/tacplus-dev/roadmap/blob/main/suggestions/2026-11-09-the-hub-s-in-cluster-runner-setup-as-an-issue-in-looper-84-s-blocked-by.md)).  The hub's steps from cluster REA...
+> Bash cd /tmp && gh api 'repos/tacplus-dev/fleet-seatrials/git/trees/main?recursive=1' -q '.tree[].path' 2>/dev/null | grep -i -E "gitlab-ci|\.gitlab" | head; for f in $(gh api 'repos/tacplus-dev/fleet-seatrials/git/trees/main?recursive=1' -q '.tree[].path' 2>/dev/null | grep -i -E "gitlab-ci.*\.yml$" | h...
+> Bash kill "$(cat /tmp/tools-11.pid | cut -d' ' -f2)" 2>/dev/null; sleep 1; pgrep -u looper-11 -a -f tools-11.sh | head -3; echo "---"; tail -3 /tmp/tools-11.log; ls /builds/looper/cloud/issues/11/bin 2>/dev/null | head; cd /builds/looper/cloud/issues/11 && git status --short | head
+= task_started
+= task_notification
+< ci/deploy.gitlab-ci.yml ci/gitlab-project.gitlab-ci.yml == ci/deploy.gitlab-ci.yml 4:# The seatrials deploy and test pipeline (#17; tacplus-dev/roadmap 8:# here), which resolves the commit to deploy, FLEET_COMMIT, and includes this 10:# variables and the GCP side: docs/deploy-pipeline.md. 27:#   tes...
+< 28429 /bin/bash -c source /builds/looper/cloud/homes/looper-11/.claude/shell-snapshots/snapshot-bash-1794793132770-dgt2q8.sh 2>/dev/null || true && shopt -u extglob 2>/dev/null || true && { \builtin unalias -- 'unsetenv'; \builtin unset -f -- 'unsetenv'; } >/dev/null 2>&1 || true && eval 'kill "$(ca...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash pgrep -u looper-11 -a -x go | head -5; for p in $(pgrep -u looper-11 -x go); do kill "$p" 2>/dev/null; done; sleep 1; pgrep -u looper-11 -a -x go | wc -l; rm -rf /builds/looper/cloud/issues/11/bin /tmp/tools-11.sh /tmp/tools-11.pid; cd /builds/looper/cloud/issues/11 && git status --short --ignored |...
+< 0 clean-check-done
+> Write /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md
+< File created successfully at: /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md (file state is current in your context — no need to Read it back)
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Edit /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md
+< The file /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md has been updated successfully. (file state is current in your context — no need to Read it back)
+> Edit /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md
+< The file /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md has been updated successfully. (file state is current in your context — no need to Read it back)
+> Bash grep -c "3818a932" /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md; gh issue comment 11 --repo tacplus-dev/cloud --body-file /builds/looper/cloud/homes/looper-11/tmp/issue-11-comment.md && gh issue edit 11 --repo tacplus-dev/cloud --add-label needs-decision && gh issue view 11 --repo ta...
+= task_started
+= task_notification
+< 0 https://github.com/tacplus-dev/cloud/issues/11#issuecomment-6905058684 https://github.com/tacplus-dev/cloud/issues/11 approved,feature,looper:in-progress,needs-decision,priority:high
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 11 --checkpoint "Nothing committed: CI does not run in the cluster yet (cluster#18 open, looper#163 open: reports and managers still on the VM tags; scans and unpinned jobs need Docker, looper#73) and no in-cluster runner takes the cloud, cluster or de...
