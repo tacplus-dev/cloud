@@ -30,7 +30,13 @@
 # no gates. A nightly, a release and a verify run pass none: never abandoned.
 # A release runs on this project's protected tag <repo>/vX.Y.Z, with
 # "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
-# does the publish job get its GCP identity (tacplus-dev/tacplus#223).
+# does the publish job get its GCP identity (tacplus-dev/tacplus#223). The
+# publish job is the child pipeline's, once every check passed (looper#73): in
+# BUILD_BUILDER_IMAGE, a build image with rootless BuildKit
+# (tacplus-image-build, tacplus-dev/tacplus#315), with no host Docker; while
+# it is empty, in the looper image with host Docker (docker buildx) on
+# BUILD_DOCKER_TAGS, which the plan says in its log. Its SBOM is a job of its
+# own, in the looper image.
 #
 # Every job runs on the build runner (tags arm64, build): a pod on the spot
 # pool (tacplus-dev/cluster#13; before it, a fresh VM per job), never one an
@@ -38,7 +44,7 @@
 # way (looper#84; tacplus-dev/roadmap decisions/only-vms-are-k8s-nodes-2026-11-04.md):
 # retry: on runner_system_failure and stuck_or_timeout_failure, twice. The
 # child pipeline's gates job keeps its own retry (looper-build: its 11h timeout
-# is its own, looper#148). plan, status and publish
+# is its own, looper#148). plan and status
 # run in the looper image, for looper-build; the gates run in the repository's
 # pinned build image, as the child pipeline plan writes.
 #
@@ -152,7 +158,7 @@ workflow:
       variables:
         BUILD_PIPELINE_NAME: "runner image"
 
-stages: [plan, gates, publish, report]
+stages: [plan, gates, report]
 
 variables:
   BUILD_REPO: "$[[ inputs.repo ]]"
@@ -166,9 +172,17 @@ variables:
   BUILD_NIGHTLY: "$[[ inputs.nightly ]]"
   BUILD_VERIFY: "$[[ inputs.verify ]]"
   GIT_STRATEGY: none
+  # A release's publish (looper#73): the build image it runs in, with rootless
+  # BuildKit (tacplus-image-build, tacplus-dev/tacplus#315), by digest; empty
+  # until a published build image has it: then publish needs host Docker, and
+  # runs on BUILD_DOCKER_TAGS, the runners that mount the Docker socket (the
+  # VM build pool's tags; the hub gives that pool a tag of its own before the
+  # in-cluster build runner, which has none, takes `arm64, build` too).
+  BUILD_BUILDER_IMAGE: ""
+  BUILD_DOCKER_TAGS: "arm64, build"
 
 default:
-  image: ghcr.io/tacplus-dev/looper@sha256:9c4d29d785279d7f5f70949ff5f6fd2e29f4d945d8f149f28865b9c3faef9975
+  image: ghcr.io/tacplus-dev/looper@sha256:a40bf6460d858d87d5e27caaf7a0f59aa68eb21b9deedc6edde9731213eb1078
   tags: [arm64, build]
   retry:
     max: 2
@@ -222,26 +236,6 @@ gates:
     forward:
       yaml_variables: false
       pipeline_variables: false
-
-# A release, once the gates and the security checks passed: the image, pushed
-# through Workload Identity Federation (GCP_WIF_PROVIDER, a project variable;
-# no key, no token), and its SBOM (the artifacts, and the generic package
-# sbom-<repo> X.Y.Z, with the job's token).
-publish:
-  stage: publish
-  rules:
-    - if: $CI_COMMIT_TAG && $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true"
-  environment:
-    name: registry
-  id_tokens:
-    GCP_ID_TOKEN:
-      aud: https://iam.googleapis.com/$GCP_WIF_PROVIDER
-  timeout: 2h
-  script:
-    - looper-build publish
-  artifacts:
-    expire_in: 1 year
-    paths: [image, sbom.cdx.json, sbom.spdx.json]
 
 # The verdict, on the commit.
 report-pass:
