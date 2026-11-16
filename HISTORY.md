@@ -62,3 +62,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-16 looper issue dev: seatrials' accounts lack three grants the deploy pipeline needs after its cutover to tacplus-dev (fleet-seatrials#48) (#68)
 - 2026-11-16 looper issue gitlab stack: move build_ci_commit to tacplus-dev/looper 1d25d29 (looper image a40bf646: #73 step 1, #165, #168, #169) (#69)
 - 2026-11-16 looper issue ci stack: the VM build pool also carries the tag build-docker (for publishes that still need host Docker), before the in-cluster build runner takes arm64, build (#70)
+- 2026-11-16 looper issue dev: seatrials-deploy cannot get-credentials on the cluster dev (container.clusters.get 403), so the test IdP cannot apply (fleet-seatrials#27) (#71)
