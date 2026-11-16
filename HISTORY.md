@@ -59,3 +59,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-16 looper issue apply:gitlab fails: #33's per-repository nightly build schedules exceed GitLab's 10 schedules per project on tacplus-dev/build (#65)
 - 2026-11-16 looper issue gitlab stack: one nightly schedule on tacplus-dev/build that builds every pinned repository, replacing #65's ten (after looper#164) (#67)
 - 2026-11-16 looper issue Switch-over to the infra runner: unpause infra, pause the VM runners carrying cloud, cluster and deploy (cluster#25) (#66)
+- 2026-11-16 looper issue dev: seatrials' accounts lack three grants the deploy pipeline needs after its cutover to tacplus-dev (fleet-seatrials#48) (#68)
