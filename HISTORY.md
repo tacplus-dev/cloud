@@ -55,3 +55,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-15 looper issue ci: the runner pools' instance groups keep stuck VM creations on the old template (OPPORTUNISTIC): a template change never reaches them (#29, 969b063; gates: full)
 - 2026-11-15 looper issue lint: tofu fmt fails on main: modules/projects/dev/fleet-secrets.tf is not formatted since d78cc1a (#28) (#36)
 - 2026-11-16 looper issue gitlab stack: no nightly build schedule for tacplus-dev/cluster, pinned by build.lock since cluster#14 (#33)
+- 2026-11-16 looper issue dev: the infra runner's token secret gitlab-runner-infra, beside gitlab-runner-build and -control (cluster#25) (#64)
