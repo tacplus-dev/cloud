@@ -123,12 +123,12 @@ output "deployments" {
     protected main, may become, with the cluster's credentials and no other role but, by environment (#32):
     environment_certificates, its certificate's domain, whose secrets tls-<environment> and acme-account-<environment>
     and challenge zone (delegated from the zone when the domain is in it) are the account's alone, as a deployment's
-    are its identity's; and environment_secrets, the IDs of the secrets only the account adds versions to and reads;
-    and init_secrets (#28), the GitLab environment of its init-secrets job and the account only its project's jobs in
-    that environment, on protected main, may become: it alone adds the versions of fleet-ca-<deployment> and
-    fleet-crypto-<deployment> (the fleet's CA and crypto file; it sees their metadata, never a value), which its
-    identity alone reads; and google_signin (#37), true when it has a Google sign-in client: the secret
-    google-signin-<deployment> (the client JSON the Console downloads), whose versions the dev stack's
+    are its identity's; and environment_secrets, the IDs of the secrets only the account and the deployment's identity
+    add versions to and read (#73); and init_secrets (#28), the GitLab environment of its init-secrets job and the
+    account only its project's jobs in that environment, on protected main, may become: it alone adds the versions of
+    fleet-ca-<deployment> and fleet-crypto-<deployment> (the fleet's CA and crypto file; it sees their metadata, never
+    a value), which its identity alone reads; and google_signin (#37), true when it has a Google sign-in client: the
+    secret google-signin-<deployment> (the client JSON the Console downloads), whose versions the dev stack's
     google_signin_adders add by hand, in the Console (Google has no API that makes a web client), and which its
     identity alone reads. Optionally (#34): llmproxy, its llmproxy's identity in the Anthropic organization, which the
     anthropic stack owns: the federation issuer (its fleet's OIDC issuer, url), the service account (an explicit member

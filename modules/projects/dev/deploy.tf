@@ -15,9 +15,10 @@
 # Environment accounts: by GitLab environment, an account only the deployment's project's jobs in that environment, on
 # protected main, may become (its provider's condition, and the binding naming the project and the environment
 # together: the pool is shared by tacplus-dev's projects), with the cluster's credentials, its certificate if it has
-# one (certificates.tf), and its secrets: by ID, secrets only it adds versions to, made with none (#32: the test IdP's
-# seeds, in Secret Manager rather than GitLab, which on gitlab.com Free has no project access token to write them with;
-# as #28). It and the deployment's identity read and list them (#68: seatrials' own jobs read the test IdP's seeds).
+# one (certificates.tf), and its secrets: by ID, secrets made with no version (#32: the test IdP's seeds, in Secret
+# Manager rather than GitLab, which on gitlab.com Free has no project access token to write them with; as #28). It and
+# the deployment's identity alone add, read and list their versions (#68: seatrials' own jobs read the test IdP's
+# seeds; #73: its test-idp job, as seatrials-deploy, stores them).
 # Their values are only ever the deployment's jobs': none is in this repository, a plan or the state. It holds no
 # other role.
 
@@ -31,12 +32,10 @@ locals {
   }]...)
   # Every environment account's secret, by its ID: the account's key.
   environment_secrets = merge([for k, d in var.deployments : merge([for e, ids in d.environment_secrets : { for id in ids : id => "${k}/${e}" }]...)]...)
-  # Each one's members, by its ID: its environment account adds its versions, and it and the deployment's identity read
-  # and list them (#68).
-  environment_secret_members = { for id, a in local.environment_secrets : id => {
-    adder   = google_service_account.environment[a].member
-    readers = [google_service_account.environment[a].member, google_service_account.deploy[local.environment_accounts[a].deployment].member]
-  } }
+  # Each one's members, by its ID: its environment account and the deployment's identity add, read and list its
+  # versions (#68: the deployment's own jobs read them; #73: seatrials' test-idp job, as seatrials-deploy, stores the
+  # test IdP's seeds on its first run).
+  environment_secret_members = { for id, a in local.environment_secrets : id => [google_service_account.environment[a].member, google_service_account.deploy[local.environment_accounts[a].deployment].member] }
   registry_roles = {
     "roles/artifactregistry.writer" = "build"
     "roles/artifactregistry.reader" = "readers"
@@ -180,12 +179,11 @@ resource "google_secret_manager_secret" "environment" {
   depends_on = [terraform_data.iam_ready]
 }
 
-# Authoritative for each role: the environment account alone adds versions; it and the deployment's identity read and
-# list them.
+# Authoritative for each role: the environment account and the deployment's identity alone add, read and list versions.
 resource "google_secret_manager_secret_iam_binding" "environment" {
   for_each  = { for p in setproduct(keys(local.environment_secrets), local.certificate_roles) : "${p[0]}/${p[1]}" => { secret = p[0], role = p[1] } }
   project   = google_project.dev.project_id
   secret_id = google_secret_manager_secret.environment[each.value.secret].secret_id
   role      = each.value.role
-  members   = each.value.role == "roles/secretmanager.secretVersionAdder" ? [local.environment_secret_members[each.value.secret].adder] : local.environment_secret_members[each.value.secret].readers
+  members   = local.environment_secret_members[each.value.secret]
 }

@@ -916,11 +916,11 @@ from the same `deployments` entry:
   tacplus-dev's projects, so the environment alone would admit another project's job in an environment of that name.
   An environment account is never the deployment's identity or its builds' account (the module refuses it). Besides,
   it may own a certificate (above, Certificates) and **secrets of its own** (`environment_secrets`, #32): by environment,
-  secret IDs (us-central1, made with no version) whose versions only it adds (`secretVersionAdder`), and it and the
-  deployment's identity read and list (`secretAccessor` and `viewer`; #68: seatrials' own jobs read the test IdP's
-  seeds), authoritative bindings; reading `latest` tells its job whether one exists yet. They replace GitLab
-  variables a job would write with a token: gitlab.com Free has no project access tokens (as #28). Their values are
-  never in this repository, a plan or the state.
+  secret IDs (us-central1, made with no version) whose versions only it and the deployment's identity add, read and
+  list (`secretVersionAdder`, `secretAccessor` and `viewer`; #68: seatrials' own jobs read the test IdP's seeds; #73:
+  its test-idp job, as `seatrials-deploy`, stores them on the first run), authoritative bindings; reading `latest`
+  tells its job whether one exists yet. They replace GitLab variables a job would write with a token: gitlab.com Free
+  has no project access tokens (as #28). Their values are never in this repository, a plan or the state.
 
 | Deployment | Registry | Build bucket, builds' account | Environment accounts |
 |---|---|---|---|

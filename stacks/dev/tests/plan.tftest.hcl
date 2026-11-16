@@ -307,10 +307,11 @@ run "dev" {
     condition     = toset(keys(google_secret_manager_secret_iam_binding.environment)) == toset([for r in ["secretVersionAdder", "secretAccessor", "viewer"] : "test-idp-seeds/roles/secretmanager.${r}"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.environment : b.secret_id == "test-idp-seeds" && b.role == trimprefix(k, "test-idp-seeds/")])
     error_message = "The test IdP's seeds' roles are not exactly adding versions, reading them and listing them."
   }
-  # #68: seatrials' own jobs read the seeds too (fleet-seatrials' ci_test_idp_seeds), and only test-idp-deploy adds them.
+  # #68: seatrials' own jobs read the seeds too (fleet-seatrials' ci_test_idp_seeds); #73: and add them, its test-idp
+  # job storing them on the test IdP's first run.
   assert {
-    condition     = google_secret_manager_secret_iam_binding.environment["test-idp-seeds/roles/secretmanager.secretVersionAdder"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"]) && alltrue([for r in ["secretAccessor", "viewer"] : google_secret_manager_secret_iam_binding.environment["test-idp-seeds/roles/secretmanager.${r}"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com", "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])])
-    error_message = "Someone besides test-idp-deploy adds the test IdP's seeds, or someone besides it and seatrials-deploy reads them, or either does not."
+    condition     = alltrue([for r in ["secretVersionAdder", "secretAccessor", "viewer"] : google_secret_manager_secret_iam_binding.environment["test-idp-seeds/roles/secretmanager.${r}"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com", "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])])
+    error_message = "Someone besides test-idp-deploy and seatrials-deploy adds, reads or lists the test IdP's seeds, or either does not."
   }
   assert {
     condition     = google_compute_global_address.gateway.name == "gateway" && google_compute_global_address.gateway.address_type == "EXTERNAL" && google_compute_global_address.gateway.ip_version == "IPV4"
