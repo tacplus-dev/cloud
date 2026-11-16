@@ -385,8 +385,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (1d25d29 since #69: the looper image a40bf646, #73 step 1's publish in the child pipeline with
-  rootless BuildKit, #165, #168, #169; before it ad005bd, #67) copied as
+  `build_ci_commit` (f2f5237 since #72: looper#172's `BUILD_DOCKER_TAGS: "arm64, build-docker"`, a host-Docker
+  publish only on the VM build pool's runner, so the in-cluster build runner can be unpaused; before it 1d25d29, #69:
+  the looper image a40bf646, #73 step 1's publish in the child pipeline with rootless BuildKit, #165, #168, #169;
+  before that ad005bd, #67) copied as
   is (`stacks/gitlab/files/`), the hub's copy adopted by import, checked against GitHub and
   linted by GitLab's `ci/lint` in `plan:gitlab` before every plan (`ci/build-ci.sh`; `update` bumps it); a pipeline
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
