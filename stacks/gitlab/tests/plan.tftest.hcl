@@ -91,9 +91,10 @@ run "stack" {
     error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
   # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and a nightly
-  # schedule per pinned repository (#33: pinned-repositories.yaml, ci/nightly-builds.sh's), with the inputs repo and
-  # nightly, at a minute and an hour of its name's SHA-256 (of its first 8 hex digits: looper's 0x63a2676c, cluster's
-  # 0x164cf1ca, website's 0x747a8f39, cloud's 0x56681010). Two may share a cron (of 25 today, one pair does): each is its own schedule.
+  # schedule per pinned repository (#33: pinned-repositories.yaml, ci/nightly-builds.sh's) of the ten GitLab allows
+  # one project (#65: local.nightly_scheduled), with the inputs repo and nightly, at a minute and an hour of its name's
+  # SHA-256 (of its first 8 hex digits: looper's 0x63a2676c, cluster's 0x164cf1ca, website's 0x747a8f39, cloud's
+  # 0x56681010). Two may share a cron: each is its own schedule.
   assert {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
@@ -106,6 +107,12 @@ run "stack" {
   assert {
     condition     = length(setintersection(toset(keys(output.build.schedules)), toset(["cluster", "looper", "website"]))) == 3
     error_message = "tacplus-dev/cluster, looper or website, each pinned, has no nightly schedule."
+  }
+  # GitLab allows a project 10 pipeline schedules (#65): the stack keeps the ten that exist and makes no more until
+  # one schedule builds them all (tacplus-dev/looper#164).
+  assert {
+    condition     = toset(keys(output.build.schedules)) == toset(["cloud", "cluster", "fleet-seatrials", "kernel", "llmproxy", "looper", "messaging", "operator", "registry", "website"])
+    error_message = "The nightly schedules are not the ten of #65 (GitLab allows a project 10)."
   }
   assert {
     condition     = output.build.schedules["looper"] == { cron = "52 18 * * *", inputs = { repo = "looper", nightly = "true" } } && output.build.schedules["cluster"] == { cron = "46 9 * * *", inputs = { repo = "cluster", nightly = "true" } }
@@ -317,6 +324,24 @@ run "build_schedule_refused" {
       project   = "tacplus-dev/build"
       trigger   = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
       schedules = { looper = { cron = "@daily", inputs = {} } }
+    }
+  }
+  expect_failures = [var.build]
+}
+
+# GitLab allows a project 10 pipeline schedules (#65): an 11th fails the apply, so the plan refuses it.
+run "build_schedules_capped" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    build = {
+      project   = "tacplus-dev/build"
+      trigger   = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules = { for r in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"] : r => { cron = "0 5 * * *", inputs = { repo = r, nightly = "true" } } }
     }
   }
   expect_failures = [var.build]

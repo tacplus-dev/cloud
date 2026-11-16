@@ -4,7 +4,8 @@
 #
 # The pinned repositories of tacplus-dev (#33): each repository of the GitHub organization, not archived, whose main
 # holds a build.lock or a tacplus.lock. The gitlab stack makes one nightly build schedule of tacplus-dev/build per name
-# of stacks/gitlab/pinned-repositories.yaml, which update writes from GitHub and nobody edits: the plan stays the
+# of stacks/gitlab/pinned-repositories.yaml, ten at most (GitLab's limit for a project, #65: stacks/gitlab/main.tf's
+# nightly_scheduled), which update writes from GitHub and nobody edits: the plan stays the
 # commit's alone (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md), and the drift job's check
 # reports a repository pinned (or unpinned) since, so none is missed. Public repositories, read with no credential, as
 # the build pipeline reads them. Any answer but a found or a missing file fails: an error is never read as "not pinned".
@@ -69,7 +70,7 @@ case ${1:-} in
       echo "# SPDX-License-Identifier: Apache-2.0"
       echo "#"
       echo "# The pinned repositories of tacplus-dev, written by ci/nightly-builds.sh update from GitHub (#33): never edit it."
-      echo "# The gitlab stack makes one nightly build schedule of tacplus-dev/build per name (stacks/gitlab/main.tf)."
+      echo "# The gitlab stack makes one nightly build schedule of tacplus-dev/build per name, ten at most (stacks/gitlab/main.tf)."
       sed 's/^/- /' "$tmp/pinned"
     } > "$file"
     echo "nightly-builds.sh: stacks/gitlab/pinned-repositories.yaml: $(wc -l < "$tmp/pinned") pinned repositories"

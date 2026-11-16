@@ -73,7 +73,8 @@ variable "build" {
     .gitlab-ci.yml (tacplus-dev/looper's ci/build.gitlab-ci.yml, copied as is) and the commit message naming its
     source, or null to leave the file alone. trigger: its pipeline trigger, rotated whenever rotate_by (a date
     YYYY-MM-DD in the commit, never computed) changes, its token the protected, masked variable key of the project
-    variable_project (a path or ID). schedules: by name, a schedule on main, its cron (UTC) and its inputs.
+    variable_project (a path or ID). schedules: by name, a schedule on main, its cron (UTC) and its inputs; at most 10,
+    GitLab's limit for a project.
   EOT
   type = object({
     project = string
@@ -101,5 +102,10 @@ variable "build" {
     condition = var.build == null || alltrue([for s in values(var.build.schedules) :
     length(split(" ", s.cron)) == 5 && length(s.inputs) > 0 && length(s.inputs) <= 20])
     error_message = "A build schedule has a cron of five fields and between 1 and 20 inputs."
+  }
+  # GitLab allows a project 10 pipeline schedules: an 11th fails the apply (#65), so the plan refuses it.
+  validation {
+    condition     = var.build == null || length(var.build.schedules) <= 10
+    error_message = "More than 10 build schedules: GitLab allows a project 10 (#65)."
   }
 }

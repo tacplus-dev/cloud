@@ -58,7 +58,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `stacks/<folder\|ci\|dev\|gitlab\|anthropic>` | The five roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
 | `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `nightly-builds` (its nightly schedules' pinned repositories, from GitHub), `lib` (credentials), `lock`, `pin`. |
-| `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/pinned-repositories.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and the pinned repositories its nightly schedules are one per, written by `ci/nightly-builds.sh update` (below, The build pipeline). |
+| `stacks/gitlab/files/build.gitlab-ci.yml`, `stacks/gitlab/pinned-repositories.yaml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is, and the pinned repositories its nightly schedules are one per (ten at most, #65), written by `ci/nightly-builds.sh update` (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
@@ -435,6 +435,10 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   stays the commit's alone (tacplus-dev/roadmap `decisions/deterministic-deployments-2026-11-02.md`); the drift job runs
   `ci/nightly-builds.sh check`, so a repository pinned since, or no longer pinned, is in the next drift issue
   (`nightly-builds: ...`), whose fix is that commit. A pin issue no longer asks for an entry here.
+  **But ten at most** (#65): GitLab allows a project 10 pipeline schedules, and 25 repositories are pinned, so only the
+  ten of `nightly_scheduled` (`stacks/gitlab/main.tf`) get one, and the module refuses more than 10 at plan. The other
+  pinned repositories have no nightly until one schedule of tacplus-dev/build builds them all
+  (tacplus-dev/looper#164, then #67 replaces the ten with it).
 
 **Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
 which the hub registers for tacplus-dev/looper#84.

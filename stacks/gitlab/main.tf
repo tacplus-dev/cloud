@@ -55,9 +55,9 @@ module "gitlab" {
   # are tagged build, which only tacplus-dev's group runners take); its .gitlab-ci.yml, tacplus-dev/looper's
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
   # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
-  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository
-  # (local.nightly_builds). The trigger rotates every 90 days: the drift job's expiry check reports its rotate_by from
-  # 30 days before, and a commit of a date 90 days later replaces it.
+  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository, ten
+  # at most (local.nightly_builds, #65). The trigger rotates every 90 days: the drift job's expiry check reports its
+  # rotate_by from 30 days before, and a commit of a date 90 days later replaces it.
   build = {
     project = "tacplus-dev/build"
     ci_file = {
@@ -106,12 +106,19 @@ locals {
 # which ci/nightly-builds.sh update writes from GitHub (every tacplus-dev repository, not archived, with a build.lock or
 # a tacplus.lock on main) and nobody edits; the drift job's check reports one pinned since. Each runs at a minute and an
 # hour (UTC) of its name's SHA-256, spread over the day and the same whichever repositories come or go.
+#
+# But GitLab allows a project 10 pipeline schedules, and 25 repositories are pinned (#65): #33's first apply made ten
+# and failed on the rest. Only the repositories of nightly_scheduled get one, and the module refuses more than 10. The
+# others have no nightly until one schedule builds them all (tacplus-dev/looper#164, Jody's decision on #65 of
+# 2026-11-16; #67); then this list goes. Should the ten here not be the ten that apply made, the next apply deletes the
+# others, and a create it starts before their deletes end is refused (the 10 per project): the apply after it makes it.
 locals {
+  nightly_scheduled = ["cloud", "cluster", "fleet-seatrials", "kernel", "llmproxy", "looper", "messaging", "operator", "registry", "website"]
   nightly_builds = {
     for r in yamldecode(file("${path.module}/pinned-repositories.yaml")) : r => {
       cron   = format("%d %d * * *", parseint(substr(sha256(r), 0, 8), 16) % 60, floor(parseint(substr(sha256(r), 0, 8), 16) / 60) % 24)
       inputs = { repo = r, nightly = "true" }
-    }
+    } if contains(local.nightly_scheduled, r)
   }
 }
 

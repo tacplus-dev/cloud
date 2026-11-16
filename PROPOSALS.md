@@ -327,6 +327,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   their names' hashes (up to 4 in one hour: 14:00 UTC). Watch the build runner's queue after the first apply; if it
   competes with the lands' builds, confine the hours to a quiet window (the cron's hour from a smaller range). Why: no
   measurement of a nightly's cost exists yet.
+- **A per-project limit check for every GitLab resource with one** (looper, #65, 2026-11-16). What: #65 found
+  gitlab.com's limit of 10 pipeline schedules a project only at apply; the module now refuses more than 10 schedules at
+  plan, but other gitlab.com limits (https://docs.gitlab.com/administration/instance_limits/: triggers, variables,
+  webhooks, deploy tokens) are equally invisible to the mock providers and the stub API. A table of the limits the
+  stacks come near, checked in the plan, and the stub API answering 400 past them. Why: an apply that fails half-way
+  leaves the stack red for every later pipeline, as #65's did.
 - **Protected environments on gitlab.com Free** (looper, #28, 2026-11-09). What: check whether `apply:gitlab` can
   create this project's protected environments (`folder`, `ci`, `dev`, `gitlab`; #17) on tacplus-dev's tier, and if
   not, drop them or make the guard a protected branch alone, saying so in the README; the same for fleet-seatrials'
