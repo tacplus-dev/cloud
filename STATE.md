@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#64).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#67).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -366,25 +366,22 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
   tacplus-dev/looper#113 (2026-11-15): ca0e523's, pipeline 3070014440, green on the gates full, its security report one
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
-- **tacplus-dev/build's trigger and nightly schedules (#26; looper#71, #84):** the gitlab stack's `build`
+- **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` copied as is (`stacks/gitlab/files/`), the hub's copy adopted by import, checked against GitHub and
+  `build_ci_commit` (ad005bd since #67: #164's fan-out, #163's image by digest, #84's retry, #138's forward) copied as
+  is (`stacks/gitlab/files/`), the hub's copy adopted by import, checked against GitHub and
   linted by GitLab's `ci/lint` in `plan:gitlab` before every plan (`ci/build-ci.sh`; `update` bumps it); a pipeline
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
-  before; the new trigger before the old one goes); and one schedule per pinned repository of
-  `stacks/gitlab/pinned-repositories.yaml` (inputs `repo`, `nightly: true`; 25 repositories, each at a minute and hour
-  of its name's SHA-256: tacplus-dev/looper 18:52, cluster 09:46, website 18:33, cloud 15:12 UTC), which `ci/nightly-builds.sh update` writes from GitHub and the drift's `check` keeps honest
-  (#33). **Ten at most** (#65): gitlab.com allows a project 10 schedules, #33's first apply made ten and failed on
-  the rest (pipeline 3071888619), so only the ten of `nightly_scheduled` get one (cloud, cluster, fleet-seatrials,
-  kernel, llmproxy, looper, messaging, operator, registry, website) and the module refuses more than 10 at plan; the
-  other 15 pinned repositories have **no nightly** until tacplus-dev/looper#164's fan-out and #67. Which ten that apply
-  made is not known here: if they differ, the next apply deletes the others and may need one more apply to make the
-  missing ones. Tested with the
-  stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
-  `tests/build_ci_test.sh` (stub curl), `tests/nightly_builds_test.sh` (stub GitHub) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
-  whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
-  looper, show there.
+  before; the new trigger before the old one goes); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
+  input `nightly: true` and no `repo`: its pipeline lists the repositories whose main pins a build image and runs each
+  one's nightly in a child pipeline (looper#164), so every pinned repository has a nightly again and no list is kept
+  here (`ci/nightly-builds.sh`, `pinned-repositories.yaml` and the drift's `nightly-builds` check are gone). It
+  replaces #65's ten per-repository schedules (gitlab.com allows a project 10): a `moved` block makes it looper's
+  schedule changed in place and the apply deletes the other nine, never asking for an 11th; the module still refuses
+  more than 10 at plan. Tested with the stack's plan tests (mock providers), the stub-API plan with the real provider
+  (`tests/gitlab_plan_test.sh`), `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not seen yet:
+  `apply:gitlab` on main of #67 (its in-place change, and which of the ten exist live), and the first fan-out nightly.
 - **tacplus-dev/build's runner settings (#35):** a project whose jobs are tagged `build` (or any tag only tacplus-dev's
   pools serve) needs **group runners on**: the pools are tacplus-dev group runners, and a project with
   `group_runners_enabled=false` never gets one, its jobs failing `stuck_pending_no_matching_runners` after about 1.5 h
