@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by the looper (#29).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#64).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -25,7 +25,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
   cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
-  variables from Secret Manager by version; the pools' runners, registered paused); the GitLab pipeline (checks on every
+  variables from Secret Manager by version; the pools' runners, and the in-cluster `infra` runner, registered paused, #64); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
   every plan, and the network rules on every plan (#7, below). Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
@@ -229,9 +229,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   Google's answers (`tests/fixtures/gitlab/api.json`, built from the APIs' documented responses, not recorded: the
   looper cannot read the project's settings): both adopted with no change, nothing replaced or deleted, the old form
   refused. Its plan: the two adoptions, and creates of the membership (#12), the four protected environments, the
-  reader's two variables, and the three paused runners with their token versions.
-- **The cluster pipeline's rights on dev, by this pipeline (#18):** the dev stack makes the secrets `gitlab-runner-build`
-  and `gitlab-runner-control` (us-central1, empty; `secretAccessor` for `cluster-admin-pipeline` alone, `secretVersionAdder`
+  reader's two variables, and the pools' runners and the `infra` runner (#64) with their token versions.
+- **The cluster pipeline's rights on dev, by this pipeline (#18):** the dev stack makes the secrets `gitlab-runner-build`,
+  `gitlab-runner-control` and `gitlab-runner-infra` (#64; us-central1, empty; `secretAccessor` for `cluster-admin-pipeline` alone, `secretVersionAdder`
   for `runner_token_adders` alone, Jody's account, from the protected GitLab variable `GCP_RUNNER_TOKEN_ADDERS` (`ci/lib.sh`:
   no file names the host's directory, #8): authoritative bindings; output `runner_tokens`), and, through
   the kubernetes provider as this pipeline, the ClusterRoleBinding `cluster-admin-pipeline` of `cluster-admin` to the User
@@ -243,6 +243,19 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-15 by th
   (PROPOSALS.md). Tested with the dev stack's plan tests (mock providers), the policy's fixtures, and a plan of the binding
   with the real kubernetes provider under an unknown configuration; not applied yet: `apply:dev` on main does it, and
   whether the host admits the adder shows there; the hub sets `GCP_RUNNER_TOKEN_ADDERS` first.
+- **The `infra` runner, registered and its token written by this pipeline (#64; tacplus-dev/cluster#25):** the gitlab
+  stack registers the in-cluster runner of the cloud, cluster and deploy pipelines (`stacks/gitlab/main.tf`, `infra`): a
+  tacplus-dev group runner, tags `cloud`, `cluster`, `deploy` and no other, untagged off, `ref_protected`, **paused**,
+  described as the cluster's; and writes its authentication token as `gitlab-runner-infra`'s version 1 (the first of
+  the empty secret the dev stack makes; cluster's `gitlab-runner/runners/infra.yaml` names that version), as this
+  pipeline, its owner of the folder `dev`: no person or agent types it (Jody, 2026-11-16), and nothing else registers it.
+  The module's `runners` take an optional `description` (a pool's stays the manager's); the stack's output `runners`
+  gives each registration without its token, and the tests assert `infra` from it (README, The cluster pipeline; the
+  switch-over is a commit flipping `paused`, PROPOSALS.md). Tested: the gitlab and dev stacks' plan tests (mock
+  providers) and `tests/gitlab_plan_test.sh` (the stub API: the create of the runner and of its version, nothing else
+  changed). Not applied yet: `apply:dev` makes the secret, then `apply:gitlab` registers the runner and writes the
+  version; cluster's `apply` then reads it. Until it has, cluster's `apply` fails after applying the rest
+  (`runner-tokens: Secret Manager refused .../gitlab-runner-infra/versions/1`).
 - **The cluster pipeline's registry (#45; tacplus-dev/cluster#21, decision (1)):** the dev stack makes the Artifact
   Registry Docker repository `ci-images` (us-central1, `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, output
   `cluster_pipeline.registry`), private: `artifactregistry.writer` for `cluster-admin-pipeline` alone and
