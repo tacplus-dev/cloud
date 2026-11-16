@@ -9,8 +9,8 @@
 # protection's push_access_level and merge_access_level at plan; and an import by the project's path, whose state
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
 # protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
-# .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and a nightly
-# schedule per pinned repository (#33) up to GitLab's ten a project (#65), the website's and this repository's among them; it adopts tacplus-dev/build itself with no change, group runners on and shared
+# .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and one nightly
+# schedule that builds every pinned repository (#67, tacplus-dev/looper#164); it adopts tacplus-dev/build itself with no change, group runners on and shared
 # runners off (#35), and with group runners off, as before the hub's hand change, it turns them on and changes nothing
 # else; it creates the in-cluster infra runner, a tacplus-dev group runner of protected refs, paused, and its token's
 # version in the dev project's gitlab-runner-infra (#64); it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
@@ -95,21 +95,14 @@ if plan; then
     jq -e '.actions == ["create"] and .after.project == "88136765" and .after.key == "BUILD_TRIGGER_TOKEN" and .after.protected and .after.masked and .after_unknown.value' <<< "$variable" > /dev/null &&
     ok "a trigger of tacplus-dev/build, its token the looper project's protected, masked BUILD_TRIGGER_TOKEN (#26)" ||
     fail "the build trigger: $trigger; its variable: $(jq -c 'del(.before)' <<< "$variable")"
-  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["looper"]')
+  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["nightly"]')
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and
-    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=looper"]' <<< "$schedule" > /dev/null &&
-    ok "tacplus-dev/looper's nightly schedule on tacplus-dev/build (#26)" || fail "the looper's schedule: $schedule"
-  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["website"]')
-  jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and .after.cron == "33 18 * * *" and
-    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=website"]' <<< "$schedule" > /dev/null &&
-    ok "tacplus-dev/website's nightly schedule on tacplus-dev/build, at its name's minute and hour (#31, #33)" || fail "the website's schedule: $schedule"
-  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["cloud"]')
-  jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and .after.cron == "12 15 * * *" and
-    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true", "repo=cloud"]' <<< "$schedule" > /dev/null &&
-    ok "tacplus-dev/cloud's nightly schedule on tacplus-dev/build, at its name's minute and hour (#25, #33)" || fail "cloud's schedule: $schedule"
+    .after.description == "nightly" and .after.cron == "0 3 * * *" and .after.cron_timezone == "UTC" and
+    ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true"]' <<< "$schedule" > /dev/null &&
+    ok "one nightly schedule on tacplus-dev/build, of every pinned repository: nightly and no repo (#67, tacplus-dev/looper#164)" || fail "the nightly schedule: $schedule"
   schedules=$(jq -c '[.resource_changes[] | select(.type == "gitlab_pipeline_schedule" and .change.actions != ["delete"]) | .change.after.project] | group_by(.) | map({(.[0]): length}) | add' "$work/plan.json")
-  [ "$schedules" = '{"4003":10}' ] &&
-    ok "ten nightly schedules on tacplus-dev/build, GitLab's limit for a project (#65)" || fail "the schedules by project: $schedules"
+  [ "$schedules" = '{"4003":1}' ] &&
+    ok "no other schedule on tacplus-dev/build (#67: #65's ten go)" || fail "the schedules by project: $schedules"
   project=$(change 'module.gitlab.gitlab_project.build["build"]')
   jq -e '.actions == ["no-op"] and .importing.id == "4003" and .after.group_runners_enabled == true and .after.shared_runners_enabled == false' <<< "$project" > /dev/null &&
     ok "tacplus-dev/build: adopted (by its ID) with no change, group runners on and shared runners off as the hub set them (#35)" ||

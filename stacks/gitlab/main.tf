@@ -22,7 +22,7 @@ locals {
   cloud   = module.settings.gitlab_project
   secrets = "projects/${module.settings.bootstrap.project}/secrets"
   # The tacplus-dev/looper commit whose ci/build.gitlab-ci.yml files/build.gitlab-ci.yml is (ci/build-ci.sh).
-  build_ci_commit = "88d710c67b5cca0536b3b811a43973cc79f08d26"
+  build_ci_commit = "ad005bd2273490347f1d4e65346645ccb9e5582f"
 }
 
 module "gitlab" {
@@ -55,8 +55,8 @@ module "gitlab" {
   # are tagged build, which only tacplus-dev's group runners take); its .gitlab-ci.yml, tacplus-dev/looper's
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
   # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
-  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and a nightly schedule per pinned repository, ten
-  # at most (local.nightly_builds, #65). The trigger rotates every 90 days: the drift job's expiry check reports its
+  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and one nightly schedule that builds every pinned
+  # repository (local.nightly_builds, #67). The trigger rotates every 90 days: the drift job's expiry check reports its
   # rotate_by from 30 days before, and a commit of a date 90 days later replaces it.
   build = {
     project = "tacplus-dev/build"
@@ -100,26 +100,25 @@ locals {
   }
 }
 
-# The nightly builds of tacplus-dev/build (#26, #33; tacplus-dev/looper#84): one pipeline schedule per pinned repository,
-# on tacplus-dev/build's main, by the repository's name, with the inputs repo and nightly: true (tacplus-dev/looper
-# ci/build.gitlab-ci.yml: no sha, so the build scans main as it is then). The repositories are pinned-repositories.yaml,
-# which ci/nightly-builds.sh update writes from GitHub (every tacplus-dev repository, not archived, with a build.lock or
-# a tacplus.lock on main) and nobody edits; the drift job's check reports one pinned since. Each runs at a minute and an
-# hour (UTC) of its name's SHA-256, spread over the day and the same whichever repositories come or go.
-#
-# But GitLab allows a project 10 pipeline schedules, and 25 repositories are pinned (#65): #33's first apply made ten
-# and failed on the rest. Only the repositories of nightly_scheduled get one, and the module refuses more than 10. The
-# others have no nightly until one schedule builds them all (tacplus-dev/looper#164, Jody's decision on #65 of
-# 2026-11-16; #67); then this list goes. Should the ten here not be the ten that apply made, the next apply deletes the
-# others, and a create it starts before their deletes end is refused (the 10 per project): the apply after it makes it.
+# The nightly builds of tacplus-dev/build (#26, #33, #67; tacplus-dev/looper#84, #164): one pipeline schedule on
+# tacplus-dev/build's main with the input nightly: true and no repo, whose pipeline lists the tacplus-dev repositories
+# that pin a build image (a tacplus.lock or a build.lock on main) and runs each one's nightly in a child pipeline of its
+# own (tacplus-dev/looper ci/build.gitlab-ci.yml): every pinned repository, at 03:00 UTC, with no list here. It replaced
+# #33's schedule per repository, of which GitLab's 10 a project kept ten (#65): the apply that made this one deleted
+# them. The module still refuses more than 10.
 locals {
-  nightly_scheduled = ["cloud", "cluster", "fleet-seatrials", "kernel", "llmproxy", "looper", "messaging", "operator", "registry", "website"]
   nightly_builds = {
-    for r in yamldecode(file("${path.module}/pinned-repositories.yaml")) : r => {
-      cron   = format("%d %d * * *", parseint(substr(sha256(r), 0, 8), 16) % 60, floor(parseint(substr(sha256(r), 0, 8), 16) / 60) % 24)
-      inputs = { repo = r, nightly = "true" }
-    } if contains(local.nightly_scheduled, r)
+    nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } }
   }
+}
+
+# The new schedule is looper's of the ten, changed in place (its description, cron and inputs: the provider drops repo),
+# and the other nine are deleted: a create would run beside those deletes, not after them (OpenTofu orders them by
+# dependencies only), and GitLab refuses an 11th schedule while the ten are there. With no looper schedule in the state
+# (a fresh state, the tests), this moves nothing and the schedule is created.
+moved {
+  from = module.gitlab.gitlab_pipeline_schedule.build["looper"]
+  to   = module.gitlab.gitlab_pipeline_schedule.build["nightly"]
 }
 
 # What the hub set before the pipeline's first run (README, Before the first pipeline): adopted, not created. Imported by

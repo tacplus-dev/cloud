@@ -308,25 +308,22 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **tacplus-dev/looper's README on the build project's setup** (looper, #26, 2026-11-07). What: its Build pipeline and
   Credentials sections say the hub copies `ci/build.gitlab-ci.yml` by hand and that `BUILD_TRIGGER_TOKEN`'s trigger is
   owned by the build project's bot user; since #26 the cloud gitlab stack writes the file (from a pinned looper commit,
-  `ci/build-ci.sh update`) and owns the trigger as the user of its `gitlab-token`, and the nightly schedules are its
-  `stacks/gitlab/pinned-repositories.yaml` (#33: written by `ci/nightly-builds.sh update`, no pin issue adds to it).
+  `ci/build-ci.sh update`) and owns the trigger as the user of its `gitlab-token`, and the nightly is its one schedule (#67: the pipeline lists the
+  pinned repositories itself, tacplus-dev/looper#164; no pin issue asks here).
   A looper issue to say so, and that a change of `ci/build.gitlab-ci.yml` reaches tacplus-dev/build through a bump
   here. Why: otherwise a hand copy there is reverted by this pipeline's next apply.
 - **Pin issues stop asking here for a nightly schedule** (looper, #33, 2026-11-09). What: the pin issues of
   tacplus-dev/cluster and website (cluster#14, website#2) each filed an issue here (#33, #31) to add their repository
-  to the hand list of nightly builds; since #33 the list is `stacks/gitlab/pinned-repositories.yaml`, written from
-  GitHub by `ci/nightly-builds.sh update`, and the nightly drift reports a repository pinned since. Whatever in
+  to the hand list of nightly builds; since #67 there is no list here: tacplus-dev/build's one nightly builds every
+  repository pinned (tacplus-dev/looper#164). Whatever in
   tacplus-dev/looper (its pin flow, or #26's wording copied into it) tells a pin issue to ask here should say that
   instead. Why: otherwise each new pin files a needless issue here.
-- **The drift's `nightly-builds` finding landed by a looper** (looper, #33, 2026-11-09). What: the fix of a
-  `nightly-builds: ...` line in a drift issue is always the same commit (`ci/nightly-builds.sh update`); the drift
-  issue could be approved for a looper as is, or the drift job could file that finding as its own `bug` issue here.
-  Why: so a newly pinned repository is scheduled within a day with nobody's step but the approval.
-- **The nightly builds' load** (looper, #33, 2026-11-09). What: #33 takes the schedules from 1 (looper) to every pinned
-  repository, 25 today, each a build and a security scan (CodeQL, Trivy) on the build runner, spread over the day by
-  their names' hashes (up to 4 in one hour: 14:00 UTC). Watch the build runner's queue after the first apply; if it
-  competes with the lands' builds, confine the hours to a quiet window (the cron's hour from a smaller range). Why: no
-  measurement of a nightly's cost exists yet.
+- **The nightly builds' load** (looper, #33, 2026-11-09; #67, 2026-11-16). What: since #67 one schedule at 03:00 UTC
+  starts every pinned repository's nightly at once (25 today, each a build and a security scan, CodeQL and Trivy, on
+  the build runner), where #33 spread them over the day by their names' hashes. Watch the build runner's queue after
+  the first one; if the burst delays the lands' builds past their waits, or the morning's lands queue behind it,
+  move the hour or ask tacplus-dev/looper for a cap on the fan-out's concurrent children. Why: no measurement of a
+  nightly's cost exists yet.
 - **A per-project limit check for every GitLab resource with one** (looper, #65, 2026-11-16). What: #65 found
   gitlab.com's limit of 10 pipeline schedules a project only at apply; the module now refuses more than 10 schedules at
   plan, but other gitlab.com limits (https://docs.gitlab.com/administration/instance_limits/: triggers, variables,

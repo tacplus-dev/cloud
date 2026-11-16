@@ -23,16 +23,22 @@
 # gates.yaml), and "base": the commit their LOOPER_GATES_BASE names (the main
 # a manager's land is rebased on, or a report's branch point). A manager's
 # merge and a report's --build pass the set their diff calls for (repo-looper).
-# "wait" is the seconds the requester waits for its verdict (LOOPER_BUILD_WAIT,
-# looper#130; repo-looper passes it once this project's copy declares it): a gates job that starts later than that after the pipeline's
+# "wait" is the seconds the requester waits for its verdict (looper#130: its
+# gate set's minutes and a margin, at least LOOPER_BUILD_WAIT, looper#158;
+# repo-looper passes it once this project's copy declares it): a gates job that starts later than that after the pipeline's
 # creation writes the verdict "abandoned: no verdict wanted after Nh" and runs
 # no gates. A nightly, a release and a verify run pass none: never abandoned.
 # A release runs on this project's protected tag <repo>/vX.Y.Z, with
 # "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
 # does the publish job get its GCP identity (tacplus-dev/tacplus#223).
 #
-# Every job runs on the build runner (tags arm64, build): a fresh VM per job,
-# never one an agent's job ran on (Jody, 2026-10-29). plan, status and publish
+# Every job runs on the build runner (tags arm64, build): a pod on the spot
+# pool (tacplus-dev/cluster#13; before it, a fresh VM per job), never one an
+# agent's job ran on (Jody, 2026-10-29). Spot preemption is retried the GitLab
+# way (looper#84; tacplus-dev/roadmap decisions/only-vms-are-k8s-nodes-2026-11-04.md):
+# retry: on runner_system_failure and stuck_or_timeout_failure, twice. The
+# child pipeline's gates job keeps its own retry (looper-build: its 11h timeout
+# is its own, looper#148). plan, status and publish
 # run in the looper image, for looper-build; the gates run in the repository's
 # pinned build image, as the child pipeline plan writes.
 #
@@ -48,6 +54,12 @@
 # makes the image's SBOM. A nightly is a scheduled (or API) run with inputs
 # repo and "nightly": true, and no sha: the plan scans main as it is then. It
 # sets no commit status: it is no commit's verdict. README: Security checks.
+# The nightly of every repository (looper#164): a nightly with no repo (and no
+# sha) is one pipeline, so one schedule serves the org (GitLab allows a project
+# 10, tacplus-dev/cloud#65). Its plan lists the repositories whose main pins a
+# build image (tacplus.lock or build.lock) and its child pipeline runs each
+# one's nightly, as above, in a pipeline of its own (strategy: depend): one's
+# failure stops no other's.
 #
 # The runner image (looper#43): a web or scheduled run on main with
 # "runner_image": true is a pipeline of one job, runner-image, which bakes the
@@ -102,7 +114,7 @@ spec:
       type: boolean
       default: false
     nightly:
-      description: "The nightly security checks of repo's main branch (no tag; sha empty: main's head now)"
+      description: "The nightly security checks of repo's main branch (no tag; sha empty: main's head now; repo empty too: every repository that pins its build image)"
       type: boolean
       default: false
     verify:
@@ -127,6 +139,9 @@ workflow:
     - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO && $BUILD_NIGHTLY == "true"
       variables:
         BUILD_PIPELINE_NAME: "nightly $[[ inputs.repo ]] $[[ inputs.sha ]]"
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO == "" && $BUILD_SHA == "" && $BUILD_NIGHTLY == "true"
+      variables:
+        BUILD_PIPELINE_NAME: "nightly"
     - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/ && $BUILD_REPO && $BUILD_SHA
       variables:
         BUILD_PIPELINE_NAME: "build $[[ inputs.repo ]] $[[ inputs.sha ]] $[[ inputs.tag ]] $[[ inputs.gates ]]"
@@ -153,11 +168,11 @@ variables:
   GIT_STRATEGY: none
 
 default:
-  image: ghcr.io/tacplus-dev/looper:main
+  image: ghcr.io/tacplus-dev/looper@sha256:9c4d29d785279d7f5f70949ff5f6fd2e29f4d945d8f149f28865b9c3faef9975
   tags: [arm64, build]
   retry:
     max: 2
-    when: [runner_system_failure, scheduler_failure, unknown_failure]
+    when: [runner_system_failure, stuck_or_timeout_failure, scheduler_failure, unknown_failure]
 
 # The build's jobs, never in a smoke or runner image pipeline.
 .build-run:
@@ -181,6 +196,7 @@ pending:
 # Fetch exactly the commit (a nightly or a verify run: main's head), read its pin (tacplus.lock, or
 # build.lock), write the gates job in the pinned image and the security checks' jobs, and on a
 # release the formal verification's (a verify run: those alone). No pin, or a bad one, is a fail verdict.
+# A nightly with no repo: the child pipeline of each pinned repository's nightly (looper#164).
 plan:
   extends: .build-run
   stage: plan
@@ -200,6 +216,12 @@ gates:
       - artifact: build-gates.yml
         job: plan
     strategy: depend
+    # The child's jobs carry every variable they read, the commit the plan
+    # resolved among them: the parent's would override them, and a nightly's
+    # or a verify run's BUILD_SHA is empty there (looper#138).
+    forward:
+      yaml_variables: false
+      pipeline_variables: false
 
 # A release, once the gates and the security checks passed: the image, pushed
 # through Workload Identity Federation (GCP_WIF_PROVIDER, a project variable;

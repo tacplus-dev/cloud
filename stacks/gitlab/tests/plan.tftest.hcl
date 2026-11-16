@@ -90,11 +90,9 @@ run "stack" {
     condition     = can(regex("^20[0-9]{2}-[01][0-9]-[0-3][0-9]$", output.members["tacplus-dev/build:tacplus-looper-bot"].expires_at))
     error_message = "tacplus-looper-bot's membership of tacplus-dev/build has no expiry."
   }
-  # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and a nightly
-  # schedule per pinned repository (#33: pinned-repositories.yaml, ci/nightly-builds.sh's) of the ten GitLab allows
-  # one project (#65: local.nightly_scheduled), with the inputs repo and nightly, at a minute and an hour of its name's
-  # SHA-256 (of its first 8 hex digits: looper's 0x63a2676c, cluster's 0x164cf1ca, website's 0x747a8f39, cloud's
-  # 0x56681010). Two may share a cron: each is its own schedule.
+  # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and one nightly
+  # schedule that builds every pinned repository (#67; tacplus-dev/looper#164: the input nightly and no repo, the
+  # pipeline lists them itself), in place of #65's ten, one per repository, of the ten GitLab allows a project.
   assert {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
@@ -105,31 +103,8 @@ run "stack" {
     error_message = "tacplus-dev/build does not take group runners, or takes gitlab.com's shared runners (#35): no tacplus-dev runner takes its build jobs."
   }
   assert {
-    condition     = length(setintersection(toset(keys(output.build.schedules)), toset(["cluster", "looper", "website"]))) == 3
-    error_message = "tacplus-dev/cluster, looper or website, each pinned, has no nightly schedule."
-  }
-  # GitLab allows a project 10 pipeline schedules (#65): the stack keeps the ten that exist and makes no more until
-  # one schedule builds them all (tacplus-dev/looper#164).
-  assert {
-    condition     = toset(keys(output.build.schedules)) == toset(["cloud", "cluster", "fleet-seatrials", "kernel", "llmproxy", "looper", "messaging", "operator", "registry", "website"])
-    error_message = "The nightly schedules are not the ten of #65 (GitLab allows a project 10)."
-  }
-  assert {
-    condition     = output.build.schedules["looper"] == { cron = "52 18 * * *", inputs = { repo = "looper", nightly = "true" } } && output.build.schedules["cluster"] == { cron = "46 9 * * *", inputs = { repo = "cluster", nightly = "true" } }
-    error_message = "tacplus-dev/looper's and tacplus-dev/cluster's nightly schedules are not at their names' minute and hour, with the inputs repo and nightly: true."
-  }
-  # tacplus-dev/cloud, pinned by its build.lock (#25).
-  assert {
-    condition     = output.build.schedules["cloud"] == { cron = "12 15 * * *", inputs = { repo = "cloud", nightly = "true" } }
-    error_message = "tacplus-dev/cloud (pinned by build.lock, #25) has no nightly schedule at its name's minute and hour, with the inputs repo and nightly: true."
-  }
-  assert {
-    condition     = output.build.schedules["website"] == { cron = "33 18 * * *", inputs = { repo = "website", nightly = "true" } }
-    error_message = "tacplus-dev/website (pinned by build.lock, website#2; #31) has no nightly schedule at its name's minute and hour."
-  }
-  assert {
-    condition     = alltrue([for k, s in output.build.schedules : s.inputs == { repo = k, nightly = "true" }])
-    error_message = "A nightly schedule's inputs are not its repository and nightly: true."
+    condition     = output.build.schedules == { nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } } }
+    error_message = "tacplus-dev/build's schedules are not the one nightly of every pinned repository (#67: 03:00 UTC, the input nightly: true and no repo)."
   }
 }
 
