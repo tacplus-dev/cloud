@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#68).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#71).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -190,6 +190,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   on every certificate secret for its owner, and `secretAccessor` and `viewer` on `test-idp-seeds` for `seatrials-deploy`
   (`test-idp-deploy` still alone adds them). Tested with the plan tests; not yet seen live: the images, cert and
   test-idp-signin jobs past these refusals once `apply:dev` has run.
+- **get-credentials on dev (#71, fleet-seatrials#27):** the deployments' `container.clusterViewer` condition named the
+  cluster `projects/tacplus-dev/locations/us-central1-a/clusters/dev`, which matches only a regional cluster: IAM names
+  the zonal `dev` `projects/tacplus-dev/zones/us-central1-a/clusters/dev`. So `seatrials-deploy` and `test-idp-deploy`
+  got a 403 on `container.clusters.get`. The condition now uses the zonal form, which the plan test checks. Not yet seen
+  live: the test-idp job past `kube:` once `apply:dev` has run.
 - **The network rules of 2026-11-03 (#7):** `ci/policy.sh plan` refuses an instance or template with an external address
   (or one unknown until apply), any allow rule from `0.0.0.0/0`/`::/0` or with no source (no exception list: every LB is
   proxy-based), any rule allowing port 22 in either direction but the runners' internal `runner-manager-to-workers-ssh`
