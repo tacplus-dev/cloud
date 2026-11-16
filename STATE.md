@@ -55,7 +55,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   jobs, stopped Docker answering `containers/create` and every job placed on the full VM failed `runner_system_failure`; the VM up at the time keeps
   its disk until replaced; the ci stack's test keeps the SSD-backed disks under `SSD_TOTAL_GB` 500, `ci_disks`: 498 at peak), every looper and control job, a tacplus-dev group runner tagged `arm64`,
   `autoscale`, `autoscale-16`; builds on the `build` pool, one on-demand t2a-standard-8 from zero (two until #63; spot until #55), four builds at a time,
-  tagged `arm64`, `build`; `deploy` and `cluster`, protected and on demand. Job containers
+  tagged `arm64`, `build` and `build-docker` (#70: the jobs that still need host Docker); `deploy` and `cluster`, protected and on demand. Job containers
   share reused VMs, no privileged mode, no host Docker socket, containers and volumes discarded per job; disk bounded
   per VM, not per job. The cache: `gs://tacplus-ci-build-cache` and the registry `build-cache`, only
   `build-cache@tacplus-ci` holding a role on them, federated from tacplus-dev/build's jobs only; entries deleted
