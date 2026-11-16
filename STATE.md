@@ -375,7 +375,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   before; the new trigger before the old one goes); and one schedule per pinned repository of
   `stacks/gitlab/pinned-repositories.yaml` (inputs `repo`, `nightly: true`; 25 repositories, each at a minute and hour
   of its name's SHA-256: tacplus-dev/looper 18:52, cluster 09:46, website 18:33, cloud 15:12 UTC), which `ci/nightly-builds.sh update` writes from GitHub and the drift's `check` keeps honest
-  (#33). Tested with the
+  (#33). **Ten at most** (#65): gitlab.com allows a project 10 schedules, #33's first apply made ten and failed on
+  the rest (pipeline 3071888619), so only the ten of `nightly_scheduled` get one (cloud, cluster, fleet-seatrials,
+  kernel, llmproxy, looper, messaging, operator, registry, website) and the module refuses more than 10 at plan; the
+  other 15 pinned repositories have **no nightly** until tacplus-dev/looper#164's fan-out and #67. Which ten that apply
+  made is not known here: if they differ, the next apply deletes the others and may need one more apply to make the
+  missing ones. Tested with the
   stack's plan tests (mock providers), the stub-API plan with the real provider (`tests/gitlab_plan_test.sh`),
   `tests/build_ci_test.sh` (stub curl), `tests/nightly_builds_test.sh` (stub GitHub) and `tests/expiry_test.sh`; not applied yet: `apply:gitlab` on main does it, and
   whether GitLab takes the schedule's boolean input as the string `true` the provider sends, and the first nightly of
