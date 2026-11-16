@@ -25,6 +25,11 @@ reset() { rm -rf "$STUB_CURL"; mkdir -p "$STUB_CURL"; }
 [[ $commit =~ ^[0-9a-f]{40}$ ]] && ok "the stack names tacplus-dev/looper's commit in full ($commit)" || fail "build_ci_commit: [$commit]"
 grep -qF 'content        = file("${path.module}/files/build.gitlab-ci.yml")' "$here/stacks/gitlab/main.tf" &&
   ok "the stack copies files/build.gitlab-ci.yml as is" || fail "stacks/gitlab/main.tf does not copy files/build.gitlab-ci.yml"
+# A job that needs host Docker runs on BUILD_DOCKER_TAGS (tacplus-dev/looper#172): build-docker, which only the build
+# pool's runner carries (#70), never the in-cluster build runner's arm64 and build (no Docker socket) (#72).
+grep -qxF '  BUILD_DOCKER_TAGS: "arm64, build-docker"' "$file" &&
+  ok "the copy sends host Docker jobs to arm64, build-docker, the build pool's runner (#72)" ||
+  fail "the copy's BUILD_DOCKER_TAGS: $(grep -F BUILD_DOCKER_TAGS: "$file")"
 
 reset
 cp "$file" "$STUB_CURL/raw"

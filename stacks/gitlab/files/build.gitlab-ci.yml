@@ -35,10 +35,10 @@
 # BUILD_BUILDER_IMAGE, a build image with rootless BuildKit
 # (tacplus-image-build, tacplus-dev/tacplus#315), with no host Docker; while
 # it is empty, in the looper image with host Docker (docker buildx) on
-# BUILD_DOCKER_TAGS, which the plan says in its log. Its SBOM is a job of its
-# own, in the looper image.
+# BUILD_DOCKER_TAGS (arm64, build-docker: the VM build pool alone), which the
+# plan says in its log. Its SBOM is a job of its own, in the looper image.
 #
-# Every job runs on the build runner (tags arm64, build): a pod on the spot
+# Every other job runs on the build runner (tags arm64, build): a pod on the spot
 # pool (tacplus-dev/cluster#13; before it, a fresh VM per job), never one an
 # agent's job ran on (Jody, 2026-10-29). Spot preemption is retried the GitLab
 # way (looper#84; tacplus-dev/roadmap decisions/only-vms-are-k8s-nodes-2026-11-04.md):
@@ -174,12 +174,13 @@ variables:
   GIT_STRATEGY: none
   # A release's publish (looper#73): the build image it runs in, with rootless
   # BuildKit (tacplus-image-build, tacplus-dev/tacplus#315), by digest; empty
-  # until a published build image has it: then publish needs host Docker, and
-  # runs on BUILD_DOCKER_TAGS, the runners that mount the Docker socket (the
-  # VM build pool's tags; the hub gives that pool a tag of its own before the
-  # in-cluster build runner, which has none, takes `arm64, build` too).
+  # until a published build image has it (looper#172: none has yet): then
+  # publish needs host Docker, and runs on BUILD_DOCKER_TAGS, the runners that
+  # mount the Docker socket: build-docker is the VM build pool's tag alone
+  # (tacplus-dev/cloud#70), which the in-cluster build runner, with no socket,
+  # lacks.
   BUILD_BUILDER_IMAGE: ""
-  BUILD_DOCKER_TAGS: "arm64, build"
+  BUILD_DOCKER_TAGS: "arm64, build-docker"
 
 default:
   image: ghcr.io/tacplus-dev/looper@sha256:a40bf6460d858d87d5e27caaf7a0f59aa68eb21b9deedc6edde9731213eb1078
