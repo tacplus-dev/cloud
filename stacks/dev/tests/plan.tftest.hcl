@@ -273,8 +273,8 @@ run "dev" {
     error_message = "The certificate secrets are not the deployment's tls-seatrials and acme-account-seatrials and the test IdP's tls-test-idp and acme-account-test-idp, in us-central1."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret_iam_binding.certificate)) == toset(flatten([for s in ["tls-seatrials", "acme-account-seatrials", "tls-test-idp", "acme-account-test-idp"] : ["${s}/roles/secretmanager.secretVersionAdder", "${s}/roles/secretmanager.secretAccessor"]]))
-    error_message = "The secrets' roles are not exactly adding versions and reading them."
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.certificate)) == toset(flatten([for s in ["tls-seatrials", "acme-account-seatrials", "tls-test-idp", "acme-account-test-idp"] : [for r in ["secretVersionAdder", "secretAccessor", "viewer"] : "${s}/roles/secretmanager.${r}"]]))
+    error_message = "The secrets' roles are not exactly adding versions, reading them and listing them (#68: the cert job lists the versions)."
   }
   assert {
     condition     = alltrue([for k, b in google_secret_manager_secret_iam_binding.certificate : b.members == toset([endswith(split("/", k)[0], "-test-idp") ? google_service_account.environment["seatrials/test-idp"].member : google_service_account.deploy["seatrials"].member])])
@@ -304,8 +304,13 @@ run "dev" {
     error_message = "The test IdP's seed secret is not test-idp-seeds, in us-central1 alone."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret_iam_binding.environment)) == toset(["test-idp-seeds/roles/secretmanager.secretVersionAdder", "test-idp-seeds/roles/secretmanager.secretAccessor"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.environment : b.secret_id == "test-idp-seeds" && b.role == trimprefix(k, "test-idp-seeds/") && b.members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"])])
-    error_message = "Someone besides test-idp-deploy adds or reads the test IdP's seeds, or it does not both."
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.environment)) == toset([for r in ["secretVersionAdder", "secretAccessor", "viewer"] : "test-idp-seeds/roles/secretmanager.${r}"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.environment : b.secret_id == "test-idp-seeds" && b.role == trimprefix(k, "test-idp-seeds/")])
+    error_message = "The test IdP's seeds' roles are not exactly adding versions, reading them and listing them."
+  }
+  # #68: seatrials' own jobs read the seeds too (fleet-seatrials' ci_test_idp_seeds), and only test-idp-deploy adds them.
+  assert {
+    condition     = google_secret_manager_secret_iam_binding.environment["test-idp-seeds/roles/secretmanager.secretVersionAdder"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"]) && alltrue([for r in ["secretAccessor", "viewer"] : google_secret_manager_secret_iam_binding.environment["test-idp-seeds/roles/secretmanager.${r}"].members == toset(["serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com", "serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])])
+    error_message = "Someone besides test-idp-deploy adds the test IdP's seeds, or someone besides it and seatrials-deploy reads them, or either does not."
   }
   assert {
     condition     = google_compute_global_address.gateway.name == "gateway" && google_compute_global_address.gateway.address_type == "EXTERNAL" && google_compute_global_address.gateway.ip_version == "IPV4"
@@ -384,8 +389,8 @@ run "dev" {
     error_message = "test-idp-deploy holds a role on the project besides get-credentials on dev, or one on the deployment's registry, bucket or builds' account."
   }
   assert {
-    condition     = toset(flatten([for b in concat(values(google_secret_manager_secret_iam_binding.certificate), values(google_secret_manager_secret_iam_binding.environment), values(google_secret_manager_secret_iam_binding.runner_token)) : [for m in b.members : "${b.secret_id} ${b.role}" if m == "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"]])) == toset(flatten([for s in ["tls-test-idp", "acme-account-test-idp", "test-idp-seeds"] : ["${s} roles/secretmanager.secretVersionAdder", "${s} roles/secretmanager.secretAccessor"]])) && toset([for b in values(google_dns_managed_zone_iam_binding.acme_challenge) : b.managed_zone if contains(b.members, "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com")]) == toset(["acme-challenge-idp-test-tacplus-dev"])
-    error_message = "test-idp-deploy's secrets are not exactly adding and reading tls-test-idp, acme-account-test-idp and test-idp-seeds, or its zone not exactly acme-challenge-idp-test-tacplus-dev."
+    condition     = toset(flatten([for b in concat(values(google_secret_manager_secret_iam_binding.certificate), values(google_secret_manager_secret_iam_binding.environment), values(google_secret_manager_secret_iam_binding.runner_token)) : [for m in b.members : "${b.secret_id} ${b.role}" if m == "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com"]])) == toset(flatten([for s in ["tls-test-idp", "acme-account-test-idp", "test-idp-seeds"] : [for r in ["secretVersionAdder", "secretAccessor", "viewer"] : "${s} roles/secretmanager.${r}"]])) && toset([for b in values(google_dns_managed_zone_iam_binding.acme_challenge) : b.managed_zone if contains(b.members, "serviceAccount:test-idp-deploy@tacplus-dev.iam.gserviceaccount.com")]) == toset(["acme-challenge-idp-test-tacplus-dev"])
+    error_message = "test-idp-deploy's secrets are not exactly adding, reading and listing tls-test-idp, acme-account-test-idp and test-idp-seeds, or its zone not exactly acme-challenge-idp-test-tacplus-dev."
   }
   # The deploy registry (#20): Docker, us-central1, seatrials; the builds' account writes it, the deployment's
   # identity and the nodes read it; no cleanup policy, so nothing deployed is deleted.
@@ -438,8 +443,8 @@ run "dev" {
     error_message = "The build bucket's objects are not deleted after 7 days."
   }
   assert {
-    condition     = toset(keys(google_storage_bucket_iam_binding.build)) == toset(["seatrials/roles/storage.admin", "seatrials/roles/storage.objectAdmin"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.admin"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.objectAdmin"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"])
-    error_message = "The build bucket is not seatrials-deploy's (storage.admin) and the builds' account's (storage.objectAdmin) alone."
+    condition     = toset(keys(google_storage_bucket_iam_binding.build)) == toset(["seatrials/roles/storage.admin", "seatrials/roles/storage.objectAdmin", "seatrials/roles/storage.legacyBucketReader"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.admin"].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.objectAdmin"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"]) && google_storage_bucket_iam_binding.build["seatrials/roles/storage.legacyBucketReader"].members == toset(["serviceAccount:seatrials-build@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "The build bucket is not seatrials-deploy's (storage.admin) and the builds' account's (storage.objectAdmin, and storage.legacyBucketReader for the bucket's storage.buckets.get, #68) alone."
   }
   assert {
     condition     = output.deployments["seatrials"].registry == "us-central1-docker.pkg.dev/tacplus-dev/seatrials" && output.deployments["seatrials"].build == { bucket = "gs://tacplus-dev-seatrials-build", sa = "seatrials-build@tacplus-dev.iam.gserviceaccount.com" } && output.deployments["seatrials"].environment_accounts == { test-idp = "test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" }

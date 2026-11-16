@@ -860,7 +860,8 @@ secret version, which the uni-config references. Nothing in a cluster holds it, 
   Its roles on the project are its deployment's (below, Deployments: images, the cluster and environment accounts).
 - **Its secrets:** `tls-<deployment>` (the certificate chain and its key) and `acme-account-<environment>` (its ACME
   account's key; the environment is the deployment's GitLab environment), us-central1. Only its identity holds a role on
-  them, `secretVersionAdder` and `secretAccessor` (authoritative bindings): it adds versions and reads them. Their values
+  them, `secretVersionAdder`, `secretAccessor` and `viewer` (authoritative bindings): it adds versions, reads them and
+  lists them (#68: the cert job finds the latest enabled version by listing them). Their values
   are never in this repository, a plan or the state.
 - **Its challenge zone:** `acme-challenge-<domain with dashes>` for `_acme-challenge.<domain>.` (DNSSEC on), where
   DNS-01 for `<domain>` and `*.<domain>` writes its TXT records. Only its identity holds `dns.admin` on it (an
@@ -903,7 +904,8 @@ from the same `deployments` entry:
   `gs://tacplus-dev-<images.bucket>` (us-central1, uniform access, public access prevented, objects deleted after
   `images.days`): each submit stages its source and writes its logs there, so gcloud needs no right on the project's
   buckets (fleet-seatrials#32); its identity holds `roles/storage.admin` on it, the builds' account
-  `roles/storage.objectAdmin`, nobody else a role.
+  `roles/storage.objectAdmin` and `roles/storage.legacyBucketReader` (#68: Cloud Build refuses to run a build as an
+  account without `storage.buckets.get` on its logs bucket, which objectAdmin lacks), nobody else a role.
 - **Its environment accounts** (`environment_accounts`): by GitLab environment, a service account only its project's
   jobs in that environment, on protected `main`, may become, with the cluster's credentials and no other role. Its
   provider maps `attribute.project_environment` to the job's project and environment joined by `:` (a GitLab project
@@ -912,8 +914,9 @@ from the same `deployments` entry:
   tacplus-dev's projects, so the environment alone would admit another project's job in an environment of that name.
   An environment account is never the deployment's identity or its builds' account (the module refuses it). Besides,
   it may own a certificate (above, Certificates) and **secrets of its own** (`environment_secrets`, #32): by environment,
-  secret IDs (us-central1, made with no version) whose versions only it adds and reads (`secretVersionAdder` and
-  `secretAccessor`, authoritative bindings); reading `latest` tells its job whether one exists yet. They replace GitLab
+  secret IDs (us-central1, made with no version) whose versions only it adds (`secretVersionAdder`), and it and the
+  deployment's identity read and list (`secretAccessor` and `viewer`; #68: seatrials' own jobs read the test IdP's
+  seeds), authoritative bindings; reading `latest` tells its job whether one exists yet. They replace GitLab
   variables a job would write with a token: gitlab.com Free has no project access tokens (as #28). Their values are
   never in this repository, a plan or the state.
 

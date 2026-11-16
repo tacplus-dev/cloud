@@ -4,7 +4,8 @@
 # Each deployment's certificate, owned by its pipeline (decisions/certificates-by-pipeline-2026-11-03.md, #6): the
 # pipeline checks its certificate on every run and, when it is missing or due, obtains one by ACME DNS-01 and adds it
 # as a new secret version, which the uni-config references. Its identity, keyless and federated from its GitLab
-# project's protected main alone, adds and reads the versions of its two secrets, and administers its _acme-challenge
+# project's protected main alone, adds, reads and lists the versions of its two secrets (the cert job finds the
+# latest enabled one by listing them, #68), and administers its _acme-challenge
 # zone, delegated from the domain's zone, so it never writes the domain's own records. Nobody else holds a role on
 # either (authoritative bindings). Its other roles, get-credentials and its images' builds, are deploy.tf's (#20).
 #
@@ -26,7 +27,7 @@ locals {
     { for k, c in local.certificates : c.tls => k },
     { for k, c in local.certificates : c.acme_account => k },
   )
-  certificate_roles = ["roles/secretmanager.secretVersionAdder", "roles/secretmanager.secretAccessor"]
+  certificate_roles = ["roles/secretmanager.secretVersionAdder", "roles/secretmanager.secretAccessor", "roles/secretmanager.viewer"]
 }
 
 resource "google_iam_workload_identity_pool_provider" "deploy" {
