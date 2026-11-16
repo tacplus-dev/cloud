@@ -526,3 +526,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   pool or the `ci` namespace, unless the hub opts in for that pipeline (a protected variable, say). Why: since #66 the
   `cloud` and `cluster` jobs run on `infra`, in that pool: such a plan stops its own job mid-apply, and with `infra`
   gone no job takes the fix (README, The cluster pipeline, the break-glass). Not built: a feature, needing design.
+- **The seatrials jobs' first KMS sign as themselves** (looper, #68, 2026-11-16). What: decide whether fleet-seatrials'
+  jobs sign the `tacplus-reader` JWT as their own federated identity (then the dev project enables `cloudkms.googleapis.com`
+  as a consumer and the stack grants it on the key, modules/projects/ci/github-apps.tf) or always as the reader's service
+  account (then fleet-seatrials' cert job stops trying as itself first). Why: today every such job logs `KMS API has not
+  been used in project` before it falls back to the reader's account, which works (fleet-seatrials#48's first deploy).
