@@ -3,9 +3,9 @@
 #
 # The gitlab stack's plan against a stub GitLab and stub secrets (mock providers: no token, no cloud): the stack
 # plans, and its module, with the stack's inputs, gives protected settings, variables from Secret Manager by
-# version, paused runners whose tokens go to Secret Manager only, and memberships of other projects that read
-# only (Reporter, 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module
-# itself.)
+# version, paused runners whose tokens go to Secret Manager only (the pools' to the ci project's, the in-cluster infra
+# runner's to the dev project's gitlab-runner-infra, #64), and memberships of other projects that read only (Reporter,
+# 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
   mock_data "google_project" {
@@ -42,8 +42,39 @@ run "stack" {
     error_message = "The stack manages more projects than tacplus-dev/cloud."
   }
   assert {
-    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster"])
-    error_message = "The stack does not register one runner per pool: shared, build, deploy and cluster."
+    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra"])
+    error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra runner (#64)."
+  }
+  # The infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): a tacplus-dev group runner for
+  # the cloud, cluster and deploy pipelines, those three tags and no other, untagged off, protected refs only, paused
+  # until the hub's switch-over, its token the dev project's gitlab-runner-infra (version 1, the first of an empty
+  # secret), which no person types.
+  assert {
+    condition     = output.runners["infra"].type == "group_type" && output.runners["infra"].group_id == 88
+    error_message = "The infra runner is not a group runner of tacplus-dev."
+  }
+  assert {
+    condition     = output.runners["infra"].tags == toset(["cloud", "cluster", "deploy"]) && !output.runners["infra"].untagged
+    error_message = "The infra runner's tags are not cloud, cluster and deploy, and no other, or it takes untagged jobs."
+  }
+  assert {
+    condition     = output.runners["infra"].access_level == "ref_protected" && output.runners["infra"].paused
+    error_message = "The infra runner takes unprotected refs, or is registered unpaused: the hub unpauses it at the switch-over."
+  }
+  assert {
+    condition     = output.runners["infra"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-infra"
+    error_message = "The infra runner's token is not written to the dev project's gitlab-runner-infra, tacplus-dev/cluster's tacplus.token."
+  }
+  # The pools' runners keep taking jobs, and each one's token goes to its own secret of the ci project.
+  assert {
+    condition     = alltrue([for k, r in output.runners : !r.paused && r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if k != "infra"])
+    error_message = "A pool's runner is paused, or its token does not go to the ci project's runner-token-<pool>."
+  }
+  # The cluster and deploy pools carry the tags infra takes over, and no other runner does: the switch-over pauses them
+  # as it unpauses infra, and no job is taken twice or left without a runner.
+  assert {
+    condition     = toset([for k, r in output.runners : k if length(setintersection(r.tags, toset(["cloud", "cluster", "deploy"]))) > 0]) == toset(["cluster", "deploy", "infra"])
+    error_message = "A runner besides the cluster and deploy pools and infra carries cloud, cluster or deploy."
   }
   # The looper's recap reads tacplus-dev/build as tacplus-looper-bot, through every looper job's GITLAB_TOKEN (#12,
   # option B): Reporter, nothing higher, and an expiry.
@@ -115,6 +146,7 @@ run "gitlab" {
     runners = {
       group = { type = "group_type", group = "tacplus-dev", tags = ["arm64", "autoscale"], protected = false, paused = true, token_secret = "projects/tacplus-ci/secrets/runner-token-group" }
       proj  = { type = "project_type", project = "tacplus-dev/cloud", tags = ["cluster"], protected = true, paused = true, token_secret = "projects/tacplus-ci/secrets/runner-token-proj" }
+      infra = { type = "group_type", group = "tacplus-dev", tags = ["cloud", "cluster", "deploy"], protected = true, paused = true, token_secret = "projects/tacplus-dev/secrets/gitlab-runner-infra", description = "tacplus-dev infra (in the cluster)" }
     }
     members = {
       "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
@@ -152,8 +184,17 @@ run "gitlab" {
     error_message = "The runners are not registered where, and for the refs, their pools say."
   }
   assert {
-    condition     = google_secret_manager_secret_version.runner_token["proj"].secret == "projects/tacplus-ci/secrets/runner-token-proj"
-    error_message = "A runner's token does not go to its pool's secret."
+    condition     = google_secret_manager_secret_version.runner_token["proj"].secret == "projects/tacplus-ci/secrets/runner-token-proj" && google_secret_manager_secret_version.runner_token["infra"].secret == "projects/tacplus-dev/secrets/gitlab-runner-infra"
+    error_message = "A runner's token does not go to its own secret."
+  }
+  # A group runner of protected refs (#64), described as given; a pool's description is the manager's, by default.
+  assert {
+    condition     = gitlab_user_runner.runner["infra"].runner_type == "group_type" && gitlab_user_runner.runner["infra"].group_id == 88 && gitlab_user_runner.runner["infra"].access_level == "ref_protected" && !gitlab_user_runner.runner["infra"].locked && gitlab_user_runner.runner["infra"].description == "tacplus-dev infra (in the cluster)"
+    error_message = "The infra runner is not a protected-refs group runner of tacplus-dev with the description given."
+  }
+  assert {
+    condition     = gitlab_user_runner.runner["group"].description == "tacplus-ci group (tacplus-dev/cloud: runner-manager in the ci project)"
+    error_message = "A pool's runner is not described as the ci project's runner manager's."
   }
   assert {
     condition     = gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"].project == "77" && gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"].user_id == 99 && data.gitlab_user.member["tacplus-looper-bot"].username == "tacplus-looper-bot"

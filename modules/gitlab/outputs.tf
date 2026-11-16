@@ -7,8 +7,16 @@ output "project_ids" {
 }
 
 output "runner_ids" {
-  description = "The runners' IDs, by pool."
+  description = "The runners' IDs, by runner."
   value       = { for k, r in gitlab_user_runner.runner : k => r.id }
+}
+
+output "runners" {
+  description = "Each registration as GitLab has it (never its token): its type, the group or project ID it is registered to, its tags, whether it takes untagged jobs, its access level, whether it is paused, and the secret its token is a version of."
+  value = { for k, r in gitlab_user_runner.runner : k => {
+    type         = r.runner_type, group_id = r.group_id, project_id = r.project_id, tags = toset(r.tag_list), untagged = r.untagged
+    access_level = r.access_level, paused = r.paused, token_secret = google_secret_manager_secret_version.runner_token[k].secret
+  } }
 }
 
 output "members" {

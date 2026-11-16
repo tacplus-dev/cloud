@@ -3,8 +3,9 @@
 #
 # GitLab settings: projects, their protected branches and environments, their protected project variables (values
 # from Secret Manager, never in this repository), the runner registrations, whose tokens go to Secret Manager
-# for the runner manager, and the read-only memberships of other projects, each with an expiry; tacplus-dev/build's
-# pipeline file, trigger, schedules and runner settings are build.tf's.
+# for the runner manager (the VM pools') or for the cluster pipeline (the in-cluster infra runner's, #64), and the
+# read-only memberships of other projects, each with an expiry; tacplus-dev/build's pipeline file, trigger, schedules
+# and runner settings are build.tf's.
 
 locals {
   existing = { for path, p in var.projects : path => p if !p.create }
@@ -101,7 +102,7 @@ resource "gitlab_user_runner" "runner" {
   runner_type  = each.value.type
   group_id     = each.value.type == "group_type" ? data.gitlab_group.namespace[each.value.group].group_id : null
   project_id   = each.value.type == "project_type" ? local.other_project_id[each.value.project] : null
-  description  = "tacplus-ci ${each.key} (tacplus-dev/cloud: runner-manager in the ci project)"
+  description  = coalesce(each.value.description, "tacplus-ci ${each.key} (tacplus-dev/cloud: runner-manager in the ci project)")
   tag_list     = each.value.tags
   untagged     = false
   paused       = each.value.paused
@@ -115,8 +116,10 @@ resource "gitlab_project_runner_enablement" "also" {
   runner_id = tonumber(gitlab_user_runner.runner[each.value.runner].id)
 }
 
-# The runner's token, for the manager (modules/projects/ci). A re-registered runner replaces the version, so the
-# secret's only enabled version is the live token.
+# The runner's token, for the manager (modules/projects/ci) or, the infra runner's, for the cluster pipeline (the dev
+# module's runner-tokens.tf, #64): the first version of an empty secret is version 1, which tacplus-dev/cluster's
+# tacplus.token names. A re-registered runner replaces the version, so the secret's only enabled version is the live
+# token, and its number moves: a pull request in tacplus-dev/cluster then.
 resource "google_secret_manager_secret_version" "runner_token" {
   for_each    = var.runners
   secret      = each.value.token_secret

@@ -28,7 +28,7 @@ variable "projects" {
 }
 
 variable "runners" {
-  description = "The runner registrations, by pool: a group or project runner, its tags, protected refs only or not, and the Secret Manager secret its token is written to (the ci project's runner-token-<pool>). Registered paused: a pool takes jobs only once it is unpaused (paused = false)."
+  description = "The runner registrations, by runner: a group or project runner, its tags, protected refs only or not, and the Secret Manager secret its token is written to as a new version (the ci project's runner-token-<pool> for a VM pool's; the dev project's gitlab-runner-infra for the in-cluster infra runner's, #64), and its description in GitLab (unset: a pool's, run by the ci project's runner manager). Registered paused: a runner takes jobs only once it is unpaused (paused = false)."
   type = map(object({
     type         = string
     group        = optional(string)
@@ -37,6 +37,7 @@ variable "runners" {
     protected    = bool
     paused       = bool
     token_secret = string
+    description  = optional(string)
     # More projects a project runner serves (gitlab_project_runner_enablement), e.g. the cluster pool's runner also
     # running tacplus-dev/cloud's own pipeline (2026-11-10, off jody1-328023).
     also_projects = optional(list(string), [])

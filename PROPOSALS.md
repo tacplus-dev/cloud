@@ -504,3 +504,19 @@ the looper then marks it `promoted` or `declined` here with the date.
   copy-up), and cut what need not be written (a `tmpfs` for a cache, a `log-opts` size, fewer checkpoints). Why: the
   writes are what filled the pd-standard disk's queue on #63; pd-balanced serves five times the bytes, and the same
   writes would fill it at about 70 jobs; less written is a cheaper disk and a faster job.
+- **build and control registered by the gitlab stack too; the hand adders dropped** (looper, #64, 2026-11-16). What:
+  the gitlab stack registers tacplus-dev/cluster's `build` and `control` runners as it registers `infra` (#64: a group
+  runner each, tags from their files, `control` and `build` unprotected, paused until cluster's `apply` has them), and
+  writes each token's version as it writes `infra`'s; then the dev stack's `secretVersionAdder` binding and
+  `GCP_RUNNER_TOKEN_ADDERS` go (`runner_token_adders` empty, the variable unset), and the hub's step 7 in cluster's
+  README is this pipeline's. The hub's two registrations of 2026-11-05 (GitLab's 58541760 and 58541761) are adopted
+  by `import` blocks, as the cluster pool's enablement is, or replaced by new ones with a pull request in cluster
+  moving each `tacplus.token` to version 2. Why: the hub does not hand-copy runner tokens (Jody, 2026-11-16, #64); today
+  `build`'s and `control`'s were typed once, and the adders' role is the one write grant to a person this pipeline makes
+  (**The runners' token adders' account**, above). `infra` already shows the pattern.
+- **The switch-over to `infra` is a commit** (looper, #64, 2026-11-16). What: when cluster's pipeline has applied `infra`
+  and `apply:gitlab` has written its token (README, The cluster pipeline), one commit in `stacks/gitlab/main.tf` sets
+  `infra`'s `paused = false` and the `cluster` and `deploy` pools' `paused = true` (today every pool's is `false`, in one
+  expression), then the pools go with #11. Why: `paused` is the stack's; a runner unpaused or paused in GitLab's UI
+  is drift the next `apply:gitlab` undoes, so the hub's switch-over (cluster's README, The infra runner) is a pull
+  request here, not a hand step.

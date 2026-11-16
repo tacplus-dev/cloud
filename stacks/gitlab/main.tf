@@ -70,11 +70,33 @@ module "gitlab" {
   # Every pool takes jobs (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the loopers' always-on
   # node), build (on demand, from zero), deploy (fleet-seatrials') and cluster (tacplus-dev/cluster's and this
   # repository's own pipeline), replacing jody1-328023's runners.
-  runners = {
-    for k, p in module.settings.runner_pools : k => merge(p.runner, {
-      paused       = false
-      token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
-    })
+  runners = merge(
+    {
+      for k, p in module.settings.runner_pools : k => merge(p.runner, {
+        paused       = false
+        token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
+      })
+    },
+    # The in-cluster infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): the cloud, cluster
+    # and deploy pipelines' jobs, on protected refs only, in the dev cluster, so the runner VMs can go (#11). Registered
+    # here, by nobody else, paused: the hub unpauses it at the switch-over (cluster's README, The infra runner), pausing
+    # the cluster and deploy pools above, which carry the same tags, in the same step. Its token is the first version of
+    # the dev stack's secret gitlab-runner-infra, the version its file names, written by this pipeline, so that no
+    # person or agent ever types it; cluster-admin-pipeline alone reads it.
+    { infra = local.infra_runner },
+  )
+}
+
+locals {
+  infra_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["cloud", "cluster", "deploy"]
+    protected    = true
+    paused       = true
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-infra"
+    description  = "tacplus-dev infra (tacplus-dev/cloud: the cluster, ci namespace, normal pool; protected refs; cloud, cluster and deploy pipelines)"
   }
 }
 
@@ -152,6 +174,10 @@ output "project_ids" {
 
 output "runner_ids" {
   value = module.gitlab.runner_ids
+}
+
+output "runners" {
+  value = module.gitlab.runners
 }
 
 output "members" {
