@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#67).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#68).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -179,10 +179,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
-  `acme-account-<environment>` (only that identity adds and reads versions) and the zone `acme-challenge-<domain>` for
+  `acme-account-<environment>` (only that identity adds, reads and lists versions: `viewer` since #68, the cert job
+  lists them) and the zone `acme-challenge-<domain>` for
   `_acme-challenge.<domain>` (only it holds `dns.admin`), all authoritative bindings. Tested against mock providers
   only. Interim: the same for tacplus.dev, by hand in jody1-328023 for `seatrials-deploy@jody1-328023`, with the
   commands in the README (Certificates), which the hub runs.
+- **seatrials' deploy pipeline through tacplus-dev (#68, fleet-seatrials#48):** its first deploy child pipeline was
+  refused three grants, now in the dev stack: `roles/storage.legacyBucketReader` for `seatrials-build` on
+  `tacplus-dev-seatrials-build` (Cloud Build needs `storage.buckets.get`, which objectAdmin lacks), `secretmanager.viewer`
+  on every certificate secret for its owner, and `secretAccessor` and `viewer` on `test-idp-seeds` for `seatrials-deploy`
+  (`test-idp-deploy` still alone adds them). Tested with the plan tests; not yet seen live: the images, cert and
+  test-idp-signin jobs past these refusals once `apply:dev` has run.
 - **The network rules of 2026-11-03 (#7):** `ci/policy.sh plan` refuses an instance or template with an external address
   (or one unknown until apply), any allow rule from `0.0.0.0/0`/`::/0` or with no source (no exception list: every LB is
   proxy-based), any rule allowing port 22 in either direction but the runners' internal `runner-manager-to-workers-ssh`
