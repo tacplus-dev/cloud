@@ -371,6 +371,9 @@ output "runner_pools" {
     # about $0.31/h, paid only while builds run: a spot VM that never finishes a build is the dearer one.
     # One VM, four builds at once, since #63: the second VM's 8 CPUs went to the shared pool's second VM (ci_cpus
     # below). Back to two when the quota is raised or the shared pool is back to one.
+    # Also tagged build-docker since #70: tacplus-dev/looper#172's BUILD_DOCKER_TAGS ("arm64, build-docker") sends the
+    # jobs that still need host Docker here, never to the in-cluster build runner (no socket), which takes arm64 and
+    # build too. It keeps arm64 and build until #11 removes it.
     build = {
       machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
       capacity        = 4, max_instances = 1, idle_count = 0, idle_time = "15m"
@@ -378,7 +381,7 @@ output "runner_pools" {
       service_account = false
       spot            = false
       zones           = ["us-central1-a", "us-central1-b", "us-central1-f"]
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build"], protected = false }
+      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build", "build-docker"], protected = false }
     }
     # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
     # deploy is a t2a-standard-2 since #55: with a t2a-standard-4 the pools at peak were 34 CPUs, over the quota of 32

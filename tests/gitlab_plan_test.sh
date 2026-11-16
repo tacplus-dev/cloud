@@ -116,6 +116,11 @@ if plan; then
     (.after.tag_list | sort) == ["cloud", "cluster", "deploy"] and .after.untagged == false and .after.paused == false and .after.access_level == "ref_protected"' <<< "$runner" > /dev/null &&
     ok "the infra runner: a tacplus-dev group runner, tags cloud, cluster and deploy, untagged off, protected refs only, unpaused (#64, #66)" ||
     fail "the infra runner: $(jq -c 'del(.before)' <<< "$runner")"
+  # The build pool's runner (#70): arm64 and build, and build-docker, the tags of tacplus-dev/looper#172's
+  # BUILD_DOCKER_TAGS, which the in-cluster build runner (no Docker socket) never carries.
+  build_runner=$(change 'module.gitlab.gitlab_user_runner.runner["build"]')
+  jq -e '(.after.tag_list | sort) == ["arm64", "build", "build-docker"] and .after.untagged == false' <<< "$build_runner" > /dev/null &&
+    ok "the build pool's runner: tags arm64, build and build-docker (#70)" || fail "the build pool's runner: $(jq -c 'del(.before)' <<< "$build_runner")"
   token=$(change 'module.gitlab.google_secret_manager_secret_version.runner_token["infra"]')
   jq -e '.actions == ["create"] and .after.secret == "projects/tacplus-dev/secrets/gitlab-runner-infra" and .after_unknown.secret_data == true' <<< "$token" > /dev/null &&
     ok "its token: a version of the dev project's gitlab-runner-infra, known only at apply (#64)" || fail "the infra runner's token: $(jq -c 'del(.before)' <<< "$token")"

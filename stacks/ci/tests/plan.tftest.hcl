@@ -131,7 +131,7 @@ run "settings" {
   # The builds run a few at a time, never on the always-on nodes (Jody, 2026-11-10), on demand from zero since #55: five
   # build VMs were preempted on 2026-11-13, each under 10 minutes old, and a 3-hour tacplus gates run never finished.
   assert {
-    condition     = !output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build"] && !contains(output.runner_pools.shared.runner.tags, "build")
+    condition     = !output.runner_pools.build.spot && !output.runner_pools.shared.spot && output.runner_pools.build.idle_count == 0 && output.runner_pools.build.max_instances * output.runner_pools.build.capacity <= 8 && output.runner_pools.build.runner.tags == ["arm64", "build", "build-docker"] && !contains(output.runner_pools.shared.runner.tags, "build")
     error_message = "Builds do not run on demand, from zero, a few at a time, apart from the always-on nodes."
   }
   # A zone out of spot t2a stalls no build (#49): the build pool spreads over every us-central1 zone with t2a, and the

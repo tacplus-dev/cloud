@@ -65,6 +65,13 @@ run "stack" {
     condition     = output.runners["infra"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-infra"
     error_message = "The infra runner's token is not written to the dev project's gitlab-runner-infra, tacplus-dev/cluster's tacplus.token."
   }
+  # The build pool's runner (#70): arm64 and build, which it keeps until #11 removes it, and build-docker, which
+  # tacplus-dev/looper#172's BUILD_DOCKER_TAGS asks for, so a job that still needs host Docker never lands on the
+  # in-cluster build runner (no socket) once it takes arm64 and build too.
+  assert {
+    condition     = output.runners["build"].tags == toset(["arm64", "build", "build-docker"]) && !output.runners["build"].untagged
+    error_message = "The build pool's runner's tags are not arm64, build and build-docker (#70), or it takes untagged jobs."
+  }
   # The switch-over (#66): the cluster and deploy pools' runners are paused, infra taking their jobs, until #11 removes
   # them; shared and build keep taking jobs. Each pool's token goes to its own secret of the ci project.
   assert {
