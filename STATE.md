@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#71).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#73).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -190,6 +190,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   on every certificate secret for its owner, and `secretAccessor` and `viewer` on `test-idp-seeds` for `seatrials-deploy`
   (`test-idp-deploy` still alone adds them). Tested with the plan tests; not yet seen live: the images, cert and
   test-idp-signin jobs past these refusals once `apply:dev` has run.
+- **The test IdP's seeds stored by seatrials-deploy (#73, fleet-seatrials#27):** the test-idp job, as
+  `seatrials-deploy`, was refused `secretmanager.versions.add` on `test-idp-seeds` (job 18082964636): a deployment's
+  identity now also holds `secretVersionAdder` on its environment accounts' secrets, beside the environment account
+  (the certificate secrets `tls-seatrials` and `acme-account-seatrials` already granted it). Tested with the plan test;
+  not yet seen live: the test-idp job storing its seeds once `apply:dev` has run.
 - **get-credentials on dev (#71, fleet-seatrials#27):** the deployments' `container.clusterViewer` condition named the
   cluster `projects/tacplus-dev/locations/us-central1-a/clusters/dev`, which matches only a regional cluster: IAM names
   the zonal `dev` `projects/tacplus-dev/zones/us-central1-a/clusters/dev`. So `seatrials-deploy` and `test-idp-deploy`
@@ -340,8 +345,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   does not cover), the secrets `tls-test-idp` and `acme-account-test-idp` (us-central1) and the zone
   `acme-challenge-idp-test-tacplus-dev` for `_acme-challenge.idp.test.tacplus.dev.` (DNSSEC on), delegated from
   `tacplus-dev` by NS, and, from `environment_secrets`, the secret `test-idp-seeds` (no `TEST_IDP_GITLAB_TOKEN`: as
-  #28); it alone adds and reads their versions and administers the zone (authoritative bindings), seatrials-deploy holds
-  nothing on them, and it holds no other role but get-credentials. The module refuses a certificate or secrets for an
+  #28); it alone adds and reads the certificate's versions and administers the zone (authoritative bindings), it and
+  seatrials-deploy add, read and list the seeds' (#68, #73), and it holds no other role but get-credentials. The module refuses a certificate or secrets for an
   environment with no account, two certificates on one domain and two secrets with one ID. Output
   `deployments.seatrials.environment_certificates` and `environment_secrets` name them. The listener `test-idp` stays
   `ready = false` until its NEG exists: the first test-idp run, which needs these, makes it. Tested with the dev stack's
