@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by the looper (#75).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by the looper (#77).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -441,6 +441,21 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by th
   lifetime (600, not the default 3600), written as the Console holds them. The fourth (pipeline 3067066143, jobs
   18024991251/2, 2026-11-14) adopted with no change: 3 imported, the membership added. seatrials' rule is now narrowed
   to `workspace:inference` in a commit of its own (an update in place, the same ID), applied by the next pin.
+- **The hub's audit (#77; Jody, 2026-11-17):** the hub's read-only gcloud checks run in this pipeline instead of on the
+  Mac, with no key anywhere (README, The hub's audit). The ci stack makes `hub-audit@tacplus-ci`
+  (`modules/projects/ci/hub-audit.tf`), which only this project's protected main becomes through the pipeline's own
+  provider, with `compute`, `container`, `monitoring` and `secretmanager` viewer and `serviceusage.serviceUsageConsumer`
+  on `tacplus-ci` and `tacplus-dev`; `ci/policy.sh` refuses any other role to it in a plan, the module in its input. The
+  `audit` job (`ci_audit`, `ci/hub-audit.sh`) is alone in its pipeline: the hourly schedule `audit` (minute 7) the gitlab
+  stack makes on this project, known by its description (it sets no variable: pipeline variables are the Owner role's
+  here), or a web or API run with `CLOUD_AUDIT` `true`. It writes `audit.json` and `audit.md` (exposure, inventory,
+  quotas with usage, the hour's 10-minute CPU maxima per VM and node and the `ci` namespace's containers' use against
+  their requests, the secrets' names and version states), the artifact `src/audit/` for 30 days (members only), and is
+  red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Tested with stubs and
+  fixtures (`tests/hub_audit_test.sh`), the policy, the pipeline's rules and the ci and gitlab plan tests. Not yet seen
+  live: `apply:ci` makes the account and its grants, `apply:gitlab` the schedule, once the GitLab project is pinned to the
+  commit; then the first scheduled run, which #77 waits on. The hub's download URL answers from `main`'s latest
+  successful pipeline only (README; PROPOSALS.md).
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's
