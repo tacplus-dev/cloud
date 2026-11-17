@@ -16,7 +16,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by th
   by module hash and by the build's SHA-256, `srcbuild`), yq and the scanners from their modules, and the four
   providers from their tags, reproducibly, each by its pinned SHA-256 (`ci/gitlab-provider.sh`, #3, x/net v0.62.0;
   `ci/kubernetes-provider.sh`, #18, x/net v0.62.0 and kin-openapi v0.152.0, its `manifest/openapi` ported by
-  `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0; and `ippontech/anthropic` v1.92.0,
+  `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0 and, #76, x/crypto v0.59.0; and `ippontech/anthropic` v1.92.0,
   the `anthropic` stack's, `ci/anthropic-provider.sh`, #34), installed only from
   `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.5.3 and
   the fleeting plugin v1.3.1 are built here with go1.27.4 too (`ci/runner.sh`, #40): GO-2026-6859 has no exception.
@@ -361,8 +361,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by th
   `google_signin`. No project module or stack makes a secret version (`tests/secret_values_test.sh`). Tested with the
   dev stack's plan tests (mock providers); not applied yet: the hub sets `GCP_GOOGLE_SIGNIN_ADDERS`, `apply:dev` on
   main makes it, then Jody adds the first version.
-- **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none. OpenTofu, the google
-  provider, tflint and its ruleset carry x/net, x/crypto/openpgp, x/mod and grpc
+- **Known vulnerabilities (#3):** `govulncheck -mode=binary` of the gitlab provider build: none; of the google
+  provider's, none since #76 (x/crypto v0.59.0, GO-2026-5932). OpenTofu, tflint and its ruleset carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
   when its fix ships (PROPOSALS.md). x/net html's GO-2026-6860 and GO-2026-6866 name OpenTofu and the ruleset only since
   tflint 0.66.0 and Trivy 0.76.2 (#62).
