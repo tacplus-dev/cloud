@@ -55,6 +55,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   require the fixed x/net (v0.62.0), grpc (v1.83.2), x/mod (v0.40.0) and klauspost/compress (v1.20.2), as the providers'
   and gitleaks' builds do, and drop most of OpenTofu's, tflint's and Trivy's `security-exceptions.yaml` entries
   (GO-2026-6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866) before they expire on 2026-12-03 and 2026-12-06.
+  Also x/crypto v0.59.0 (2026-11-11, GO-2026-5932: it deletes `openpgp`) for OpenTofu, the ruleset and Trivy, which
+  import no `openpgp`; tflint 0.66.0 imports it and waits for upstream (nightly scan, 2026-11-17; the google provider's
+  build takes it in #76).
   Why: a release's dependencies we can fix in our own build need no exception.
 - **Drop our builds of OpenTofu, tflint, its ruleset, Trivy and the google provider** (looper, #39). What: when each
   publishes a release built with go >= 1.27.4 (or >= 1.26.11), pin it by its release SHA-256 again (`ci/tools.sh`'s
