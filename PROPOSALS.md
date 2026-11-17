@@ -535,3 +535,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   as a consumer and the stack grants it on the key, modules/projects/ci/github-apps.tf) or always as the reader's service
   account (then fleet-seatrials' cert job stops trying as itself first). Why: today every such job logs `KMS API has not
   been used in project` before it falls back to the reader's account, which works (fleet-seatrials#48's first deploy).
+- **The latest audit report at a stable address** (looper, #77, 2026-11-17). What: the `audit` job also writes
+  `audit.json` and `audit.md` where the latest is always found, red or green, whatever ran on `main` since: a GitLab
+  generic package version `latest` of this project, say, or an object in a bucket of `tacplus-ci` the hub reads. Why:
+  `jobs/artifacts/main/download?job=audit`, the address the issue gave the hub, answers from `main`'s latest
+  successful pipeline only, so a red audit's report, and the hour after a push's or the drift's pipeline succeeds (no
+  `audit` job in it), are read by the job's ID instead (README, The hub's audit), two calls rather than one.
+- **The hub's audit files what it finds** (looper, #77). What: on an exposure finding, the `audit` job also files (or
+  comments on) an issue here, as the drift job does (`ci/drift.sh`, tacplus-reader), once per finding. Why: today a red
+  hourly job is seen only by whoever reads the pipeline or the hub's report.
