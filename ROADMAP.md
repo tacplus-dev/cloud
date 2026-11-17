@@ -28,6 +28,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - ci: the tacplus-reader App's key and fleet-seatrials-reader move to tacplus-ci, import-only like #19 (#30). Agent, at Jody's request, 2026-11-08 (off thescottsweb.com).
 - dev: the test IdP's certificate and seed secrets, its challenge zone, its listener ready (#32). Agent, at Jody's request, 2026-11-09 (fleet-seatrials#27).
 - Anthropic workload identity for llmproxy (issuer, rule, service account) owned by the pipeline; the hand-made seatrials entries adopted, design first (#34). Agent, at Jody's request, 2026-11-09.
+- A scheduled read-only audit job (exposure, inventory, quotas, utilization) through WIF as hub-audit, its report the artifact the hub reads; gcloud on the Mac retired (#77). Jody, 2026-11-17.
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
