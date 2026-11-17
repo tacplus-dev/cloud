@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by the looper (#73).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by the looper (#75).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -390,7 +390,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-16 by th
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (f2f5237 since #72: looper#172's `BUILD_DOCKER_TAGS: "arm64, build-docker"`, a host-Docker
+  `build_ci_commit` (c0f7304 since #75: the looper image ffd21be6, looper#173's retry of
+  `runner_external_dependency_failure` and `api_failure`, an image a cold spot node could not pull in time, and
+  the manager's one rebuild of an infra-only red, so the in-cluster build runner can be unpaused; before it f2f5237, #72: looper#172's `BUILD_DOCKER_TAGS: "arm64, build-docker"`, a host-Docker
   publish only on the VM build pool's runner, so the in-cluster build runner can be unpaused; before it 1d25d29, #69:
   the looper image a40bf646, #73 step 1's publish in the child pipeline with rootless BuildKit, #165, #168, #169;
   before that ad005bd, #67) copied as
