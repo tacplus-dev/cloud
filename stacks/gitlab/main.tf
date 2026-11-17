@@ -39,6 +39,12 @@ module "gitlab" {
         TACPLUS_READER_APP_ID          = { secret = "${local.secrets}/tacplus-reader-app-id/versions/1" }
         TACPLUS_READER_INSTALLATION_ID = { secret = "${local.secrets}/tacplus-reader-installation-id/versions/1" }
       }
+      # The hub's audit (#77): hourly, a pipeline of the audit job alone (the CI file's rules read its description,
+      # audit), whose report is the artifact the hub reads (README, The hub's audit). The nightly drift schedule is
+      # still the hub's, by hand.
+      schedules = {
+        audit = { cron = "7 * * * *" }
+      }
     }
   }
   # The looper's nightly recap reads tacplus-dev/build's pipelines as tacplus-looper-bot, a free bot account, with
@@ -185,6 +191,10 @@ output "runner_ids" {
 
 output "runners" {
   value = module.gitlab.runners
+}
+
+output "schedules" {
+  value = module.gitlab.schedules
 }
 
 output "members" {

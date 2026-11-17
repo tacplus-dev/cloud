@@ -25,6 +25,10 @@
 #   plan:anthropic,             main, once the bootstrap org:admin rule's IDs are set below (#34): the anthropic
 #   apply:anthropic             stack, beside the others and needing none of them, so that neither Anthropic nor
 #                               GCP holds the other up; its provider federates the job's own ID tokens into Anthropic
+#   audit                       main, a pipeline of that job alone: the hourly schedule audit the gitlab stack makes,
+#                               or one run from the web or the API with CLOUD_AUDIT "true" (#77): the hub's report of
+#                               the projects, read as the read-only hub-audit (ci/hub-audit.sh), its artifact
+#                               src/audit/ (audit.json, audit.md); red on an exposure finding. Never changes anything
 #
 # The stacks run in order: folder (the folders under the parent folder), then dev, then ci (the projects: ci reads
 # dev's number), then gitlab (whose runners' tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
@@ -35,13 +39,23 @@
 # provider's condition: protected main) as cloud-admin-pipeline. No key file and no token is stored in GitLab: the
 # id_token is exchanged for each job, and the GitLab token is read from Secret Manager by version (ci/lib.sh).
 # Every job runs on the project's own runner (tag `cloud`: a VM used once, with no Google account of its own).
-stages: [lint, folder, projects, gitlab, anthropic]
+# An audit pipeline (#77: the schedule audit, or CLOUD_AUDIT "true") runs the audit job alone: every other job's first
+# rules leave it out.
+stages: [lint, folder, projects, gitlab, anthropic, audit]
 
 variables:
   # The commit of github.com/tacplus-dev/cloud this pipeline plans and applies; empty in the repository, set in
   # the GitLab project's copy (ci/pin.sh).
   CLOUD_COMMIT: ""
   GCP_DEPLOY_SA: cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
+  # The audit job's read-only account (#77; the ci stack's output hub_audit), through the same federation.
+  GCP_AUDIT_SA: hub-audit@tacplus-ci.iam.gserviceaccount.com
+  # "true": a pipeline of the audit job alone (#77), run from the web or the API; the hourly schedule audit is one by its
+  # description, as it sets no variable (the project allows pipeline variables to the Owner role only).
+  CLOUD_AUDIT:
+    value: "false"
+    options: ["false", "true"]
+    description: "true: only the audit job, the hub's read-only report (README, The hub's audit); false: the pipeline as on a push."
   # The tacplus-reader app's key, in Cloud KMS (github_app_token in ci/lib.sh): the drift job files its issue with it,
   # as the job itself (the ci stack's binding, #30).
   TACPLUS_READER_KMS_KEY: projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-reader
@@ -75,7 +89,17 @@ default:
       git -C src checkout -q FETCH_HEAD
       echo "tacplus-dev/cloud at $CLOUD_COMMIT: $(git -C src log -1 --format=%s)"
 
+# The checks: every pipeline but an audit's.
+.checks:
+  rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
+    - if: $CI_PIPELINE_SCHEDULE_DESCRIPTION == "audit"
+      when: never
+    - when: on_success
+
 tools:
+  extends: .checks
   stage: lint
   needs: []
   script:
@@ -85,36 +109,42 @@ tools:
     expire_in: 1 week
 
 fmt:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
     - cd src && ci/lint.sh fmt
 
 validate:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
     - cd src && ci/lint.sh validate
 
 tflint:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
     - cd src && ci/lint.sh tflint
 
 shellcheck:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
     - cd src && ci/lint.sh shellcheck
 
 policy:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
     - cd src && ci/lint.sh policy
 
 test:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
@@ -122,6 +152,7 @@ test:
 
 # tacplus-dev/looper#49's floor, which tacplus-dev/build's checks never bring here. The full history, for gitleaks.
 security:
+  extends: .checks
   stage: lint
   needs: [tools]
   script:
@@ -141,6 +172,8 @@ security:
 .plan:
   extends: .gcp
   rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci/tofu.sh plan "$STACK"
@@ -154,6 +187,8 @@ security:
 .apply:
   extends: .gcp
   rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/
       when: on_success
   resource_group: cloud-$STACK
@@ -202,6 +237,8 @@ handoff:
   stage: projects
   needs: [apply:ci]
   rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/
       when: delayed
       start_in: 35 minutes
@@ -244,6 +281,8 @@ plan:anthropic:
   stage: anthropic
   needs: [tools, fmt, validate, tflint, shellcheck, policy, test, security]
   rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/ && $ANTHROPIC_FEDERATION_RULE_ID && $ANTHROPIC_SERVICE_ACCOUNT_ID
   id_tokens:
     ANTHROPIC_ID_TOKEN_1: { aud: https://api.anthropic.com }
@@ -258,6 +297,8 @@ apply:anthropic:
   stage: anthropic
   needs: [tools, plan:anthropic]
   rules:
+    - if: $CLOUD_AUDIT == "true"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/ && $ANTHROPIC_FEDERATION_RULE_ID && $ANTHROPIC_SERVICE_ACCOUNT_ID
       when: on_success
   id_tokens:
@@ -275,6 +316,8 @@ drift:
   stage: folder
   needs: [tools, fmt, validate, tflint, shellcheck, policy, test]
   rules:
+    - if: $CI_PIPELINE_SCHEDULE_DESCRIPTION == "audit"
+      when: never
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule"
   id_tokens:
     ANTHROPIC_ID_TOKEN_1: { aud: https://api.anthropic.com }
@@ -282,3 +325,23 @@ drift:
     ANTHROPIC_ID_TOKEN_3: { aud: https://api.anthropic.com }
   script:
     - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && { [ -z "$ANTHROPIC_FEDERATION_RULE_ID" ] || ci_anthropic; } && ci/drift.sh folder ci dev gitlab ${ANTHROPIC_FEDERATION_RULE_ID:+anthropic}
+
+# The hub's audit (#77): hourly (the gitlab stack's schedule audit) and on demand (CLOUD_AUDIT "true"), on main only,
+# where the federation admits this project, as hub-audit, which reads and never writes. It needs no tool of the tools
+# job (gcloud, curl and jq are the image's). Its report, audit.json and audit.md, is the artifact the hub downloads
+# (README, The hub's audit), kept 30 days, for project members only, and kept when the job fails: on an exposure finding
+# (an ingress rule open to 0.0.0.0/0, a VM's external IP) or a read it could not make, the job is red.
+audit:
+  extends: .gcp
+  stage: audit
+  needs: []
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "audit"
+    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CLOUD_AUDIT == "true"
+  script:
+    - cd src && source ci/lib.sh && ci_audit && ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)
+  artifacts:
+    when: always
+    access: developer
+    paths: [src/audit/]
+    expire_in: 30 days

@@ -1,0 +1,31 @@
+[
+ {
+  "name": "hand-https",
+  "direction": "INGRESS",
+  "network": ".../networks/default",
+  "sourceRanges": [
+   "0.0.0.0/0"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "tcp",
+    "ports": [
+     "443"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "hand-v6",
+  "direction": "INGRESS",
+  "network": ".../networks/default",
+  "sourceRanges": [
+   "::/0"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "all"
+   }
+  ]
+ }
+]

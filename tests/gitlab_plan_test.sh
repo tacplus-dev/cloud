@@ -10,7 +10,8 @@
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
 # protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
 # .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and one nightly
-# schedule that builds every pinned repository (#67, tacplus-dev/looper#164); it adopts tacplus-dev/build itself with no change, group runners on and shared
+# schedule that builds every pinned repository (#67, tacplus-dev/looper#164), and tacplus-dev/cloud's hourly audit
+# schedule, audit, which sets no variable (#77); it adopts tacplus-dev/build itself with no change, group runners on and shared
 # runners off (#35), and with group runners off, as before the hub's hand change, it turns them on and changes nothing
 # else; it creates the in-cluster infra runner, a tacplus-dev group runner of protected refs, unpaused since the
 # switch-over (#66), and its token's version in the dev project's gitlab-runner-infra (#64), and the pools' runners,
@@ -102,8 +103,15 @@ if plan; then
     ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true"]' <<< "$schedule" > /dev/null &&
     ok "one nightly schedule on tacplus-dev/build, of every pinned repository: nightly and no repo (#67, tacplus-dev/looper#164)" || fail "the nightly schedule: $schedule"
   schedules=$(jq -c '[.resource_changes[] | select(.type == "gitlab_pipeline_schedule" and .change.actions != ["delete"]) | .change.after.project] | group_by(.) | map({(.[0]): length}) | add' "$work/plan.json")
-  [ "$schedules" = '{"4003":1}' ] &&
-    ok "no other schedule on tacplus-dev/build (#67: #65's ten go)" || fail "the schedules by project: $schedules"
+  [ "$schedules" = '{"4001":1,"4003":1}' ] &&
+    ok "no other schedule on tacplus-dev/build (#67: #65's ten go), and tacplus-dev/cloud's audit alone (#77)" || fail "the schedules by project: $schedules"
+  # The hub's audit (#77): hourly on tacplus-dev/cloud's main, its pipeline the audit job alone (by its description),
+  # with no variable (the project allows pipeline variables to the Owner role only).
+  schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.project["tacplus-dev/cloud:audit"]')
+  jq -e '.actions == ["create"] and .after.project == "4001" and .after.ref == "refs/heads/main" and .after.active and
+    .after.description == "audit" and .after.cron == "7 * * * *" and .after.cron_timezone == "UTC"' <<< "$schedule" > /dev/null &&
+    [ -z "$(jq -r '.resource_changes[] | select(.type == "gitlab_pipeline_schedule_variable") | .address' "$work/plan.json")" ] &&
+    ok "tacplus-dev/cloud's hourly schedule audit, with no variable (#77)" || fail "the audit schedule: $schedule"
   project=$(change 'module.gitlab.gitlab_project.build["build"]')
   jq -e '.actions == ["no-op"] and .importing.id == "4003" and .after.group_runners_enabled == true and .after.shared_runners_enabled == false' <<< "$project" > /dev/null &&
     ok "tacplus-dev/build: adopted (by its ID) with no change, group runners on and shared runners off as the hub set them (#35)" ||

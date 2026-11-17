@@ -1,0 +1,23 @@
+[
+ {
+  "name": "hand-vm",
+  "zone": "https://www.googleapis.com/compute/v1/projects/exposed/zones/us-central1-c",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/exposed/zones/us-central1-c/machineTypes/e2-micro",
+  "scheduling": {
+   "preemptible": true
+  },
+  "status": "RUNNING",
+  "creationTimestamp": "2026-11-17T02:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.0.0.2",
+    "accessConfigs": [
+     {
+      "name": "External NAT",
+      "natIP": "35.9.9.9"
+     }
+    ]
+   }
+  ]
+ }
+]

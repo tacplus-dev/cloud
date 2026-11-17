@@ -1,0 +1,9 @@
+{
+ "quotas": [
+  {
+   "metric": "CPUS_ALL_REGIONS",
+   "limit": 64.0,
+   "usage": 10.0
+  }
+ ]
+}

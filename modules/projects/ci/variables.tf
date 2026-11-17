@@ -185,3 +185,22 @@ variable "kms_key_importers" {
     error_message = "An importer is user:, group: or serviceAccount: and an email."
   }
 }
+
+variable "hub_audit" {
+  description = "The audit job's account (#77, hub-audit.tf): its account ID, here; the projects it reads and its roles on each, read roles only; the workload identity pool (projects/N/locations/global/workloadIdentityPools/P, whose provider maps attribute.project_path) and the GitLab project whose jobs alone become it."
+  type = object({
+    account_id     = string
+    projects       = list(string)
+    roles          = list(string)
+    pool           = string
+    gitlab_project = string
+  })
+  validation {
+    condition     = alltrue([for r in var.hub_audit.roles : contains(["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], r)])
+    error_message = "hub-audit reads only: its roles are compute, container, monitoring and secretmanager viewer and serviceusage.serviceUsageConsumer (ci/policy.sh refuses any other in a plan too)."
+  }
+  validation {
+    condition     = can(regex("^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+$", var.hub_audit.pool)) && can(regex("^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)+$", var.hub_audit.gitlab_project))
+    error_message = "hub-audit's pool is not a pool's resource name, or its GitLab project not a project's path."
+  }
+}

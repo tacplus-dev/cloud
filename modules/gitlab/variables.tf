@@ -7,7 +7,9 @@ variable "projects" {
     below are managed). protected_branches: pushed and merged by Maintainers only, never force-pushed.
     protected_environments: deployable by Maintainers only. variables: protected project variables (never group
     variables), each either a plain value (not a secret) or a Secret Manager secret version
-    (projects/P/secrets/S/versions/N), whose value is never in this repository.
+    (projects/P/secrets/S/versions/N), whose value is never in this repository. schedules: by name (its description,
+    which the pipeline's rules read as CI_PIPELINE_SCHEDULE_DESCRIPTION), pipeline schedules on main, each its cron
+    (UTC), with no variable (pipeline variables are the Owner role's alone), as the audit's (#77).
   EOT
   type = map(object({
     create                 = bool
@@ -19,11 +21,18 @@ variable "projects" {
       secret = optional(string)
       masked = optional(bool, false)
     }))
+    schedules = optional(map(object({
+      cron = string
+    })), {})
   }))
   validation {
     condition = alltrue(flatten([for p in values(var.projects) : [for v in values(p.variables) :
     (v.value == null) != (v.secret == null) && (v.secret == null || can(regex("^projects/[^/]+/secrets/[^/]+/versions/[0-9]+$", v.secret)))]]))
     error_message = "A variable has a value or a secret, not both; a secret is named by its version number (projects/P/secrets/S/versions/N), never latest."
+  }
+  validation {
+    condition     = alltrue(flatten([for p in values(var.projects) : [for k, s in p.schedules : length(split(" ", s.cron)) == 5 && can(regex("^[a-z][a-z0-9-]*$", k))]]))
+    error_message = "A project's schedule is named in lower case (a-z, 0-9, -), and has a cron of five fields."
   }
 }
 

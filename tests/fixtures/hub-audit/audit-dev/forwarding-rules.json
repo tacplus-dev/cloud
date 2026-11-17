@@ -1,0 +1,10 @@
+[
+ {
+  "name": "gateway",
+  "IPAddress": "34.1.2.3",
+  "IPProtocol": "TCP",
+  "portRange": "443-443",
+  "loadBalancingScheme": "EXTERNAL_MANAGED",
+  "target": "https://www.googleapis.com/compute/v1/projects/audit-dev/global/targetTcpProxies/gateway"
+ }
+]

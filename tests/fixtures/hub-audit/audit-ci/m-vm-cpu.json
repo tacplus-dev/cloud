@@ -1,0 +1,74 @@
+{
+ "timeSeries": [
+  {
+   "metric": {
+    "labels": {
+     "instance_name": "runner-manager-9c4d2d4d"
+    }
+   },
+   "resource": {
+    "type": "gce_instance",
+    "labels": {
+     "zone": "us-central1-b"
+    }
+   },
+   "points": [
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.05
+     }
+    },
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.12
+     }
+    },
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.08
+     }
+    }
+   ]
+  },
+  {
+   "metric": {
+    "labels": {
+     "instance_name": "runner-shared-abcd"
+    }
+   },
+   "resource": {
+    "type": "gce_instance",
+    "labels": {
+     "zone": "us-central1-a"
+    }
+   },
+   "points": [
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.5
+     }
+    },
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.9731
+     }
+    }
+   ]
+  }
+ ]
+}

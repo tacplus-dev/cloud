@@ -1,0 +1,17 @@
+[
+ {
+  "name": "runner-manager-9c4d2d4d",
+  "type": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-b/diskTypes/pd-balanced",
+  "sizeGb": "20"
+ },
+ {
+  "name": "runner-shared-abcd",
+  "type": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-a/diskTypes/pd-balanced",
+  "sizeGb": "154"
+ },
+ {
+  "name": "old",
+  "type": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-a/diskTypes/pd-standard",
+  "sizeGb": "350"
+ }
+]

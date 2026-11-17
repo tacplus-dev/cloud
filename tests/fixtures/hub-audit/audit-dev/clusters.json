@@ -1,0 +1,27 @@
+[
+ {
+  "name": "dev",
+  "location": "us-central1-a",
+  "nodePools": [
+   {
+    "name": "normal",
+    "config": {
+     "machineType": "c4a-standard-2"
+    },
+    "initialNodeCount": 3
+   },
+   {
+    "name": "spot",
+    "config": {
+     "machineType": "c4a-standard-4",
+     "spot": true
+    },
+    "autoscaling": {
+     "enabled": true,
+     "minNodeCount": 0,
+     "maxNodeCount": 3
+    }
+   }
+  ]
+ }
+]

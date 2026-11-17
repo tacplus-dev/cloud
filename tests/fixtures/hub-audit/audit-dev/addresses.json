@@ -1,0 +1,11 @@
+[
+ {
+  "name": "gateway",
+  "addressType": "EXTERNAL",
+  "address": "34.1.2.3",
+  "status": "IN_USE",
+  "users": [
+   "https://www.googleapis.com/compute/v1/projects/audit-dev/global/forwardingRules/gateway"
+  ]
+ }
+]

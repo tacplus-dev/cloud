@@ -1,0 +1,25 @@
+{
+ "timeSeries": [
+  {
+   "resource": {
+    "type": "k8s_container",
+    "labels": {
+     "cluster_name": "dev",
+     "namespace_name": "ci",
+     "pod_name": "gitlab-runner-0",
+     "container_name": "runner"
+    }
+   },
+   "points": [
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.01
+     }
+    }
+   ]
+  }
+ ]
+}

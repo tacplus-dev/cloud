@@ -1,0 +1,31 @@
+{
+ "timeSeries": [
+  {
+   "resource": {
+    "type": "k8s_node",
+    "labels": {
+     "cluster_name": "dev",
+     "node_name": "gke-dev-normal-1"
+    }
+   },
+   "points": [
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.25
+     }
+    },
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "doubleValue": 0.4
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,56 @@
+[
+ {
+  "name": "gke-dev-1a2b-all",
+  "direction": "INGRESS",
+  "network": ".../networks/dev",
+  "sourceRanges": [
+   "10.20.0.0/14"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "tcp"
+   },
+   {
+    "IPProtocol": "udp"
+   }
+  ]
+ },
+ {
+  "name": "lb-health",
+  "direction": "INGRESS",
+  "network": ".../networks/dev",
+  "sourceRanges": [
+   "35.191.0.0/16",
+   "130.211.0.0/22"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "tcp",
+    "ports": [
+     "443",
+     "8443"
+    ]
+   }
+  ],
+  "targetTags": [
+   "gke-dev"
+  ]
+ },
+ {
+  "name": "hand-open-disabled",
+  "direction": "INGRESS",
+  "network": ".../networks/dev",
+  "sourceRanges": [
+   "0.0.0.0/0"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "tcp",
+    "ports": [
+     "80"
+    ]
+   }
+  ],
+  "disabled": true
+ }
+]

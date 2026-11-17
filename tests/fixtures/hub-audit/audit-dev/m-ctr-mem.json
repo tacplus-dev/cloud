@@ -1,0 +1,33 @@
+{
+ "timeSeries": [
+  {
+   "resource": {
+    "type": "k8s_container",
+    "labels": {
+     "cluster_name": "dev",
+     "namespace_name": "ci",
+     "pod_name": "runner-job-1",
+     "container_name": "build"
+    }
+   },
+   "points": [
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "int64Value": "3221225472"
+     }
+    },
+    {
+     "interval": {
+      "endTime": "2026-11-17T12:00:00Z"
+     },
+     "value": {
+      "int64Value": "4294967296"
+     }
+    }
+   ]
+  }
+ ]
+}

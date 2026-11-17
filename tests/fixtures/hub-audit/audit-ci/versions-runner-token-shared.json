@@ -1,0 +1,10 @@
+[
+ {
+  "name": "projects/123/secrets/runner-token-shared/versions/2",
+  "state": "ENABLED"
+ },
+ {
+  "name": "projects/123/secrets/runner-token-shared/versions/1",
+  "state": "DESTROYED"
+ }
+]

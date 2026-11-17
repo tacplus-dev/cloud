@@ -1,0 +1,32 @@
+[
+ {
+  "name": "runner-manager-9c4d2d4d",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-b",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-b/machineTypes/e2-small",
+  "scheduling": {
+   "provisioningModel": "STANDARD"
+  },
+  "status": "RUNNING",
+  "creationTimestamp": "2026-11-15T10:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.10.0.2"
+   }
+  ]
+ },
+ {
+  "name": "runner-shared-abcd",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-a",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/audit-ci/zones/us-central1-a/machineTypes/t2a-standard-8",
+  "scheduling": {
+   "provisioningModel": "SPOT"
+  },
+  "status": "RUNNING",
+  "creationTimestamp": "2026-11-16T01:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.10.0.3"
+   }
+  ]
+ }
+]

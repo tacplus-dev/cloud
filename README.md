@@ -58,7 +58,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab\|anthropic>` | The five roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `hub-audit` (the audit job's report, below, The hub's audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
 | `stacks/gitlab/files/build.gitlab-ci.yml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
@@ -73,7 +73,8 @@ repository it plans and applies. Every job fetches this repository at that commi
 - **Identity:** `cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com`, through Workload Identity Federation
   (pool `gitlab-com`, provider `tacplus-dev-cloud` in `tacplus-bootstrap`, condition: `tacplus-dev/cloud`, a protected
   branch `main`). No keys anywhere. The gitlab stack's GitLab token is read from Secret Manager, by the version
-  `modules/settings` names.
+  `modules/settings` names. The `audit` job alone is `hub-audit@tacplus-ci.iam.gserviceaccount.com` instead, read-only,
+  through the same provider (below, The hub's audit).
 - **Runner:** a project runner locked to the GitLab project, tag `cloud`, a fresh VM per job with no Google account. Every
   job is tagged for it.
 - **The parent folder:** the protected project variable `GCP_PARENT_FOLDER`, its numeric ID; `ci/lib.sh` gives it to the
@@ -95,6 +96,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), a break of the network rules (below), or an Anthropic identity adopted with a change (below, The Anthropic organization). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
+| `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0` or a VM's external IP (below, The hub's audit). |
 | `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), the pool check (`ci/pools.sh`: why a runner pool makes no VM, below, The pools) and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
@@ -365,6 +367,49 @@ The first pipeline on main then creates the folders, the `ci` and `dev` projects
 settings, each from its saved plan. tacplus.dev's zone in `tacplus-dev` writes the delegations of the dev zone and the
 challenge zones itself; until the registrar names it, the zone in jody1-328023 still answers, and the hub gives it the
 same records (below, The tacplus.dev cutover).
+
+## The hub's audit
+
+#77 (Jody, 2026-11-17): the hub's read-only cloud checks run in this pipeline, not with gcloud on the Mac (Jody's login
+there expires daily, and a key file on disk would break "nothing on the Mac" and "secrets only in protected GitLab
+variables"). There is no key anywhere: the `audit` job federates its ID token, as every cloud job does, as
+`hub-audit@tacplus-ci.iam.gserviceaccount.com` (the ci stack, `modules/projects/ci/hub-audit.tf`), which only this
+project's protected `main` becomes, through the pipeline's own provider.
+
+- **Its rights:** on `tacplus-ci` and `tacplus-dev`, `roles/compute.viewer`, `roles/container.viewer`,
+  `roles/monitoring.viewer`, `roles/serviceusage.serviceUsageConsumer` and `roles/secretmanager.viewer` (names and
+  versions' metadata, never their values: no accessor). No write role: `ci/policy.sh` refuses any other role to it in a
+  plan, and the module refuses one in its input.
+- **When:** hourly at minute 7, the schedule `audit` on `main` that the gitlab stack makes (`stacks/gitlab/main.tf`), and
+  on demand: Run pipeline on `main` with `CLOUD_AUDIT` set to `true`, from the web or the API
+  (`glab ci run -b main --variables CLOUD_AUDIT:true`). Either pipeline is the `audit` job alone (the other jobs'
+  rules leave it out). The schedule sets no variable, as the project allows pipeline variables to the Owner role only
+  (above, Before the first pipeline), which the schedule's owner, the gitlab stack's token user, may not be: the
+  rules know it by its description, `audit`. The nightly drift schedule is still the hub's.
+- **What it reports** (`ci/hub-audit.sh`), in `audit.json` (for the hub to read) and `audit.md` (the same, as tables;
+  also in the job's log):
+  - **exposure:** the enabled ingress allow rules open to `0.0.0.0/0` or `::/0` (a disabled one listed, not a finding),
+    the VMs with an external IP, the external addresses and what uses each, the load balancers (forwarding rules);
+  - **inventory:** every VM (name, machine type, provisioning model, status, created), every node pool (machine, spot,
+    its autoscaling's min and max, its nodes now), the disks by type (count and GB);
+  - **quotas:** `CPUS_ALL_REGIONS`, and the region's `CPUS`, `SSD_TOTAL_GB`, `PREEMPTIBLE_CPUS`, `T2A_CPUS` and
+    `C4A_CPUS`, with usage (null where the region lists none);
+  - **utilization** over the last hour, the maximum of its 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
+    node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace `ci`;
+  - **secrets:** their names and their versions' states only.
+
+  An API not enabled in a project (GKE's in `tacplus-ci`) is noted in `unavailable`, its list empty. `findings` are
+  the exposure findings, `errors` the reads it could not make.
+- **Red:** the job fails, its report kept, on an exposure finding (an ingress rule open to `0.0.0.0/0` or `::/0`, a VM
+  with an external IP) or a read it could not make, so either shows in the pipeline too.
+- **Reading it:** the hub reads the latest `audit` artifact:
+  `glab api "projects/88513714/jobs/artifacts/main/download?job=audit" > audit.zip` (the zip holds `src/audit/audit.json`
+  and `src/audit/audit.md`), or one file, `glab api "projects/88513714/jobs/artifacts/main/raw/src/audit/audit.json?job=audit"`.
+  The artifacts are for project members only. GitLab answers these from `main`'s latest *successful* pipeline: a red
+  audit's report, or the hour after another pipeline on `main` succeeds (a push's, the nightly drift's: no `audit` job
+  in it, so a 404), is read by the job's ID instead:
+  `glab api "projects/88513714/jobs?scope[]=success&scope[]=failed&per_page=50"` (the newest job named `audit`), then
+  `glab api "projects/88513714/jobs/<id>/artifacts/src/audit/audit.json"`. They are kept 30 days.
 
 ## Break-glass
 

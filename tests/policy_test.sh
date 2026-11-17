@@ -21,7 +21,8 @@
 # rule of another scope than workspace:developer or workspace:inference, an account of another role than developer;
 # and the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false, and
 # in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
-# deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself).
+# deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself); and hub-audit
+# (#77), the audit job's account, granted any role but its read roles.
 # Needs bash and jq.
 #
 #   tests/policy_test.sh
@@ -128,6 +129,12 @@ refuses "a plan with a service account in an owner binding" "grants roles/owner 
 refuses "a plan with owner to a service account in a policy document" "grants roles/owner to serviceAccount:x@tacplus-dev" plan "$fx/plans/admin-policy.json"
 refuses "a plan granting owner to a member known only after apply" "known only after apply" plan "$fx/plans/admin-member-unknown.json"
 passes "a plan with the pipeline's own owner, a viewer, a person and a deleted grant" plan "$fx/plans/admin-clean.json"
+# hub-audit, the audit job's account (#77), reads only: a write role to it is refused, in a member, a member list or a
+# policy document; its five read roles on both projects, and its federation, pass.
+refuses "a plan granting hub-audit a write role" "grants roles/compute.admin to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/hub-audit-write.json"
+refuses "a plan with hub-audit in an editor binding" "grants roles/editor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-binding.json"
+refuses "a plan with a secret's accessor to hub-audit in a policy document" "grants roles/secretmanager.secretAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-policy.json"
+passes "a plan with hub-audit's read roles on both projects, its federation and a write role deleted" plan "$fx/plans/hub-audit-clean.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

@@ -34,17 +34,33 @@ ci_gcp() {
   TF_VAR_kms_key_importers=$(ci_members GCP_KMS_KEY_IMPORTERS "The GitHub Apps' keys") || return 1
   TF_VAR_google_signin_adders=$(ci_members GCP_GOOGLE_SIGNIN_ADDERS "The Google sign-in client") || return 1
   export TF_VAR_runner_token_adders TF_VAR_kms_key_importers TF_VAR_google_signin_adders
+  ci_federate gcp "$GCP_DEPLOY_SA"
+}
+
+# ci_audit: gcloud as the audit job's read-only account (GCP_AUDIT_SA, hub-audit, #77), through the same federation
+# as ci_gcp: the job's ID token, which the provider admits on this project's protected main only. Nothing else: no
+# stack runs as it.
+ci_audit() {
+  : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
+  : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (README, Before the first pipeline)}"
+  : "${GCP_AUDIT_SA:?GCP_AUDIT_SA is not set}"
+  ci_federate audit "$GCP_AUDIT_SA"
+}
+
+# ci_federate WHO ACCOUNT: gcloud, and OpenTofu's google provider, as ACCOUNT, the job's ID token exchanged through
+# Workload Identity Federation (GCP_WIF_PROVIDER); WHO prefixes what it says.
+ci_federate() {
   export CLOUDSDK_CONFIG=$ci_tmp/gcloud CLOUDSDK_CORE_DISABLE_PROMPTS=1
   ( umask 077
     printf '%s' "$GCP_ID_TOKEN" > "$ci_tmp/oidc-token"
     gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER" \
-      --service-account="$GCP_DEPLOY_SA" --credential-source-file="$ci_tmp/oidc-token" \
+      --service-account="$2" --credential-source-file="$ci_tmp/oidc-token" \
       --output-file="$ci_tmp/gcp-federation.json" >/dev/null ) || return 1
   gcloud auth login --cred-file="$ci_tmp/gcp-federation.json" --quiet >/dev/null 2>"$ci_tmp/gcloud-err" ||
-    { echo "gcp: Workload Identity Federation refused this job ($GCP_WIF_PROVIDER): $(grep -m1 '^ERROR' "$ci_tmp/gcloud-err" || head -c 300 "$ci_tmp/gcloud-err")" >&2
+    { echo "$1: Workload Identity Federation refused this job ($GCP_WIF_PROVIDER) as $2: $(grep -m1 '^ERROR' "$ci_tmp/gcloud-err" || head -c 300 "$ci_tmp/gcloud-err")" >&2
       return 1; }
   export GOOGLE_APPLICATION_CREDENTIALS=$ci_tmp/gcp-federation.json
-  echo "gcp: $(gcloud config get account 2>/dev/null) through workload identity federation"
+  echo "$1: $(gcloud config get account 2>/dev/null) through workload identity federation"
 }
 
 # ci_members VARIABLE SECTION: the members a protected GitLab variable lists, comma-separated (user:, group:,
@@ -123,6 +139,14 @@ ci_pools() {
   r=$(sed -n '/^output "region"/,/^}/s|^ *value *= *"\([a-z][a-z0-9-]*\)"$|\1|p' "$ci_here/../modules/settings/main.tf")
   [ -n "$p" ] && [ -n "$r" ] || { echo "pools: modules/settings/main.tf names no ci project or no region" >&2; return 1; }
   echo "$p $r"
+}
+
+# ci_region: the region, as modules/settings names it (region).
+ci_region() {
+  local r
+  r=$(sed -n '/^output "region"/,/^}/s|^ *value *= *"\([a-z][a-z0-9-]*\)"$|\1|p' "$ci_here/../modules/settings/main.tf")
+  [ -n "$r" ] || { echo "region: modules/settings/main.tf names no region" >&2; return 1; }
+  echo "$r"
 }
 
 # ci_gitlab_secret: the GitLab token's secret version, as modules/settings names it.

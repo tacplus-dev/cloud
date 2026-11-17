@@ -89,6 +89,15 @@ module "ci" {
     keys = { for k, a in module.settings.github_apps.apps : k => { import = a.import, namespace = a.namespace, environments = a.environments, accounts = a.accounts, projects = a.projects } }
   }
   kms_key_importers = var.kms_key_importers
+  # The audit job's account (#77): read roles on both projects, which only this repository's protected main becomes,
+  # through the pipeline's own pool (bootstrap/bootstrap.sh's provider admits nothing else of gitlab.com).
+  hub_audit = {
+    account_id     = "hub-audit"
+    projects       = [module.settings.projects.ci.project, module.settings.projects.dev.project]
+    roles          = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"]
+    pool           = "projects/${data.google_project.bootstrap.number}/locations/global/workloadIdentityPools/${module.settings.bootstrap.wif_pool}"
+    gitlab_project = module.settings.gitlab_project
+  }
 }
 
 output "project_id" {
@@ -110,6 +119,11 @@ output "app_import_jobs" {
 # The reader's account (#30): fleet-seatrials' TACPLUS_READER_SA.
 output "app_accounts" {
   value = module.ci.app_accounts
+}
+
+# The audit job's account (#77): the CI file's GCP_AUDIT_SA.
+output "hub_audit" {
+  value = module.ci.hub_audit
 }
 
 # The looper project's variables (tacplus-dev/looper README, Only the manager writes main, Setting it up), which the

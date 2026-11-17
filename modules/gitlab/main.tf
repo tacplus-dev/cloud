@@ -97,6 +97,23 @@ resource "gitlab_project_variable" "variable" {
   environment_scope = "*"
 }
 
+# A project's pipeline schedules on main (the audit's, #77), owned by the token's user, as the build's are. A schedule
+# sets no variable: the project allows pipeline variables to the Owner role only (README, Before the first pipeline),
+# and the token's user may not be one; the pipeline's rules tell the schedule by its description.
+locals {
+  schedules = merge([for path, p in var.projects : { for k, s in p.schedules : "${path}:${k}" => merge(s, { project = path, name = k }) }]...)
+}
+
+resource "gitlab_pipeline_schedule" "project" {
+  for_each      = local.schedules
+  project       = local.project_id[each.value.project]
+  description   = each.value.name
+  ref           = "refs/heads/main"
+  cron          = each.value.cron
+  cron_timezone = "UTC"
+  active        = true
+}
+
 resource "gitlab_user_runner" "runner" {
   for_each     = var.runners
   runner_type  = each.value.type

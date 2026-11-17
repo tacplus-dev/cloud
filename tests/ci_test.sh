@@ -7,6 +7,7 @@
 # (`extends` resolved): fmt, validate, tflint, shellcheck, policy and test in every pipeline, so every push and
 # merge request, with security on the nightly schedule too; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
 # manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
+# The audit job (#77) alone in the schedule audit's pipeline or one with CLOUD_AUDIT "true", on main, as the read-only hub-audit, its report an artifact.
 # The handoff job (#54) after apply:ci, delayed past a manager handoff's cap. Each apply needs its own plan and applies its saved plan, in its stack's environment, one at a time; the stacks
 # run in order (folder, then ci and dev, then gitlab); the jobs that reach GCP have their id_token, and no other job
 # does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
@@ -21,6 +22,8 @@
 set -uo pipefail
 # The pipeline sets the bootstrap rule's IDs as its own variables (#34); the scenarios below set them, or not, each.
 unset ANTHROPIC_FEDERATION_RULE_ID ANTHROPIC_SERVICE_ACCOUNT_ID
+# And the audit's (#77): the test job itself runs in a pipeline that may set them.
+unset CLOUD_AUDIT CI_PIPELINE_SCHEDULE_DESCRIPTION
 here=$(cd "$(dirname "$0")/.." && pwd)
 src=$here/ci/gitlab-project.gitlab-ci.yml
 work=$(mktemp -d)
@@ -37,7 +40,7 @@ yq '. as $r | with(.[] | select(tag == "!!map" and has("extends")); . = ($r[.ext
 q() { yq -r "$1" "$ci"; }
 
 mapfile -t jobs < <(q 'keys | .[] | select(test("^(stages|variables|workflow|default)$|^\\.") | not)')
-want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,handoff,plan:dev,apply:dev,plan:gitlab,apply:gitlab,plan:anthropic,apply:anthropic,drift,"
+want="tools,fmt,validate,tflint,shellcheck,policy,test,security,plan:folder,apply:folder,plan:ci,apply:ci,handoff,plan:dev,apply:dev,plan:gitlab,apply:gitlab,plan:anthropic,apply:anthropic,drift,audit,"
 [ "$(printf '%s,' "${jobs[@]}")" = "$want" ] && ok "the jobs: ${jobs[*]}" || fail "the jobs are: ${jobs[*]}"
 stages=" $(q '.stages | join(" ")') "
 for j in "${jobs[@]}"; do
@@ -123,6 +126,27 @@ check "a push to main once the bootstrap rule is set: the anthropic stack too (#
 check "a push to main with the rule but no account: no anthropic stack" "$lint$stacks" push main "${ids[0]}"
 check "a merge request once the rule is set: the checks only" "$lint" merge_request_event "" "${ids[@]}"
 check "the nightly schedule once the rule is set: the checks and drift" "${lint}drift:on_success," schedule main "${ids[@]}"
+# The hub's audit (#77): the hourly schedule audit (by its description: it sets no variable), or a run from the web or
+# the API with CLOUD_AUDIT "true", is the audit job alone, on main only; with "false", the form's default, a run from
+# the web is the push pipeline, and any other schedule is the nightly's.
+audit_schedule=CI_PIPELINE_SCHEDULE_DESCRIPTION=audit
+check "the hourly schedule audit on main: the audit job alone (#77)" "audit:on_success," schedule main "$audit_schedule"
+check "an audit run from the web on main: the audit job alone" "audit:on_success," web main CLOUD_AUDIT=true
+check "an audit run from the API on main: the audit job alone" "audit:on_success," api main CLOUD_AUDIT=true
+check "the schedule audit once the bootstrap rule is set: the audit job alone" "audit:on_success," schedule main "$audit_schedule" "${ids[@]}"
+check "the schedule audit on a branch: no job (the audit reads on main only)" "" schedule some-branch "$audit_schedule"
+check "an audit run from the web on a branch: no job" "" web some-branch CLOUD_AUDIT=true
+check "a run from the web with CLOUD_AUDIT false: the pipeline of a push" "$lint$stacks" web main CLOUD_AUDIT=false
+check "another schedule on main (the nightly's): the checks and drift" "${lint}drift:on_success," schedule main CI_PIPELINE_SCHEDULE_DESCRIPTION=nightly
+[ "$(q '.variables.CLOUD_AUDIT.value')" = false ] && [ "$(q '.variables.CLOUD_AUDIT.options | join(",")')" = false,true ] &&
+  ok "CLOUD_AUDIT is false unless a schedule or a run sets it" || fail "CLOUD_AUDIT: $(q '.variables.CLOUD_AUDIT')"
+[ "$(q '.variables.GCP_AUDIT_SA')" = hub-audit@tacplus-ci.iam.gserviceaccount.com ] &&
+  [ "$(q '.audit.needs | length')" = 0 ] && [ "$(q '.audit.stage')" = audit ] &&
+  [[ $(q '.audit.script | join(" ")') == *'source ci/lib.sh && ci_audit && ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)' ]] &&
+  [[ $(q '.audit.script | join(" ")') != *ci_gcp* ]] &&
+  [ "$(q '.audit.artifacts.paths | join(",")')" = src/audit/ ] && [ "$(q '.audit.artifacts.when')" = always ] &&
+  [ "$(q '.audit.artifacts.access')" = developer ] && [ "$(q '.audit.artifacts.expire_in')" = "30 days" ] &&
+  ok "audit: as hub-audit alone, needing no job, its report the artifact src/audit/ for 30 days, kept when it fails" || fail "audit: $(q '.audit')"
 [ "$(q '.variables.ANTHROPIC_FEDERATION_RULE_ID')" = fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo ] && [ "$(q '.variables.ANTHROPIC_SERVICE_ACCOUNT_ID')" = svac_011SKzqJqvTtj2LmUFbbDztN ] &&
   ok "the bootstrap rule and account Jody made are set, so a push to main plans the anthropic stack (#34)" || fail "the bootstrap rule or account is not the one made in the Console (#34)"
 
@@ -146,7 +170,7 @@ ok "each apply needs its own plan and applies that saved plan, in its environmen
 # The handoff's end (#54): after apply:ci, once a new manager's handoff is over (its cap, 30 minutes, the ci stack's),
 # with the GitLab token.
 cap=$(sed -n 's/^ *manager_handoff_minutes *= *\([0-9]*\)$/\1/p' "$here/stacks/ci/main.tf")
-start=$(q '.handoff.rules[0].start_in')
+start=$(q '[.handoff.rules[] | select(.start_in)][0].start_in')
 [ "$(q '.handoff.needs | join(",")')" = apply:ci ] && [[ $start =~ ^([0-9]+)\ minutes$ ]] && [ -n "$cap" ] && [ "${BASH_REMATCH[1]}" -gt "$cap" ] &&
   [[ $(q '.handoff.script | join(" ")') == *'ci_gcp && ci_gitlab && ci/handoff.sh' ]] &&
   ok "handoff: after apply:ci, $start later (past the handoff's cap, $cap minutes), with the GitLab token" ||
@@ -157,11 +181,11 @@ start=$(q '.handoff.rules[0].start_in')
   ok "the reader's key is tacplus-ci's tacplus-reader, never jody1-328023's" || fail "the reader's key: $(q '.variables.TACPLUS_READER_KMS_KEY')"
 
 for j in "${jobs[@]}"; do
-  case $j in plan:*|apply:*|drift|handoff) want=yes ;; *) want=no ;; esac
+  case $j in plan:*|apply:*|drift|handoff|audit) want=yes ;; *) want=no ;; esac
   has=$([ "$(q ".[\"$j\"].id_tokens.GCP_ID_TOKEN.aud // \"\"")" = 'https://iam.googleapis.com/$GCP_WIF_PROVIDER' ] && echo yes || echo no)
   [ "$has" = "$want" ] || fail "$j: id_token $has"
 done
-ok "only the plan, apply, handoff and drift jobs have an id_token"
+ok "only the plan, apply, handoff, drift and audit jobs have an id_token"
 for j in "${jobs[@]}"; do
   case $j in plan:anthropic|apply:anthropic|drift) want=https://api.anthropic.com,https://api.anthropic.com,https://api.anthropic.com ;; *) want= ;; esac
   got=$(q ".[\"$j\"].id_tokens // {} | to_entries | map(select(.key | test(\"^ANTHROPIC\"))) | map(.value.aud) | join(\",\")")
@@ -272,6 +296,28 @@ importers() { # importers [GCP_KMS_KEY_IMPORTERS]: ci_gcp's TF_VAR_kms_key_impor
 [ "$(importers)" = '[] []' ] && [ "$(importers '')" = '[] []' ] && ok "ci_gcp gives no importer without GCP_KMS_KEY_IMPORTERS" || fail "ci_gcp without GCP_KMS_KEY_IMPORTERS: [$(importers)]"
 [ -z "$(importers a@example.com)" ] && grep -q GCP_KMS_KEY_IMPORTERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   ok "ci_gcp refuses a GCP_KMS_KEY_IMPORTERS entry that is not a member" || fail "ci_gcp with a bad importer: $(cat "$work/gcp-err")"
+
+# ci_audit (#77) federates the job as GCP_AUDIT_SA, hub-audit, alone: no parent folder, no stack's input; and refuses a
+# job without its account before any gcloud (a function stands in for gcloud, logging its calls).
+audit_login() { # audit_login [GCP_AUDIT_SA]: ci_audit's gcloud calls, or its refusal
+  (
+    unset GCP_AUDIT_SA GCP_PARENT_FOLDER TF_VAR_parent_folder
+    [ $# = 0 ] || export GCP_AUDIT_SA=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=projects/1/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-cloud ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    : > "$work/audit-gcloud"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud $*" >> "$work/audit-gcloud"; }
+    ci_audit >/dev/null 2>"$work/audit-err" && echo "${TF_VAR_parent_folder:-no folder}"
+  )
+}
+[ "$(audit_login hub-audit@tacplus-ci.iam.gserviceaccount.com)" = "no folder" ] &&
+  grep -q -- '--service-account=hub-audit@tacplus-ci.iam.gserviceaccount.com' "$work/audit-gcloud" &&
+  ! grep -q cloud-admin-pipeline "$work/audit-gcloud" &&
+  ok "ci_audit federates the job as hub-audit alone, needing no parent folder" || fail "ci_audit: $(cat "$work/audit-gcloud" "$work/audit-err")"
+[ -z "$(audit_login)" ] && grep -q GCP_AUDIT_SA "$work/audit-err" && [ ! -s "$work/audit-gcloud" ] &&
+  ok "ci_audit refuses a job without GCP_AUDIT_SA" || fail "ci_audit without GCP_AUDIT_SA: $(cat "$work/audit-err")"
 
 # ci_anthropic (#34) gives the anthropic stack's provider the bootstrap rule as the CI file's variables name it, the
 # stack the same as its variable admin, and ci/anthropic-token.sh its directory; and refuses IDs of the wrong form.

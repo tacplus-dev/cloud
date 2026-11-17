@@ -1,0 +1,9 @@
+[
+ {
+  "name": "nat-internal",
+  "addressType": "INTERNAL",
+  "address": "10.10.0.9",
+  "region": ".../regions/us-central1",
+  "status": "RESERVED"
+ }
+]

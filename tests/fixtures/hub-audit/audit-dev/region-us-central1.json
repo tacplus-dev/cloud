@@ -1,0 +1,14 @@
+{
+ "quotas": [
+  {
+   "metric": "CPUS",
+   "limit": 72.0,
+   "usage": 10.0
+  },
+  {
+   "metric": "C4A_CPUS",
+   "limit": 24.0,
+   "usage": 10.0
+  }
+ ]
+}

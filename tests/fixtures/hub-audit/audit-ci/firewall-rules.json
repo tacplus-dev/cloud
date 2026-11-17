@@ -1,0 +1,47 @@
+[
+ {
+  "name": "runner-manager-to-workers-ssh",
+  "direction": "INGRESS",
+  "network": "https://www.googleapis.com/compute/v1/projects/audit-ci/global/networks/runners",
+  "sourceTags": [
+   "runner-manager"
+  ],
+  "targetTags": [
+   "runner-worker"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "tcp",
+    "ports": [
+     "22"
+    ]
+   }
+  ]
+ },
+ {
+  "name": "deny-all",
+  "direction": "INGRESS",
+  "network": ".../networks/runners",
+  "sourceRanges": [
+   "0.0.0.0/0"
+  ],
+  "denied": [
+   {
+    "IPProtocol": "all"
+   }
+  ]
+ },
+ {
+  "name": "egress-all",
+  "direction": "EGRESS",
+  "network": ".../networks/runners",
+  "destinationRanges": [
+   "0.0.0.0/0"
+  ],
+  "allowed": [
+   {
+    "IPProtocol": "all"
+   }
+  ]
+ }
+]

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# A stub gcloud for tests/hub_audit_test.sh: it answers what ci/hub-audit.sh runs, each from STUB_AUDIT/<project>/:
+# the lists (firewall-rules, instances, addresses, forwarding-rules, disks, clusters, secrets: <what>.json), the
+# project's and the region's quotas (project-info.json, region-<region>.json), a secret's versions
+# (versions-<secret>.json); a read whose <file>.err exists fails with it (an API not enabled, say), and one with no file
+# is refused, as the API refuses one. auth print-access-token gives stub-token. Every call is logged (STUB_LOG, one line
+# each); any other command fails loudly.
+set -euo pipefail
+echo "gcloud $*" >> "$STUB_LOG"
+[ "$*" = "auth print-access-token" ] && { echo stub-token; exit 0; }
+project='' format='' words=()
+for a in "$@"; do
+  case $a in
+    --project=*) project=${a#*=} ;;
+    --format=*) format=${a#*=} ;;
+    --*) echo "stub gcloud: a flag ci/hub-audit.sh does not pass: $a" >&2; exit 99 ;;
+    *) words+=("$a") ;;
+  esac
+done
+[ "$format" = json ] && [ -n "$project" ] || { echo "stub gcloud: no --project or --format=json: $*" >&2; exit 99; }
+dir=$STUB_AUDIT/$project
+case "${words[*]}" in
+  "compute firewall-rules list" | "compute instances list" | "compute addresses list" | "compute forwarding-rules list" | \
+  "compute disks list" | "container clusters list") f=$dir/${words[1]}.json ;;
+  "secrets list") f=$dir/secrets.json ;;
+  "secrets versions list "*) [ "${#words[@]}" = 4 ] || exit 99; f=$dir/versions-${words[3]}.json ;;
+  "compute project-info describe") f=$dir/project-info.json ;;
+  "compute regions describe "*) [ "${#words[@]}" = 4 ] || exit 99; f=$dir/region-${words[3]}.json ;;
+  *) echo "stub gcloud: not a command ci/hub-audit.sh runs: $*" >&2; exit 99 ;;
+esac
+[ -f "$f.err" ] && { cat "$f.err" >&2; exit 1; }
+[ -f "$f" ] || { echo "ERROR: (gcloud.${words[0]}) PERMISSION_DENIED: stub: no ${f##*/} in $project" >&2; exit 1; }
+cat "$f"

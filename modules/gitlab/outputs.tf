@@ -19,6 +19,13 @@ output "runners" {
   } }
 }
 
+output "schedules" {
+  description = "The projects' pipeline schedules (#77), by PROJECT:NAME: the description, the ref, the cron, its time zone and whether it is active."
+  value = { for k, s in gitlab_pipeline_schedule.project : k => {
+    description = s.description, ref = s.ref, cron = s.cron, cron_timezone = s.cron_timezone, active = s.active
+  } }
+}
+
 output "members" {
   description = "The memberships, by PROJECT:USER: the project's and the user's IDs, the access level and the expiry."
   value = { for k, m in gitlab_project_membership.member : k => {

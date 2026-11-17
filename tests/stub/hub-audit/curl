@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# A stub curl for tests/hub_audit_test.sh: Monitoring's timeSeries.list as ci/hub-audit.sh calls it (GET -G, its
+# token, the hour STUB_START to STUB_END in 600s windows, ALIGN_RATE for the CPU usage and ALIGN_MAX for the rest), from
+# STUB_AUDIT/<project>/m-<metric>.json (m-<metric>.<pageToken>.json for a later page); with no such file, no series. A
+# project with no directory is refused (403). Every call is logged (STUB_LOG: curl, the project, the metric, the
+# aligner and the page); any other call fails loudly.
+set -euo pipefail
+out='' fmt='' auth='' url=''
+declare -A q=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    -sS | -G) ;;
+    -o) out=$2; shift ;;
+    -w) fmt=$2; shift ;;
+    -H) auth=$2; shift ;;
+    --data-urlencode) q[${2%%=*}]=${2#*=}; shift ;;
+    -*) echo "stub curl: a flag ci/hub-audit.sh does not pass: $1" >&2; exit 99 ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+[ "$fmt" = '%{http_code}' ] && [ -n "$out" ] || { echo "stub curl: no -o or -w '%{http_code}'" >&2; exit 99; }
+[ "${auth#@}" != "$auth" ] && [ "$(cat "${auth#@}")" = "Authorization: Bearer stub-token" ] || { echo "stub curl: not the token" >&2; exit 99; }
+[[ $url =~ ^$STUB_API/v3/projects/([a-z0-9-]+)/timeSeries$ ]] || { echo "stub curl: not timeSeries.list: $url" >&2; exit 99; }
+project=${BASH_REMATCH[1]}
+case ${q[filter]:-} in
+  *'"compute.googleapis.com/instance/cpu/utilization"'*) m=vm-cpu a=ALIGN_MAX ;;
+  *'"kubernetes.io/node/cpu/allocatable_utilization"'*) m=node-cpu a=ALIGN_MAX ;;
+  *'"kubernetes.io/container/cpu/core_usage_time" AND resource.labels.namespace_name = "ci"') m=ctr-cpu a=ALIGN_RATE ;;
+  *'"kubernetes.io/container/cpu/request_cores" AND resource.labels.namespace_name = "ci"') m=ctr-cpu-req a=ALIGN_MAX ;;
+  *'"kubernetes.io/container/memory/used_bytes" AND metric.labels.memory_type = "non-evictable" AND resource.labels.namespace_name = "ci"') m=ctr-mem a=ALIGN_MAX ;;
+  *'"kubernetes.io/container/memory/request_bytes" AND resource.labels.namespace_name = "ci"') m=ctr-mem-req a=ALIGN_MAX ;;
+  *) echo "stub curl: not a filter ci/hub-audit.sh sends: ${q[filter]:-}" >&2; exit 99 ;;
+esac
+[ "${q[aggregation.perSeriesAligner]:-}" = "$a" ] && [ "${q[aggregation.alignmentPeriod]:-}" = 600s ] &&
+  [ "${q[interval.startTime]:-}" = "$STUB_START" ] && [ "${q[interval.endTime]:-}" = "$STUB_END" ] ||
+  { echo "stub curl: not the hour in 600s windows by $a: $(declare -p q)" >&2; exit 99; }
+page=${q[pageToken]:-}
+echo "curl $project $m $a ${page:-first}" >> "$STUB_LOG"
+dir=$STUB_AUDIT/$project
+if [ ! -d "$dir" ]; then
+  echo '{"error":{"code":403,"message":"Permission monitoring.timeSeries.list denied (stub)","status":"PERMISSION_DENIED"}}' > "$out"
+  printf 403
+  exit 0
+fi
+f=$dir/m-$m${page:+.$page}.json
+if [ -f "$f" ]; then cp "$f" "$out"; else echo '{}' > "$out"; fi
+printf 200

@@ -35,3 +35,8 @@ output "looper_wif_provider" {
   description = "The looper project's provider (projects/N/locations/global/workloadIdentityPools/P/providers/R): its GCP_WIF_PROVIDER."
   value       = google_iam_workload_identity_pool_provider.looper.name
 }
+
+output "hub_audit" {
+  description = "The audit job's account (#77): its email, the CI file's GCP_AUDIT_SA."
+  value       = google_service_account.hub_audit.email
+}

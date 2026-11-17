@@ -41,6 +41,11 @@ run "stack" {
     condition     = output.project_ids == { "tacplus-dev/cloud" = "77" }
     error_message = "The stack manages more projects than tacplus-dev/cloud."
   }
+  # The hub's audit (#77): one schedule of tacplus-dev/cloud's own, hourly on main, its pipeline the audit job alone.
+  assert {
+    condition     = output.schedules == { "tacplus-dev/cloud:audit" = { description = "audit", ref = "refs/heads/main", cron = "7 * * * *", cron_timezone = "UTC", active = true } }
+    error_message = "tacplus-dev/cloud has not exactly the hourly schedule audit on main."
+  }
   assert {
     condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra"])
     error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra runner (#64)."

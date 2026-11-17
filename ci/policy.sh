@@ -27,6 +27,9 @@
 #   - in a plan, roles/owner or roles/container.admin to a service account (#18), in a member, a member list or a
 #     policy document, or to a member known only after apply, but the pipeline's own owner of its folders: either could
 #     delete the cluster, and cluster-admin inside it is a ClusterRoleBinding, not IAM;
+#   - in a plan, any role to the audit job's account hub-audit (#77) but its read roles (compute, container, monitoring
+#     and secretmanager viewer, serviceusage.serviceUsageConsumer), in a member, a member list or a policy document: it
+#     never writes, and never reads a secret's value;
 #   - in a plan, the Anthropic organization (#34): an identity adopted (imported) with a change, as a live deployment
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
@@ -48,6 +51,10 @@ refuse() { echo "policy: refused: $*" >&2; refused=1; }
 # The pipeline's own identity (modules/settings, bootstrap.pipeline_sa): owner of the folders it creates, the one
 # service account that holds roles/owner.
 pipeline_sa=cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
+# The audit job's account (#77, modules/projects/ci/hub-audit.tf), and the only roles it may hold: it reads, never
+# writes, and reads no secret's value (secretmanager.viewer: names and versions' metadata, never accessor).
+audit_sa=hub-audit@tacplus-ci.iam.gserviceaccount.com
+audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer roles/serviceusage.serviceUsageConsumer roles/secretmanager.viewer)
 
 source_check() {
   local dir f n line
@@ -174,13 +181,16 @@ plan_check() {
          | (if .type | endswith("_iam_policy") then
               ($after.policy_data // "{}" | fromjson? // {} | .bindings[]? | {role, members: (.members // [])})
             else {role: $after.role, members: ([$after.member // empty] + ($after.members // []))} end)
-         | select(.role | IN("roles/owner", "roles/container.admin")) as $b
-         | if any($unknown[]; test("^(member|members|policy_data)($|\\.)")) then
-             "\($a) grants \($b.role) to a member known only after apply: no service account holds it but the pipeline itself"
-           else
-             ($b.members[] | select(startswith("serviceAccount:") and . != $pipeline)
-              | "\($a) grants \($b.role) to \(.): no service account holds it but the pipeline itself (it could delete the cluster)")
-           end),
+         | . as $b
+         | (select($b.role | IN("roles/owner", "roles/container.admin"))
+            | if any($unknown[]; test("^(member|members|policy_data)($|\\.)")) then
+                "\($a) grants \($b.role) to a member known only after apply: no service account holds it but the pipeline itself"
+              else
+                ($b.members[] | select(startswith("serviceAccount:") and . != $pipeline)
+                 | "\($a) grants \($b.role) to \(.): no service account holds it but the pipeline itself (it could delete the cluster)")
+              end),
+           (select($b.role | IN($audit_roles[]) | not) | $b.members[] | select(. == $audit)
+            | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")))")),
         (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
          | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
         (select(.type | startswith("anthropic_")) | select(.change.importing != null)
@@ -203,7 +213,8 @@ plan_check() {
         (select(.type == "google_container_node_pool")
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
-            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" "$p") ||
+            | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" \
+      --arg audit "serviceAccount:$audit_sa" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done
