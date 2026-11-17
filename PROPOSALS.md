@@ -39,7 +39,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   found 23 known vulnerabilities in the gitlab provider alone (#3).
 - **Track and bump the pins with known vulnerabilities** (looper, #3, 2026-11-03). What: move each to the first
   upstream release that fixes its `security-exceptions.yaml` entries, and remove them: OpenTofu past 1.13.2 (x/net
-  >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), the `google` provider past 8.9.0 and tflint past
+  >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), tflint past
   0.66.0 with its ruleset past 0.41.0 (x/net >= v0.62.0 for the ruleset, x/crypto; tflint 0.66.0 and Trivy 0.76.2 have
   the x/net, #62), GitLab Runner past v19.5.3 and
   fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
@@ -57,7 +57,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   (GO-2026-6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866) before they expire on 2026-12-03 and 2026-12-06.
   Also x/crypto v0.59.0 (2026-11-11, GO-2026-5932: it deletes `openpgp`) for OpenTofu, the ruleset and Trivy, which
   import no `openpgp`; tflint 0.66.0 imports it and waits for upstream (nightly scan, 2026-11-17; the google provider's
-  build takes it in #76).
+  build takes it since #76).
   Why: a release's dependencies we can fix in our own build need no exception.
 - **Drop our builds of OpenTofu, tflint, its ruleset, Trivy and the google provider** (looper, #39). What: when each
   publishes a release built with go >= 1.27.4 (or >= 1.26.11), pin it by its release SHA-256 again (`ci/tools.sh`'s

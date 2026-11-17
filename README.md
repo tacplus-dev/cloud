@@ -180,15 +180,16 @@ moves to the first upstream release with the fix (#3):
   upstream release compiles against kin-openapi v0.149.0 or later; the build, when one is also built on a fixed Go.
 - **The `google` provider is built from source too** (`ci/google-provider.sh`, #39), the same way: upstream's 8.9.0, and
   its latest release, are built with go1.26.10, without net/http's GO-2026-6859 fix (go1.26.11, go1.27.4), and it holds
-  the pipeline's Google credentials. Its tag v8.9.0 at the pinned commit, with go1.27.4 and x/net v0.62.0, installed and
-  locked as the `gitlab` one is.
+  the pipeline's Google credentials. Its tag v8.9.0 at the pinned commit, with go1.27.4, x/net v0.62.0 and x/crypto
+  v0.59.0 (GO-2026-5932, #76: it deletes `openpgp`, which the provider does not import), installed and locked as the
+  `gitlab` one is.
 - **OpenTofu, tflint, its google ruleset and Trivy are built from source with go1.27.4** (#39): upstream's releases are
   built with go1.27.3 or go1.26.10, without GO-2026-6859's fix. `ci/tools.sh` builds each from its release's module
   (pinned by its `h1:` hash, checked against the Go checksum database) as upstream builds it (CGO off, `-trimpath`, its
   ldflags), with no VCS stamp, so reproducibly: each build is refused unless its SHA-256 is the pinned one. yq, gitleaks,
   OSV-Scanner and govulncheck are built with the same Go. Each goes back to upstream's release when one is built on a
   fixed Go (PROPOSALS.md).
-- **Accepted until 2026-12-03:** OpenTofu 1.13.2, the `google` provider 8.9.0, tflint 0.66.0 and its ruleset 0.41.0:
+- **Accepted until 2026-12-03:** OpenTofu 1.13.2, tflint 0.66.0 and its ruleset 0.41.0:
   x/net HTTP/2 and html, x/crypto/openpgp, x/mod's sumdb and a gRPC
   server panic. They run on trusted, pinned inputs (lock-file hashes, this repository, Google APIs and gitlab.com over
   TLS), and none of them has a fixed release yet. tflint 0.66.0 and Trivy 0.76.2 have x/net v0.62.0, so x/net html's
