@@ -65,3 +65,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-16 looper issue dev: seatrials-deploy cannot get-credentials on the cluster dev (container.clusters.get 403), so the test IdP cannot apply (fleet-seatrials#27) (#71)
 - 2026-11-16 looper issue gitlab stack: move build_ci_commit to tacplus-dev/looper f2f5237 (publish on arm64, build-docker, looper#172's 62d00a2) (#72)
 - 2026-11-17 looper issue dev: seatrials-deploy cannot add a version to test-idp-seeds, so the test IdP's first run cannot store its seeds (fleet-seatrials#27) (#73)
+- 2026-11-17 looper issue gitlab stack: move build_ci_commit to tacplus-dev/looper c0f7304 (image ffd21be6: #173's retry of image-pull failures) (#75)
