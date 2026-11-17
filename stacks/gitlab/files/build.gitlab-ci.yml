@@ -42,9 +42,13 @@
 # pool (tacplus-dev/cluster#13; before it, a fresh VM per job), never one an
 # agent's job ran on (Jody, 2026-10-29). Spot preemption is retried the GitLab
 # way (looper#84; tacplus-dev/roadmap decisions/only-vms-are-k8s-nodes-2026-11-04.md):
-# retry: on runner_system_failure and stuck_or_timeout_failure, twice. The
-# child pipeline's gates job keeps its own retry (looper-build: its 11h timeout
-# is its own, looper#148). plan and status
+# retry: on runner_system_failure and stuck_or_timeout_failure, twice; so is
+# a job whose image a fresh node could not pull in time, or GitLab's API
+# failed it (runner_external_dependency_failure, api_failure: tacplus#340's
+# land, looper#173). The child pipeline's jobs keep their own retry
+# (looper-build: the gates' 11h timeout is their own, looper#148). A build red
+# in its infrastructure alone, its gates green, the manager builds again, once
+# (repo-looper: build_again). plan and status
 # run in the looper image, for looper-build; the gates run in the repository's
 # pinned build image, as the child pipeline plan writes.
 #
@@ -183,11 +187,11 @@ variables:
   BUILD_DOCKER_TAGS: "arm64, build-docker"
 
 default:
-  image: ghcr.io/tacplus-dev/looper@sha256:a40bf6460d858d87d5e27caaf7a0f59aa68eb21b9deedc6edde9731213eb1078
+  image: ghcr.io/tacplus-dev/looper@sha256:ffd21be69119996d2ddf7ca5929475e79fff541afd8cb7074c98bd22d8ab714f
   tags: [arm64, build]
   retry:
     max: 2
-    when: [runner_system_failure, stuck_or_timeout_failure, scheduler_failure, unknown_failure]
+    when: [runner_system_failure, stuck_or_timeout_failure, scheduler_failure, unknown_failure, runner_external_dependency_failure, api_failure]
 
 # The build's jobs, never in a smoke or runner image pipeline.
 .build-run:
