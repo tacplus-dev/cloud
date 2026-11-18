@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"module.dev.google_project_iam_member.deploy","type":"google_project_iam_member","change":{"actions":["create"],"after":{"project":"tacplus-dev","member":"serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com","role":"roles/editor"}}}]}

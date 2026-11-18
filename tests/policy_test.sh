@@ -16,9 +16,9 @@
 # an external forwarding rule but the TCP proxy's on it; we terminate TLS, not the cloud (#21): the forwarding rule on
 # gateway is global, EXTERNAL_MANAGED and TCP, to a target TCP proxy (known, or a reference when known only after
 # apply), and a certificate, Certificate Manager, an SSL policy, an HTTP(S) or SSL proxy or a URL map is refused, as is
-# ingress from a public range but Google's proxies' and health checkers'; and roles/owner or roles/container.admin to a
-# service account (#18), in a member, a member list or a policy document, or to a member known only after apply, the
-# pipeline's own owner alone excepted; and in the Anthropic organization (#34), an identity adopted with a change, a
+# ingress from a public range but Google's proxies' and health checkers'; and roles/owner or roles/editor to any
+# service account, the pipeline's own included (#78), and roles/container.admin to one but the pipeline (#18), in a
+# member, a member list or a policy document, or to a member known only after apply; and in the Anthropic organization (#34), an identity adopted with a change, a
 # rule of another scope than workspace:developer or workspace:inference, an account of another role than developer;
 # and the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false, and
 # in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
@@ -133,7 +133,12 @@ refuses "a plan granting a service account container.admin" "grants roles/contai
 refuses "a plan with a service account in an owner binding" "grants roles/owner to serviceAccount:gke-nodes@tacplus-dev" plan "$fx/plans/admin-owner-binding.json"
 refuses "a plan with owner to a service account in a policy document" "grants roles/owner to serviceAccount:x@tacplus-dev" plan "$fx/plans/admin-policy.json"
 refuses "a plan granting owner to a member known only after apply" "known only after apply" plan "$fx/plans/admin-member-unknown.json"
-passes "a plan with the pipeline's own owner, a viewer, a person and a deleted grant" plan "$fx/plans/admin-clean.json"
+# No pipeline account holds owner or editor (#78), cloud-admin-pipeline neither: its rights are the host's narrower grants.
+refuses "a plan granting the pipeline owner of a folder (#78)" "grants roles/owner to serviceAccount:cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com: no service account holds it, the pipeline neither" plan "$fx/plans/admin-pipeline-owner.json"
+refuses "a plan granting a service account editor (#78)" "grants roles/editor to serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com" plan "$fx/plans/admin-editor.json"
+refuses "a plan with the pipeline's editor in a policy document (#78)" "grants roles/editor to serviceAccount:cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com" plan "$fx/plans/admin-pipeline-editor-policy.json"
+refuses "a plan granting editor to members known only after apply (#78)" "grants roles/editor to a member known only after apply" plan "$fx/plans/admin-editor-unknown.json"
+passes "a plan with the pipeline's own container.admin, a viewer, a person's owner and a deleted grant" plan "$fx/plans/admin-clean.json"
 # hub-audit, the audit job's account (#77), reads only: a write role to it is refused, in a member, a member list or a
 # policy document; its five read roles on both projects, and its federation, pass.
 refuses "a plan granting hub-audit a write role" "grants roles/compute.admin to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/hub-audit-write.json"

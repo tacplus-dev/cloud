@@ -82,7 +82,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 - **Order:** the checks, then `folder` (the folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
   tokens go to the `ci` project's secrets). Each stage's plan is made after the stage before it is applied. `anthropic`
   runs beside them after the checks, needing none (below, The Anthropic organization).
-- **A new project's IAM:** the pipeline's rights in `tacplus-ci` and `tacplus-dev` are its role on the parent folder,
+- **A new project's IAM:** the pipeline's rights in `tacplus-ci` and `tacplus-dev` are its roles on the parent folder,
   which reaches a project created seconds before only after a minute or two. In each project module everything after
   the project and its APIs waits for `terraform_data.iam_ready`, which runs `ci/iam-ready.sh`: Resource Manager's
   `testIamPermissions` until the pipeline holds the permissions of the project's first creates on three checks in a
@@ -94,7 +94,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too; and the anthropic stack against a stub of Anthropic's (`tests/anthropic_plan_test.sh`, #34). |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/container.admin` to a service account (below, The cluster pipeline), a break of the network rules (below), or an Anthropic identity adopted with a change (below, The Anthropic organization). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), or `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), or an Anthropic identity adopted with a change (below, The Anthropic organization). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0` or a VM's external IP (below, The hub's audit). |
 | `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), the pool check (`ci/pools.sh`: why a runner pool makes no VM, below, The pools) and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
@@ -294,9 +294,33 @@ The host organization's admin (its own pipeline, outside this repository) provid
 - **For the account that runs the bootstrap**, for that one run: `roles/resourcemanager.folderAdmin` and
   `roles/resourcemanager.projectCreator` on the parent folder; and Billing Account Administrator on the billing account,
   to link the project and grant `billing.user` to `cloud-admin-pipeline`.
-- **For `cloud-admin-pipeline`**, once the bootstrap has made it: `roles/resourcemanager.folderAdmin`,
-  `roles/resourcemanager.projectCreator` and `roles/owner` on the parent folder. Nothing beyond these, and nothing at
-  the organization's level: this repository holds no right over the host's organization.
+- **For `cloud-admin-pipeline`**, once the bootstrap has made it, on the parent folder: the least set the stacks use
+  (#78; `HOST_ROLES` in `bootstrap/bootstrap.sh`, which reports any still to grant), never `roles/owner` or
+  `roles/editor` (`ci/policy.sh` refuses either to any service account in a plan, and the bootstrap says to remove
+  either where the host still grants it):
+  - `roles/resourcemanager.folderAdmin`: the folders `ci` and `dev`, and the readers' grants on the parent folder;
+  - `roles/resourcemanager.projectCreator`: the projects `tacplus-ci` and `tacplus-dev`;
+  - `roles/billing.projectManager`: their billing link (with `billing.user` on the billing account, the bootstrap's);
+  - `roles/resourcemanager.projectIamAdmin`: the projects' IAM;
+  - `roles/serviceusage.serviceUsageAdmin`: their APIs;
+  - `roles/iam.serviceAccountAdmin`: their service accounts, and who may use or federate to them;
+  - `roles/iam.serviceAccountUser`: those accounts on the VMs and the cluster's nodes;
+  - `roles/iam.workloadIdentityPoolAdmin`: the federations' pools and providers;
+  - `roles/iam.roleAdmin`: the custom role of the apps' key importers;
+  - `roles/compute.admin`: the networks, firewall rules, routers and NAT, the VMs, their templates and groups, and the
+    load balancer;
+  - `roles/container.admin`: the cluster and its node pool, and through GKE's RBAC its `cluster-admin` binding (below,
+    The cluster pipeline): the one service account that holds it;
+  - `roles/dns.admin`: the zones, their records and IAM;
+  - `roles/secretmanager.admin`: the secrets, their versions (the runners' tokens) and IAM;
+  - `roles/cloudkms.admin`: the apps' key ring, keys, import job and IAM;
+  - `roles/storage.admin`: the buckets (the build cache, the manager's binaries), their objects and IAM;
+  - `roles/artifactregistry.admin`: the registries and their IAM.
+
+  A role here is one a stack's resource needs (`tests/apis_test.sh` names the API of each); a new kind of resource
+  is a new line here, and the host's grant, before its first apply. Nothing beyond these, and nothing at the
+  organization's level: this repository holds no right over the host's organization; the folder stack grants the
+  pipeline nothing (until #78, owner of `ci` and `dev`).
 - **The org policies, the host organization's job.** It enforces them for everything under it, the parent folder
   included, and checks them for drift; this repository relies on them and sets none (`roles/orgpolicy.policyAdmin` can be
   granted only at an organization's level). The set it relies on:
@@ -762,12 +786,13 @@ protected `main`. The dev stack gives it, and nobody makes any of it by hand (#1
 the hub does, steps 4 and 7, are this pipeline's):
 
 - **In GCP:** `roles/container.clusterViewer` on `tacplus-dev`, to get the cluster's credentials. No service account
-  holds `roles/container.admin` or `roles/owner` (`ci/policy.sh` refuses either in any plan, the pipeline's own owner of
-  its folders alone excepted): either could delete the cluster.
+  holds `roles/container.admin`, `roles/owner` or `roles/editor` (`ci/policy.sh` refuses each in any plan, the
+  pipeline's own `container.admin`, the host's grant, alone excepted; owner and editor not even the pipeline's, #78):
+  each could delete the cluster.
 - **In the cluster:** the ClusterRoleBinding `cluster-admin-pipeline` of the ClusterRole `cluster-admin` to the User
   `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`, made through the kubernetes provider as this pipeline
-  (its owner of the folder `dev` covers GKE's RBAC), against the cluster's private endpoint (#79), from the `infra`
-  runner's job pod in the cluster. The provider's token is
+  (its `roles/container.admin` from the parent folder covers GKE's RBAC), against the cluster's private endpoint (#79),
+  from the `infra` runner's job pod in the cluster. The provider's token is
   ephemeral (`ephemeral "google_client_config"`): the plan and the apply each open their own, and none is in the saved
   plan or the state. On a plan before the cluster exists, or of its replacement, the provider's endpoint is known only
   after apply, and the binding is made once the cluster is; a cluster rebuilt by hand loses it, and the drift plan
@@ -789,7 +814,7 @@ the hub does, steps 4 and 7, are this pipeline's):
   untagged jobs" off, protected refs only (`ref_protected`), registered paused and **unpaused at the switch-over**
   (#66, below); and it writes the runner's authentication
   token as `gitlab-runner-infra`'s **version 1** (the first version of the empty secret the dev stack made, the version
-  cluster's `infra.yaml` names), as this pipeline (its owner of the folder `dev`), the way it keeps the VM pools' tokens
+  cluster's `infra.yaml` names), as this pipeline (its `roles/secretmanager.admin` from the parent folder), the way it keeps the VM pools' tokens
   in `tacplus-ci`. **The token never leaves the pipeline:** GitLab gives it to the stack's apply, which writes it to
   Secret Manager, where `cluster-admin-pipeline` alone reads it into the runner's Secret; it is in the gitlab stack's
   state (PROPOSALS.md, Secret values out of plans and state), in no output, log or plan file, and no person or agent

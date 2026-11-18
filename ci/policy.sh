@@ -25,9 +25,11 @@
 #     an HTTP, HTTPS or SSL proxy or a URL map, global or regional, is refused; and an ingress allow rule from a public
 #     range is refused unless it is within Google's proxies' and health checkers' (35.191.0.0/16, 130.211.0.0/22): the
 #     nodes admit nothing else from outside the private ranges;
-#   - in a plan, roles/owner or roles/container.admin to a service account (#18), in a member, a member list or a
-#     policy document, or to a member known only after apply, but the pipeline's own owner of its folders: either could
-#     delete the cluster, and cluster-admin inside it is a ClusterRoleBinding, not IAM;
+#   - in a plan, roles/owner or roles/editor to any service account, the pipeline's own included (#78: its rights are
+#     the host's narrower grants on the parent folder, README, What the host organization provides), and
+#     roles/container.admin to a service account but the pipeline (#18), in a member, a member list or a policy
+#     document, or to a member known only after apply: any of them could delete the cluster, and cluster-admin inside
+#     it is a ClusterRoleBinding, not IAM;
 #   - in a plan, any role to the audit job's account hub-audit (#77) but its read roles (compute, container, monitoring
 #     and secretmanager viewer, serviceusage.serviceUsageConsumer), in a member, a member list or a policy document: it
 #     never writes, and never reads a secret's value;
@@ -49,8 +51,9 @@ set -uo pipefail
 die() { echo "policy: $*" >&2; exit 2; }
 refused=0
 refuse() { echo "policy: refused: $*" >&2; refused=1; }
-# The pipeline's own identity (modules/settings, bootstrap.pipeline_sa): owner of the folders it creates, the one
-# service account that holds roles/owner.
+# The pipeline's own identity (modules/settings, bootstrap.pipeline_sa): the one service account that may hold
+# roles/container.admin (the host's grant on the parent folder, which GKE's RBAC of the cluster-admin binding needs);
+# owner and editor it never holds (#78).
 pipeline_sa=cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
 # The audit job's account (#77, modules/projects/ci/hub-audit.tf), and the only roles it may hold: it reads, never
 # writes, and reads no secret's value (secretmanager.viewer: names and versions' metadata, never accessor).
@@ -183,7 +186,14 @@ plan_check() {
               ($after.policy_data // "{}" | fromjson? // {} | .bindings[]? | {role, members: (.members // [])})
             else {role: $after.role, members: ([$after.member // empty] + ($after.members // []))} end)
          | . as $b
-         | (select($b.role | IN("roles/owner", "roles/container.admin"))
+         | (select($b.role | IN("roles/owner", "roles/editor"))
+            | if any($unknown[]; test("^(member|members|policy_data)($|\\.)")) then
+                "\($a) grants \($b.role) to a member known only after apply: no service account holds it, the pipeline neither"
+              else
+                ($b.members[] | select(startswith("serviceAccount:"))
+                 | "\($a) grants \($b.role) to \(.): no service account holds it, the pipeline neither (it could delete the cluster, and everything else)")
+              end),
+           (select($b.role == "roles/container.admin")
             | if any($unknown[]; test("^(member|members|policy_data)($|\\.)")) then
                 "\($a) grants \($b.role) to a member known only after apply: no service account holds it but the pipeline itself"
               else

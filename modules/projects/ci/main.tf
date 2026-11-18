@@ -32,7 +32,7 @@ resource "google_project_service" "service" {
   disable_on_destroy = false
 }
 
-# IAM, the pipeline's role on the parent folder included, reaches a project created seconds before only after a
+# IAM, the pipeline's roles on the parent folder included, reaches a project created seconds before only after a
 # minute or two (#16): everything else in the project comes after this gate, which waits, bounded, until the
 # pipeline holds there the permissions of its first creates (ci/iam-ready.sh). An existing project passes at once.
 resource "terraform_data" "iam_ready" {

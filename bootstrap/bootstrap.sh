@@ -52,8 +52,27 @@ SERVICES=(artifactregistry.googleapis.com cloudbilling.googleapis.com cloudkms.g
   storage.googleapis.com sts.googleapis.com)
 SECRETS=(gitlab-token tacplus-reader-app-id tacplus-reader-installation-id)
 # What the host organization grants cloud-admin-pipeline on the parent folder (README, What the host organization
-# provides): its folders and their IAM, projects, and what is in them. This script grants none of them.
-HOST_ROLES=(roles/resourcemanager.folderAdmin roles/resourcemanager.projectCreator roles/owner)
+# provides): the least set the stacks use (#78), each for what it makes; never owner or editor. This script grants
+# none of them, and says to remove TOO_MUCH where the host still grants it.
+HOST_ROLES=(
+  roles/resourcemanager.folderAdmin           # the folders ci and dev, and the readers' grants on the parent folder
+  roles/resourcemanager.projectCreator        # the projects tacplus-ci and tacplus-dev
+  roles/billing.projectManager                # their billing link (with billing.user on the account, below)
+  roles/resourcemanager.projectIamAdmin       # the projects' IAM
+  roles/serviceusage.serviceUsageAdmin        # their APIs
+  roles/iam.serviceAccountAdmin               # their service accounts and who may use them
+  roles/iam.serviceAccountUser                # those accounts on the VMs and the cluster's nodes
+  roles/iam.workloadIdentityPoolAdmin         # the federations, pools and providers
+  roles/iam.roleAdmin                         # the custom role of the apps' key importers
+  roles/compute.admin                         # networks, firewalls, NAT, the VMs, their groups, the load balancer
+  roles/container.admin                       # the cluster, its node pool and, through GKE's RBAC, its cluster-admin binding
+  roles/dns.admin                             # the zones, their records and IAM
+  roles/secretmanager.admin                   # the secrets, their versions and IAM
+  roles/cloudkms.admin                        # the apps' key ring, keys, import job and IAM
+  roles/storage.admin                         # the buckets, their objects and IAM
+  roles/artifactregistry.admin                # the registries and their IAM
+)
+TOO_MUCH=(roles/owner roles/editor)
 
 say() { echo "bootstrap: $*"; }
 die() { echo "bootstrap: $*" >&2; exit 1; }
@@ -240,11 +259,15 @@ fi
 # The host's grants to cloud-admin-pipeline on the parent folder: read here, never made.
 host_missing=()
 for role in "${HOST_ROLES[@]}"; do has_binding "$parent_policy" "$role" "serviceAccount:$SA" || host_missing+=("$role"); done
+host_extra=()
+for role in "${TOO_MUCH[@]}"; do has_binding "$parent_policy" "$role" "serviceAccount:$SA" && host_extra+=("$role"); done
 if [ ${#host_missing[@]} = 0 ]; then
   say "the host organization's grants to cloud-admin-pipeline on $parent are in place"
 else
   say "next (README, What the host organization provides): the host organization grants $SA ${host_missing[*]} on $parent"
 fi
+[ ${#host_extra[@]} = 0 ] ||
+  say "next (README, What the host organization provides): the host organization removes ${host_extra[*]} from $SA on $parent, more than the pipeline uses"
 cat <<EOF
 bootstrap: the GitLab project $GITLAB_PROJECT's variables (protected): GCP_PARENT_FOLDER, $parent_id; GCP_WIF_PROVIDER,
   projects/$number/locations/global/workloadIdentityPools/$POOL/providers/$PROVIDER

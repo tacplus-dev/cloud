@@ -15,11 +15,6 @@ variable "folders" {
   type        = list(string)
 }
 
-variable "pipeline_sa" {
-  description = "The pipeline's service account (cloud-admin-pipeline), owner of the folders' contents."
-  type        = string
-}
-
 variable "readers" {
   description = "Who reads the parent folder: viewer and securityReviewer, nothing that writes. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits."
   type        = list(string)

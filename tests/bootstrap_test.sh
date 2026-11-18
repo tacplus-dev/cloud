@@ -83,7 +83,13 @@ grep -qx "roles/billing.user $sa" "$s/iam-billing" && grep -qx "roles/storage.ob
   fail "cloud-admin-pipeline's rights"
 [ "$(cat "$s"/iam-* | grep -c "$sa")" = 3 ] && [ ! -f "$s/iam-parent" ] &&
   ok "no other right: nothing on the parent folder (the host's grants)" || fail "other rights: $(grep -l "$sa" "$s"/iam-*)"
-host_roles="roles/resourcemanager.folderAdmin roles/resourcemanager.projectCreator roles/owner"
+# The least set the stacks use (#78; README, What the host organization provides): no owner, no editor.
+host_roles="roles/resourcemanager.folderAdmin roles/resourcemanager.projectCreator roles/billing.projectManager
+  roles/resourcemanager.projectIamAdmin roles/serviceusage.serviceUsageAdmin roles/iam.serviceAccountAdmin
+  roles/iam.serviceAccountUser roles/iam.workloadIdentityPoolAdmin roles/iam.roleAdmin roles/compute.admin
+  roles/container.admin roles/dns.admin roles/secretmanager.admin roles/cloudkms.admin roles/storage.admin
+  roles/artifactregistry.admin"
+host_roles=$(echo $host_roles)
 grep -qF "the host organization grants cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com $host_roles on folders/$PARENT" "$work/out" &&
   ok "it says what the host still grants, on the parent folder" || fail "the host's grants are not reported: $(cat "$work/out")"
 grep -qx "roles/iam.workloadIdentityUser principalSet://iam.googleapis.com/projects/789/locations/global/workloadIdentityPools/gitlab-com/attribute.project_path/tacplus-dev/cloud" "$s/iam-sa" &&
@@ -109,6 +115,15 @@ for role in $host_roles; do echo "$role $sa" >> "$STUB_STATE/iam-parent"; done
 boot --folder "$PARENT" --billing-account "$BILLING"
 [ "$rc" = 0 ] && none_changed "the host's grants in place" && grep -q "the host organization's grants to cloud-admin-pipeline on folders/$PARENT are in place" "$work/out" &&
   ! grep -q 'the host organization grants' "$work/out" && ok "with the host's grants in place it says so" || fail "host's grants: rc $rc: $(cat "$work/out")"
+
+# The host's owner or editor on the parent folder, from before #78: more than the pipeline uses, which it says to remove.
+fresh
+"$script" --folder "$PARENT" --billing-account "$BILLING" >/dev/null 2>&1
+for role in $host_roles roles/owner roles/editor; do echo "$role $sa" >> "$STUB_STATE/iam-parent"; done
+boot --folder "$PARENT" --billing-account "$BILLING"
+[ "$rc" = 0 ] && none_changed "the host's owner and editor" &&
+  grep -qF "next (README, What the host organization provides): the host organization removes roles/owner roles/editor from cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com on folders/$PARENT" "$work/out" &&
+  ok "with the host's owner or editor still granted it says to remove them" || fail "host's owner: rc $rc: $(cat "$work/out")"
 
 fresh
 "$script" --folder "$PARENT" --billing-account "$BILLING" >/dev/null 2>&1

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The folder stack's plan under a stub parent folder (mock providers: no credentials, no cloud): the stack plans,
-# and its module, with the stack's inputs, gives the folders ci and dev under the parent folder, the pipeline's
-# rights on them, and read-only access on the parent folder. No org policy: those are the host organization's job
+# and its module, with the stack's inputs, gives the folders ci and dev under the parent folder, and read-only access
+# on the parent folder; the pipeline nothing (#78: its rights are the host's grants, never owner or editor). No org policy: those are the host organization's job
 # (README). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {}
@@ -40,7 +40,6 @@ run "folder" {
   variables {
     parent_folder = "folders/111111111111"
     folders       = ["ci", "dev"]
-    pipeline_sa   = "cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com"
     readers       = []
   }
 
@@ -51,10 +50,6 @@ run "folder" {
   assert {
     condition     = alltrue([for f in google_folder.folder : f.parent == "folders/111111111111"])
     error_message = "A folder is not under the parent folder."
-  }
-  assert {
-    condition     = alltrue([for m in google_folder_iam_member.pipeline_owner : m.member == "serviceAccount:cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com" && m.role == "roles/owner"])
-    error_message = "The folders' owner is not cloud-admin-pipeline alone."
   }
   assert {
     condition     = length(google_folder_iam_member.reader) == 0
@@ -70,7 +65,6 @@ run "readers_read_only" {
   variables {
     parent_folder = "folders/111111111111"
     folders       = ["ci"]
-    pipeline_sa   = "cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com"
     readers       = ["user:someone@tacplus.dev"]
   }
   assert {
@@ -91,7 +85,6 @@ run "parent_is_a_folder" {
   variables {
     parent_folder = "111111111111"
     folders       = ["ci"]
-    pipeline_sa   = "cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com"
     readers       = []
   }
   expect_failures = [var.parent_folder]

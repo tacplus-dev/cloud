@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The IAM readiness gate of a new project (#16), run by each project module's terraform_data.iam_ready during
-# apply:<stack>, after the project and its APIs and before everything else in it. IAM, the pipeline's folder-owner
-# role included, reaches a project created seconds before only after a minute or two: until then its first
+# apply:<stack>, after the project and its APIs and before everything else in it. IAM, the pipeline's roles on the
+# parent folder included, reaches a project created seconds before only after a minute or two: until then its first
 # IAM-dependent create is refused (apply:dev, iam.workloadIdentityPools.create). It asks Resource Manager's
 # testIamPermissions, as the pipeline (gcloud's account, ci/lib.sh's ci_gcp), whether it holds each PERMISSION on
 # the project, and is ready once all of them are granted on IAM_READY_STREAK checks in a row (default 3), one

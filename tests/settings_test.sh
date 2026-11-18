@@ -4,8 +4,9 @@
 #
 # Tests that the names agree wherever they are written: modules/settings (what the stacks read), the stacks'
 # backends (state in the bootstrap bucket, one prefix per stack), bootstrap/bootstrap.sh (what it creates), the
-# GitLab CI file (the account the jobs become) and ci/lib.sh (the GitLab token's secret, by version); and that the
-# parent folder is the stacks' input, written nowhere. Needs bash.
+# GitLab CI file (the account the jobs become), ci/lib.sh (the GitLab token's secret, by version) and the README (the
+# host's grants to the pipeline, neither owner nor editor, #78); and that the parent folder is the stacks' input,
+# written nowhere. Needs bash.
 #
 #   tests/settings_test.sh
 set -uo pipefail
@@ -36,6 +37,12 @@ same "the provider" "$(setting wif_provider)" "$(script PROVIDER)"
 same "the region" "$(sed -n '/output "region"/,/^}/s/^ *value *= *"\(.*\)"$/\1/p' "$settings")" "$(script REGION)"
 same "the GitLab project" "$(sed -n '/output "gitlab_project"/,/^}/s/^ *value *= *"\(.*\)"$/\1/p' "$settings")" "$(script GITLAB_PROJECT)"
 same "the jobs' account" "$(setting pipeline_sa)" "$(sed -n 's/^  GCP_DEPLOY_SA: //p' "$here/ci/gitlab-project.gitlab-ci.yml")"
+# The host's grants to the pipeline (#78): the README's list is the bootstrap's HOST_ROLES, and neither is owner or editor.
+host_roles=$(sed -n '/^HOST_ROLES=(/,/^)/s/^  \(roles\/[^ ]*\).*/\1/p' "$here/bootstrap/bootstrap.sh" | sort | tr '\n' ' ')
+readme_roles=$(sed -n '/^- \*\*For `cloud-admin-pipeline`\*\*/,/^- \*\*The org policies/s/^  - `\(roles\/[^`]*\)`:.*/\1/p' "$here/README.md" | sort | tr '\n' ' ')
+same "the host's grants to the pipeline" "$host_roles" "$readme_roles"
+grep -qE 'roles/(owner|editor) ' <<< "$host_roles " && fail "the host's grants include owner or editor: $host_roles" ||
+  ok "the host's grants are neither owner nor editor"
 
 gitlab_secret=$(setting gitlab_token_secret)
 [[ $gitlab_secret == "projects/$(script PROJECT)/secrets/gitlab-token/versions/"[0-9]* ]] &&

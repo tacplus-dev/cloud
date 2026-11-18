@@ -11,8 +11,8 @@
 # address is in a plan), and tacplus.dev's zone: its copied records, the deployment's hostnames to that address, the
 # delegations, and its name servers for the registrar (#13), and the runners' token secrets, which the cluster pipeline
 # reads and only the listed people add versions to, and the cluster pipeline's cluster-admin, a ClusterRoleBinding
-# made in the cluster through the kubernetes provider, with no service account of dev holding container.admin or owner
-# in IAM (#18), and the public entry (#21): a global external proxy Network Load Balancer (TCP proxy) on the address
+# made in the cluster through the kubernetes provider, with no service account of dev holding container.admin, owner or
+# editor in IAM (#18, #78), and the public entry (#21): a global external proxy Network Load Balancer (TCP proxy) on the address
 # gateway, one forwarding rule per listener, to the NEGs the settings name, a TCP health check on their endpoints'
 # port, no TLS on Google's side, and the nodes open to Google's proxies and health checkers only, on that port, and
 # (#20) the deployment's get-credentials on the cluster dev alone, its Cloud Build roles, the builds' own account, its
@@ -364,8 +364,8 @@ run "dev" {
     error_message = "The cluster-admin binding names more than the User cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com."
   }
   assert {
-    condition     = alltrue([for m in concat(values(google_project_iam_member.nodes), [google_project_iam_member.cluster_pipeline], values(google_project_iam_member.deploy), values(google_project_iam_member.build), values(google_project_iam_member.cluster_viewer)) : !contains(["roles/container.admin", "roles/owner"], m.role)])
-    error_message = "A service account in dev holds container.admin or owner in IAM: cluster-admin is the binding's, in the cluster."
+    condition     = alltrue([for m in concat(values(google_project_iam_member.nodes), [google_project_iam_member.cluster_pipeline], values(google_project_iam_member.deploy), values(google_project_iam_member.build), values(google_project_iam_member.cluster_viewer)) : !contains(["roles/container.admin", "roles/owner", "roles/editor"], m.role)])
+    error_message = "A service account in dev holds container.admin, owner or editor in IAM: cluster-admin is the binding's, in the cluster."
   }
   assert {
     condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"

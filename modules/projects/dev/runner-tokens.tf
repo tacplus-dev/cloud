@@ -5,8 +5,9 @@
 # build and control, the hub registers the runner through GitLab's API and pipes its token into a new version, as one
 # of the listed adders, who add versions and never read them (secretVersionAdder has no versions.access). For infra
 # (#64; tacplus-dev/cluster#25), the gitlab stack registers the runner and writes its token as version 1, as this
-# pipeline (its owner of the folder dev: no binding here), so the token never leaves the pipeline; the adders hold the
-# same role on it as on the other two, and use it on none of the three once every runner is the stack's (PROPOSALS.md).
+# pipeline (its secretmanager.admin from the parent folder: no binding here), so the token never leaves the pipeline;
+# the adders hold the same role on it as on the other two, and use it on none of the three once every runner is the
+# stack's (PROPOSALS.md).
 # cluster-admin-pipeline reads them all. A new token is a new version, and a pull request in tacplus-dev/cluster.
 # Nobody else holds a role on any (authoritative bindings: a grant added by hand is drift).
 

@@ -33,7 +33,7 @@ provider "google" {
   region = module.settings.region
 }
 
-# In the dev cluster, as this pipeline (cloud-admin-pipeline: its owner of the folder dev covers GKE's RBAC): the
+# In the dev cluster, as this pipeline (cloud-admin-pipeline: its container.admin from the parent folder covers GKE's RBAC): the
 # cluster pipeline's ClusterRoleBinding. Its token is ephemeral, opened afresh by the plan and again by the apply, so
 # that none is in the saved plan or the state, and none expires while the apply waits for its turn.
 ephemeral "google_client_config" "this" {}

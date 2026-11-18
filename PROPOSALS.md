@@ -154,8 +154,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   firewall policy on each folder denying tcp:22 from anywhere and ingress from outside the networks' private ranges and
   Google's LB and health-check ranges (`130.211.0.0/22`, `35.191.0.0/16`), in the folder stack. Why: the plan checks
   stop only the pipeline and the live audit only reports; a folder policy would enforce the rules against a rule made by
-  hand. Its first apply must check that `roles/owner` on the parent folder may set one, and that GKE's own rules still
-  work under it.
+  hand. Its first apply needs a host's grant that may set one (`roles/compute.orgSecurityPolicyAdmin` on the parent
+  folder: since #78 the pipeline holds no owner there, README, What the host organization provides), and must check
+  that GKE's own rules still work under it.
 - **No regional external address in the stacks** (looper, #7, 2026-11-04): done by #13 (with any external address but
   `gateway`, and any external forwarding rule, in a plan and in the live audit). What: `ci/policy.sh plan` refuses a
   `google_compute_address` whose `address_type` is `EXTERNAL` (the default): a proxy-based load balancer takes a global
@@ -169,8 +170,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   protected variable `GCP_PARENT_FOLDER` (from its own `parent_folder`, with an import block, as `GCP_WIF_PROVIDER`).
   Why: today the hub sets it by hand (README, Before the first pipeline) and the nightly drift does not see it.
 - **The host's org policies checked, not only relied on** (looper, #8, 2026-11-03). What: the drift job reads the
-  effective policies on the parent folder (`gcloud resource-manager org-policies describe --effective --folder`; if
-  `roles/owner` on the folder does not read them, `orgpolicy.policyViewer` on it, a host's grant) and reports any
+  effective policies on the parent folder (`gcloud resource-manager org-policies describe --effective --folder`; with
+  `orgpolicy.policyViewer` on it, a host's grant: since #78 the pipeline's grants there are the README's least set) and reports any
   that is not the README's set, without setting one. Why: since #8 the guardrails are the host organization's
   (decided: option B), so a change there would reach these projects unseen; the host's own drift check covers its side
   only.
@@ -233,7 +234,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   that grant, or the check run by the hub.
 - **The caller-counted APIs without a bootstrap run** (looper, #16, 2026-11-05). What: let the folder stack enable, in
   `tacplus-bootstrap`, the APIs `tests/apis_test.sh` classes as the caller's (`google_project_service`, which
-  `cloud-admin-pipeline`'s owner role on the parent folder allows), or move to per-project quota: the google provider's
+  `cloud-admin-pipeline`'s `serviceUsageAdmin` on the parent folder allows, #78), or move to per-project quota: the google provider's
   `user_project_override`. Why: today a new caller-counted API needs Jody to run the bootstrap again before the
   pipeline can use it. `user_project_override` was not chosen for #16: with a provider-wide `billing_project` every call
   carries it, the project's own creation included, so a build from nothing would name a quota project that does not
@@ -252,7 +253,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   `gitlab-runner-control` are made by this pipeline's dev stack (README, The cluster pipeline), and that the hub only
   adds the tokens' versions, as the account of `GCP_RUNNER_TOKEN_ADDERS` (README, hosting note). Why: its README still
   lists both as the hub's, which since 2026-11-04 nobody can do by hand.
-- **Refuse every role that can delete the cluster** (looper, #18, 2026-11-05). What: `ci/policy.sh`'s refusal of
+- **Refuse every role that can delete the cluster** (looper, #18, 2026-11-05; `roles/editor` done by #78, the
+  pipeline's own owner and editor too). What: `ci/policy.sh`'s refusal of
   `roles/owner` and `roles/container.admin` to a service account widened to `roles/editor` and
   `roles/container.clusterAdmin`, which hold `container.clusters.delete` too. Why: #18 named the two; the others break
   the same rule, and no service account here holds them today.
@@ -544,6 +546,20 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **The hub's audit files what it finds** (looper, #77). What: on an exposure finding, the `audit` job also files (or
   comments on) an issue here, as the drift job does (`ci/drift.sh`, tacplus-reader), once per finding. Why: today a red
   hourly job is seen only by whoever reads the pipeline or the hub's report.
+- **The pipeline's owner of the projects it created** (looper, #78, 2026-11-18). What: read `tacplus-ci`'s and
+  `tacplus-dev`'s IAM policies for `roles/owner` to `cloud-admin-pipeline` (Resource Manager makes a project's creator
+  its owner: `roles/resourcemanager.projectCreator`'s own description), and, once the host's least set (README, What
+  the host organization provides) is granted and an apply of each stack has passed on it alone, remove it: an
+  authoritative `google_project_iam_binding` of `roles/owner` to nobody but the people the projects name, or a drift
+  finding on any service account holding owner or editor in either project (`ci/audit.sh`). Why: #78 took owner off the
+  folders and out of every plan, but a project-level owner from its creation would still give the pipeline everything
+  in its two projects, unseen by the plan check; removed before the folder grants are live, it would lock the pipeline
+  out of them.
+- **The host's grants narrowed further** (looper, #78). What: once an apply of each stack has passed on the least set
+  alone, try `roles/resourcemanager.folderCreator` with `roles/resourcemanager.folderIamAdmin` for `folderAdmin`, and
+  the compute roles the stacks use (`instanceAdmin.v1`, `networkAdmin`, `securityAdmin`, `loadBalancerAdmin`) for
+  `compute.admin`, each confirmed by a plan and apply before the host drops the wider one. Why: #78 chose predefined
+  roles that cover each stack's resources with certainty, since no apply could be run to prove a narrower one.
 - **A break-glass to the dev control plane that opens nothing** (looper, #79, 2026-11-18). What: GKE's DNS-based
   control-plane endpoint (`control_plane_endpoints_config.dns_endpoint_config`), IAM-gated, as the hub's way in when
   the `infra` runner is down, or the runner VMs' pipelines go through a Connect Gateway, instead of opening the IP

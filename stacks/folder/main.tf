@@ -22,7 +22,6 @@ module "folder" {
   source        = "../../modules/folder"
   parent_folder = module.settings.parent_folder
   folders       = sort([for p in values(module.settings.projects) : p.folder])
-  pipeline_sa   = module.settings.bootstrap.pipeline_sa
   # People, the hub included, read only: their accounts, added here by a commit (README, People).
   readers = []
 }

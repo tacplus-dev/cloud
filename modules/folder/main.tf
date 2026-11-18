@@ -2,23 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Under the parent folder the host organization hands to this repository: the folders (but bootstrap's, which
-# bootstrap/bootstrap.sh made), the pipeline's rights on them, and the people's read-only access. The org policies
-# are the host organization's job, not this repository's (README, What the host organization provides): it holds no
-# right over the host's organization.
+# bootstrap/bootstrap.sh made), and the people's read-only access. The pipeline's rights on them are the host's grants
+# on the parent folder, the least set the stacks use (#78), never owner or editor; this grants it nothing. The org
+# policies are the host organization's job, not this repository's (README, What the host organization provides): it
+# holds no right over the host's organization.
 
 resource "google_folder" "folder" {
   for_each            = toset(var.folders)
   display_name        = each.key
   parent              = var.parent_folder
   deletion_protection = true
-}
-
-# The pipeline owns what is under its folders (the projects it creates there, and their IAM).
-resource "google_folder_iam_member" "pipeline_owner" {
-  for_each = google_folder.folder
-  folder   = each.value.name
-  role     = "roles/owner"
-  member   = "serviceAccount:${var.pipeline_sa}"
 }
 
 # People, the hub included, read only (tacplus-dev/roadmap decisions/cloud-pipeline-2026-11-02.md).
