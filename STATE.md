@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by the looper (#77).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#79).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -207,11 +207,20 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-17 by th
   `COS_CONTAINERD` (README, The network rules). The IAP SSH rule is gone from `ci`. In `dev`, the `arm64` pool is
   replaced by `normal` (3 x c4a-standard-2, on demand, fixed) and `spot` (c4a-standard-4 spot, 0 to 3, label `spot=true`,
   taint `spot=true:NoSchedule`, given in the stack's output `cluster` for tacplus-dev/cluster#6), both private and
-  `COS_CONTAINERD`; the control plane stays public (Jody). `compute.vmExternalIpAccess` (deny all) is on the README's list
+  `COS_CONTAINERD`; the control plane was public then (Jody, 2026-11-04), private since #79 (below). `compute.vmExternalIpAccess` (deny all) is on the README's list
   of the host's org policies (since #8 this repository sets none). The drift job runs a live audit (`ci/audit.sh`) of
   `tacplus-ci` and `tacplus-dev` with the same checks, for what no state holds; GKE's own internal `gke-*` rules are not
   reported for port 22. Tested with plan and live fixtures and the stacks' plan tests, against mocks and a stub gcloud
   only; the runner VMs are not spot (moot: they go with #11).
+- **No public control plane (#79, Jody, 2026-11-18: only load balancers are public):** the dev cluster has no public
+  endpoint (`enable_private_endpoint`), and its master authorized networks, enforced on the private endpoint, Google
+  Cloud's public ranges off, are the nodes' `10.20.0.0/20` and pods' `10.24.0.0/14`: the cloud, cluster and deploy
+  pipelines reach it from their job pods on `infra`; the runner VMs and the internet do not (README, The network rules;
+  the break-glass, README, The cluster pipeline). `ci/policy.sh plan` refuses a cluster with a public endpoint, without
+  authorized networks or authorizing a public range or Google's; the live audit reports one. Clears Trivy GCP-0061
+  locally (Trivy 0.76.1). Tested with the dev plan test (mock providers), the policy's and the audit's fixtures; not yet
+  seen live: `apply:dev` on main closing the endpoint (an in-place update), then a cluster and a deploy pipeline green
+  on `infra` against it, and the next nightly security report without GCP-0061.
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
