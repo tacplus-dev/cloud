@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#79).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#78).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -34,8 +34,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   organization hands over (README, What the host organization provides, and its hosting note), whose
   numeric ID is an input, `bootstrap/bootstrap.sh --folder` and the protected GitLab variable `GCP_PARENT_FOLDER`
   (`ci/lib.sh` gives it to the stacks as `parent_folder`). The bootstrap reads and asks for nothing above that folder,
-  and grants `cloud-admin-pipeline` nothing on it: its folderAdmin, projectCreator and owner there are the host's
-  grants, which the bootstrap reports. The org policies are the host's job (Jody's decision, option B): the README
+  and grants `cloud-admin-pipeline` nothing on it: its rights there are the host's grants, which the bootstrap
+  reports: since #78 the least set the stacks use (sixteen predefined roles, each named with why in the README and
+  `HOST_ROLES`), never owner or editor, and the folder stack grants it nothing (until #78, owner of `ci` and `dev`,
+  Trivy GCP-0007). **Not yet live:** the host organization still grants owner on the parent folder until it
+  swaps to the set; the bootstrap says which roles are missing and that owner and editor go. Unverified until the
+  first apply of each stack on the set alone; the pipeline's owner of the projects it created is PROPOSALS.md's. The org policies are the host's job (Jody's decision, option B): the README
   lists the set relied on; this repository sets none, and its drift does not see them. `tests/hosting_test.sh` fails
   on any organization resource or the host's name outside the README's hosting note.
 - **Runner image and readiness (#4):** the pools boot Container-Optimized OS for arm64, pinned by image name in
@@ -264,8 +268,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com` (Jody: in the dev stack, as the issue says). The provider
   is configured from the cluster resource (known only after apply on a build from nothing or a replacement, which the real
   provider plans) with an ephemeral `google_client_config` token: none in the plan or the state, none expired at apply.
-  `ci/policy.sh plan` refuses `roles/owner` or `roles/container.admin` to any service account but the pipeline's own owner
-  of its folders. tacplus-dev/cluster's hand steps 4 and 7 are this pipeline's; its README is a follow-up there
+  `ci/policy.sh plan` refuses `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78),
+  and `roles/container.admin` to any but the pipeline. tacplus-dev/cluster's hand steps 4 and 7 are this pipeline's; its README is a follow-up there
   (PROPOSALS.md). Tested with the dev stack's plan tests (mock providers), the policy's fixtures, and a plan of the binding
   with the real kubernetes provider under an unknown configuration; not applied yet: `apply:dev` on main does it, and
   whether the host admits the adder shows there; the hub sets `GCP_RUNNER_TOKEN_ADDERS` first.
@@ -274,7 +278,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   tacplus-dev group runner, tags `cloud`, `cluster`, `deploy` and no other, untagged off, `ref_protected`, registered paused and **unpaused at the switch-over** (#66, below),
   described as the cluster's; and writes its authentication token as `gitlab-runner-infra`'s version 1 (the first of
   the empty secret the dev stack makes; cluster's `gitlab-runner/runners/infra.yaml` names that version), as this
-  pipeline, its owner of the folder `dev`: no person or agent types it (Jody, 2026-11-16), and nothing else registers it.
+  pipeline, its `secretmanager.admin` from the parent folder (#78): no person or agent types it (Jody, 2026-11-16), and nothing else registers it.
   The module's `runners` take an optional `description` (a pool's stays the manager's); the stack's output `runners`
   gives each registration without its token, and the tests assert `infra` from it (README, The cluster pipeline; the
   switch-over is a commit flipping `paused`, PROPOSALS.md). Tested: the gitlab and dev stacks' plan tests (mock
