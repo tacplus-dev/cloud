@@ -5,7 +5,8 @@
 # Tests ci/audit.sh, the drift job's live audit (#7), against a stub gcloud over JSON fixtures (tests/stub/live,
 # tests/fixtures/live): in what the projects hold, made by a stack or by hand, it reports an instance or template with
 # an external address, an allow rule open to the internet, a rule allowing port 22 (the runners' internal rule and
-# GKE's own internal rules excepted), a cluster without private nodes and a pool with public nodes or not on COS,
+# GKE's own internal rules excepted), a cluster without private nodes or whose control plane has a public endpoint,
+# no authorized networks or a public range among them (#79), and a pool with public nodes or not on COS,
 # each once, saying the project; an external address but the global address gateway (#13); ingress from a public range
 # but Google's proxies' and health checkers' (#21); it reports a list it cannot read; it reports nothing in projects that keep the rules;
 # it only lists. The drift job audits the projects modules/settings names. Needs bash and jq.
@@ -41,12 +42,16 @@ reports "GKE's SSH rule from outside the network" "live dirty-dev: firewall rule
 reports "a pool with public nodes" "live dirty-dev: node pool dev/hand has public nodes"
 reports "a pool not on COS" "live dirty-dev: node pool dev/hand does not run Container-Optimized OS"
 reports "a cluster without private nodes" "live dirty-dev: cluster hand-public has no private nodes"
+reports "a cluster's public endpoint" "live dirty-dev: cluster dev has a public control-plane endpoint" "live dirty-dev: cluster hand-public has a public control-plane endpoint"
+reports "a cluster without authorized networks" "live dirty-dev: cluster hand-public has no master authorized networks"
+reports "a public range authorized to a control plane" "live dirty-dev: cluster dev authorizes 203.0.113.0/24 to its control plane, a public range"
+reports "Google Cloud's public ranges authorized to a control plane" "live dirty-dev: cluster dev authorizes Google Cloud's public ranges"
 reports "a second global external address" "live dirty-dev: global address hand-global is an external address"
 reports "a regional external address" "live dirty-dev: address hand-lb is an external address (a regional one)"
 reports "ingress from IAP's range" "live dirty-ci: firewall rule hand-iap-ssh allows ingress from 35.235.240.0/20, a public range"
 reports "ingress from a public address" "live dirty-dev: firewall rule gke-dev-1a2b3c4d-ssh allows ingress from 34.9.9.9/32, a public range"
-[ "$(wc -l < "$work/out")" = 13 ] && ok "nothing else is reported (the runners' rule, GKE's internal rules, a deny rule, a proxy LB's rule from Google's ranges, clean VMs and pools, the gateway's address)" ||
-  fail "the report is not those 13 lines: $(cat "$work/out")"
+[ "$(wc -l < "$work/out")" = 18 ] && ok "nothing else is reported (the runners' rule, GKE's internal rules, a deny rule, a proxy LB's rule from Google's ranges, clean VMs and pools, the gateway's address)" ||
+  fail "the report is not those 18 lines: $(cat "$work/out")"
 grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates|addresses)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
   fail "the audit runs more than the lists" || ok "the audit only lists"
 

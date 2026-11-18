@@ -544,3 +544,9 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **The hub's audit files what it finds** (looper, #77). What: on an exposure finding, the `audit` job also files (or
   comments on) an issue here, as the drift job does (`ci/drift.sh`, tacplus-reader), once per finding. Why: today a red
   hourly job is seen only by whoever reads the pipeline or the hub's report.
+- **A break-glass to the dev control plane that opens nothing** (looper, #79, 2026-11-18). What: GKE's DNS-based
+  control-plane endpoint (`control_plane_endpoints_config.dns_endpoint_config`), IAM-gated, as the hub's way in when
+  the `infra` runner is down, or the runner VMs' pipelines go through a Connect Gateway, instead of opening the IP
+  endpoint to the runners' NAT address by hand (README, The cluster pipeline, the break-glass). Why: since #79 only the
+  cluster's own nodes and pods reach the control plane, so repairing `infra` from outside needs a hand change that is
+  public while it lasts. A decision for Jody (the DNS endpoint answers from the internet, behind IAM).

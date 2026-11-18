@@ -12,7 +12,8 @@
 #     rule allowing ingress from the internet (0.0.0.0/0 or ::/0, or no source at all, which is 0.0.0.0/0): every load
 #     balancer is proxy-based, so no exception; a firewall rule allowing port 22, in either direction (tcp or all, with
 #     no ports, 22, or a range covering it): no SSH anywhere, not even IAP, the one exception being the runners' internal
-#     rule, exactly as it is, until the runner VMs go (#11); a cluster without private nodes, a node pool with public
+#     rule, exactly as it is, until the runner VMs go (#11); a cluster without private nodes, one whose control plane
+#     has a public endpoint, no master authorized networks, or a public range among them (#79), a node pool with public
 #     ones (one that does not say inherits the cluster's), or a node pool whose image is not COS_CONTAINERD;
 #   - the one public IP (decisions/network-exposure-2026-11-03.md, #13): in a plan, an external address but the one
 #     global address `gateway` (the dev stack's), a regional external address, or an external forwarding rule but the
@@ -191,8 +192,19 @@ plan_check() {
               end),
            (select($b.role | IN($audit_roles[]) | not) | $b.members[] | select(. == $audit)
             | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")))")),
-        (select(.type == "google_container_cluster" and ($after.private_cluster_config[0].enable_private_nodes != true))
-         | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
+        (select(.type == "google_container_cluster")
+         | (select($after.private_cluster_config[0].enable_private_nodes != true)
+            | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
+           # Only load balancers are public (#79): the control plane has no public endpoint, and admits private ranges alone.
+           (select($after.private_cluster_config[0].enable_private_endpoint != true)
+            | "\($a) has a public control-plane endpoint (private_cluster_config.enable_private_endpoint): only load balancers are public"),
+           (($after.master_authorized_networks_config // [])[0] as $m
+            | if $m == null then "\($a) has no master authorized networks (master_authorized_networks_config): its control plane admits the cluster'"'"'s own ranges alone"
+              else (select($m.gcp_public_cidrs_access_enabled == true)
+                    | "\($a) authorizes Google Cloud'"'"'s public ranges to its control plane (master_authorized_networks_config.gcp_public_cidrs_access_enabled)"),
+                   ($m.cidr_blocks[]?.cidr_block | select(. as $s | all("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"; . as $net | $s | within($net) | not))
+                    | "\($a) authorizes \(.) to its control plane, a public range")
+              end)),
         (select(.type | startswith("anthropic_")) | select(.change.importing != null)
          # What differs, the value in the Console (before) then in the config (after), as the text of the plan is printed
          # only once the policy passes: not what is known only after apply (its timestamps, or a list the provider

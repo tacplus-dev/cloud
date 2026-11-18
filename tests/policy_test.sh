@@ -9,7 +9,8 @@
 # them (a key deleted is not one created); and the network rules of 2026-11-03 (#7): it refuses an instance or a
 # template with an external address (an access config, or one known only after apply), an allow rule open to the
 # internet (0.0.0.0/0, ::/0, or no source at all), a rule allowing port 22 (a port, a range or all ports, either
-# direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, a pool
+# direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, one whose
+# control plane has a public endpoint, no authorized networks or a public range among them (#79), a pool
 # with public nodes or not on COS, and passes a plan that keeps them; and the one public IP (#13): in the source, a
 # global address without prevent_destroy, and in a plan, an external address but the one global address `gateway`, or
 # an external forwarding rule but the TCP proxy's on it; we terminate TLS, not the cloud (#21): the forwarding rule on
@@ -93,6 +94,10 @@ refuses "a plan allowing all protocols" "port 22" plan "$fx/plans/ssh-all.json"
 refuses "a plan with egress allowing all tcp ports" "port 22" plan "$fx/plans/ssh-egress.json"
 refuses "a plan widening the runners' SSH rule" "port 22" plan "$fx/plans/ssh-exemption-widened.json"
 refuses "a plan with a cluster without private nodes" "private nodes" plan "$fx/plans/cluster-public-nodes.json"
+refuses "a plan with a cluster's public endpoint" "google_container_cluster.c has a public control-plane endpoint" plan "$fx/plans/cluster-public-endpoint.json"
+refuses "a plan with a cluster without authorized networks" "google_container_cluster.c has no master authorized networks" plan "$fx/plans/cluster-no-authorized-networks.json"
+refuses "a plan authorizing a public range to a control plane" "google_container_cluster.c authorizes 35.191.0.0/16 to its control plane, a public range" plan "$fx/plans/cluster-authorized-public.json"
+refuses "a plan authorizing Google Cloud's public ranges to a control plane" "google_container_cluster.c authorizes Google Cloud's public ranges" plan "$fx/plans/cluster-authorized-google.json"
 refuses "a plan with a pool with public nodes" "public nodes" plan "$fx/plans/pool-public-nodes.json"
 refuses "a plan with a pool not on COS" "Container-Optimized OS" plan "$fx/plans/pool-not-cos.json"
 refuses "a plan with a regional external address" "google_compute_address.lb is an external address" plan "$fx/plans/address-regional.json"

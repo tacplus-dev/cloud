@@ -145,8 +145,16 @@ is applied:
   `runner-manager-to-workers-ssh` (the manager to its workers, by network tag), which goes with the runner VMs (#11).
   Break-glass on a VM is its serial console and its logs.
 - **Private nodes, on Container-Optimized OS:** a cluster without `private_cluster_config.enable_private_nodes`, a node pool
-  with public nodes, or one whose `image_type` is not `COS_CONTAINERD`, is refused. The control plane's endpoint stays
-  public (Jody, 2026-11-04).
+  with public nodes, or one whose `image_type` is not `COS_CONTAINERD`, is refused.
+- **No public control plane** (Jody, 2026-11-18, #79: only load balancers are public; until then it was public, Jody,
+  2026-11-04): the dev cluster's control plane has no public endpoint (`enable_private_endpoint`), and its private one
+  (`172.16.0.0/28`) accepts only the cluster's own nodes (`10.20.0.0/20`) and pods (`10.24.0.0/14`), its master
+  authorized networks enforced on the private endpoint too, Google Cloud's public ranges off. The cloud, cluster and
+  deploy pipelines reach it from inside, on the in-cluster runner `infra` (below, The cluster pipeline), whose job pods
+  are in the pods' range; `get-credentials` gives the private endpoint, which is the cluster's only one. Nothing on the
+  internet, the runner VMs in `tacplus-ci` and the hub's own machine included, reaches it. A cluster with a public
+  endpoint, with no master authorized networks, or authorizing a public range or Google Cloud's public ranges, is
+  refused in a plan, and the live audit reports one.
 - **The pools:** `normal`, 3 x c4a-standard-2, on demand and fixed, runs the platform; `spot`, c4a-standard-4 spot from 0
   to 3, labelled `spot=true` and tainted `spot=true:NoSchedule`, runs build pods only: only they tolerate the taint
   (tacplus-dev/cluster#6). The dev stack's output `cluster` gives the label and the taint.
@@ -758,7 +766,8 @@ the hub does, steps 4 and 7, are this pipeline's):
   its folders alone excepted): either could delete the cluster.
 - **In the cluster:** the ClusterRoleBinding `cluster-admin-pipeline` of the ClusterRole `cluster-admin` to the User
   `cluster-admin-pipeline@tacplus-dev.iam.gserviceaccount.com`, made through the kubernetes provider as this pipeline
-  (its owner of the folder `dev` covers GKE's RBAC), against the cluster's public endpoint. The provider's token is
+  (its owner of the folder `dev` covers GKE's RBAC), against the cluster's private endpoint (#79), from the `infra`
+  runner's job pod in the cluster. The provider's token is
   ephemeral (`ephemeral "google_client_config"`): the plan and the apply each open their own, and none is in the saved
   plan or the state. On a plan before the cluster exists, or of its replacement, the provider's endpoint is known only
   after apply, and the binding is made once the cluster is; a cluster rebuilt by hand loses it, and the drift plan
@@ -795,7 +804,12 @@ the hub does, steps 4 and 7, are this pipeline's):
   replacing the cluster, its normal pool or the `ci` namespace stops its own job mid-apply. **Break-glass, if `infra`
   takes no job** (its token, image or node): the `cloud` jobs, a revert's apply among them, stay pending, so the hub
   unpauses the `cluster` pool's runner by hand in GitLab, lands the revert of the switch-over, whose `apply:gitlab`
-  runs on that pool, and the stack matches GitLab again.
+  runs on that pool, and the stack matches GitLab again. A job on the pools' VMs does not reach the control plane
+  (#79): `apply:gitlab` needs none, but `plan:dev`, `apply:dev` and cluster's pipeline do, so to repair `infra` from
+  there the hub, as owner, opens the public endpoint to the runners' NAT address by hand (`gcloud container clusters
+  update dev --zone us-central1-a --project tacplus-dev --no-enable-private-endpoint` and
+  `--enable-master-authorized-networks --master-authorized-networks 10.20.0.0/20,10.24.0.0/14,<that address>/32`), and the first `apply:dev` on
+  `infra` again closes it (drift the stack undoes).
 - **Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12):** the Artifact Registry Docker
   repository `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, for the GitLab Runner and helper images
   tacplus-dev/cluster builds itself (crane, no container runtime) and its `gitlab-runner/pin.yaml` names by digest.

@@ -241,8 +241,14 @@ run "dev" {
     error_message = "The module does not give the build pool's label and taint."
   }
   assert {
-    condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_nodes && !google_container_cluster.dev.private_cluster_config[0].enable_private_endpoint && alltrue([for p in google_container_node_pool.pool : p.network_config[0].enable_private_nodes && p.node_config[0].image_type == "COS_CONTAINERD" && p.node_config[0].workload_metadata_config[0].mode == "GKE_METADATA"])
-    error_message = "The nodes have external addresses or do not run Container-Optimized OS, pods see the node's metadata, or the control plane is not public (Jody, 2026-11-04: it stays public)."
+    condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_nodes && alltrue([for p in google_container_node_pool.pool : p.network_config[0].enable_private_nodes && p.node_config[0].image_type == "COS_CONTAINERD" && p.node_config[0].workload_metadata_config[0].mode == "GKE_METADATA"])
+    error_message = "The nodes have external addresses or do not run Container-Optimized OS, or pods see the node's metadata."
+  }
+  # Only load balancers are public (Jody, 2026-11-18, #79): the control plane has no public endpoint, and its private one
+  # admits the cluster's own nodes and pods alone, where the cloud, cluster and deploy pipelines run (the runner infra).
+  assert {
+    condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_endpoint && length(google_container_cluster.dev.master_authorized_networks_config) == 1 && !google_container_cluster.dev.master_authorized_networks_config[0].gcp_public_cidrs_access_enabled && google_container_cluster.dev.master_authorized_networks_config[0].private_endpoint_enforcement_enabled && toset([for b in google_container_cluster.dev.master_authorized_networks_config[0].cidr_blocks : b.cidr_block]) == toset(["10.20.0.0/20", "10.24.0.0/14"])
+    error_message = "The control plane has a public endpoint, or admits more than the cluster's nodes (10.20.0.0/20) and pods (10.24.0.0/14)."
   }
   assert {
     condition     = google_dns_managed_zone.dev.dns_name == "dev.tacplus.dev." && google_dns_managed_zone.dev.dnssec_config[0].state == "on"

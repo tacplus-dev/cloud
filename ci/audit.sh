@@ -46,7 +46,11 @@ for project in "$@"; do
         else rc("google_compute_global_address"; "global address \(.name)"; {name, address_type: .addressType}) end),
       (($gke[0] // [])[] | .name as $c
        | rc("google_container_cluster"; "cluster \($c)"; {private_cluster_config: [{enable_private_nodes:
-           (.privateClusterConfig.enablePrivateNodes // .networkConfig.defaultEnablePrivateNodes // false)}]}),
+           (.privateClusterConfig.enablePrivateNodes // .networkConfig.defaultEnablePrivateNodes // false),
+           enable_private_endpoint: ((.privateClusterConfig.enablePrivateEndpoint // false)
+             or (.controlPlaneEndpointsConfig.ipEndpointsConfig | . != null and (.enabled == false or .enablePublicEndpoint == false)))}],
+         master_authorized_networks_config: [.masterAuthorizedNetworksConfig | select(.enabled? == true)
+           | {cidr_blocks: [.cidrBlocks[]? | {cidr_block: .cidrBlock}], gcp_public_cidrs_access_enabled: (.gcpPublicCidrsAccessEnabled // false)}]}),
          (.nodePools[]? | rc("google_container_node_pool"; "node pool \($c)/\(.name)";
            {network_config: [{enable_private_nodes: .networkConfig.enablePrivateNodes}], node_config: [{image_type: .config.imageType}]})))
     ]}' > "$tmp/live.json" 2> "$tmp/err" &&

@@ -11,6 +11,26 @@
           "imageType": "COS_CONTAINERD"
         }
       }
-    ]
+    ],
+    "controlPlaneEndpointsConfig": {
+      "ipEndpointsConfig": {
+        "enabled": true,
+        "enablePublicEndpoint": false
+      }
+    },
+    "masterAuthorizedNetworksConfig": {
+      "enabled": true,
+      "cidrBlocks": [
+        {
+          "displayName": "nodes",
+          "cidrBlock": "10.20.0.0/20"
+        },
+        {
+          "displayName": "pods",
+          "cidrBlock": "10.24.0.0/14"
+        }
+      ],
+      "privateEndpointEnforcementEnabled": true
+    }
   }
 ]

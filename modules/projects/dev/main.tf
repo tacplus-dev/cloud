@@ -152,8 +152,23 @@ resource "google_container_cluster" "dev" {
   }
   private_cluster_config {
     enable_private_nodes    = true
-    enable_private_endpoint = false
+    enable_private_endpoint = true
     master_ipv4_cidr_block  = var.network.control_plane
+  }
+  # Only load balancers are public (Jody, 2026-11-18, #79): the control plane has no public endpoint, and its private
+  # one admits the cluster's own nodes and pods alone, where the cloud, cluster and deploy pipelines run (the in-cluster
+  # runner infra, #64).
+  master_authorized_networks_config {
+    gcp_public_cidrs_access_enabled      = false
+    private_endpoint_enforcement_enabled = true
+    cidr_blocks {
+      display_name = "nodes"
+      cidr_block   = var.network.nodes
+    }
+    cidr_blocks {
+      display_name = "pods"
+      cidr_block   = var.network.pods
+    }
   }
   # The default pool goes at once; this is only what it is created with.
   node_config {
