@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#78).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#80).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -225,6 +225,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   locally (Trivy 0.76.1). Tested with the dev plan test (mock providers), the policy's and the audit's fixtures; not yet
   seen live: `apply:dev` on main closing the endpoint (an in-place update), then a cluster and a deploy pipeline green
   on `infra` against it, and the next nightly security report without GCP-0061.
+- **The stacks' Trivy config findings (#80, Jody, 2026-11-18):** the build cache bucket is versioned (a noncurrent
+  version deleted after 7 days; GCP-0078), its writes logged by Data Access audit logs of Cloud Storage on `ci`,
+  `DATA_WRITE` only (usage logs need a grant the host's domain policy refuses), and the dev cluster's resources labelled
+  `managed-by` (GCP-0051). Flow logs (GCP-0076, GCP-0029), CMEK (GCP-0066), bucket usage logs (GCP-0077) and the full
+  audit config (GCP-0079) are baselined in `security-baseline.json` until production, each reason in the README
+  (Security checks) and PROPOSALS.md. Checked with `looper-scan local` (nightly kind, Trivy 0.76.1): those eight
+  baselined; what remains new is #11's runner VMs and `ci/lib.sh`'s semgrep finding. Not yet seen live: `apply:ci`
+  setting the audit config and versioning, and the next nightly report.
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
