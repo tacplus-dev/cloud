@@ -67,3 +67,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-17 looper issue dev: seatrials-deploy cannot add a version to test-idp-seeds, so the test IdP's first run cannot store its seeds (fleet-seatrials#27) (#73)
 - 2026-11-17 looper issue gitlab stack: move build_ci_commit to tacplus-dev/looper c0f7304 (image ffd21be6: #173's retry of image-pull failures) (#75)
 - 2026-11-17 looper issue security: GO-2026-5932's fix is out (x/crypto v0.59.0, 2026-11-11): build the google provider with it (#76)
+- 2026-11-18 looper issue security: the dev cluster's public control plane has no master authorized networks, failing the build's security policy (Trivy GCP-0061, HIGH) (#79)
