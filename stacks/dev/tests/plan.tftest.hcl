@@ -226,7 +226,7 @@ run "dev" {
   }
   # The cluster's VMs and disks carry the label the buckets do (#80, Trivy GCP-0051).
   assert {
-    condition     = google_container_cluster.dev.resource_labels == { managed-by = "tacplus-dev-cloud" }
+    condition     = google_container_cluster.dev.resource_labels == tomap({ managed-by = "tacplus-dev-cloud" })
     error_message = "The cluster's resources are not labelled managed-by = tacplus-dev-cloud."
   }
   assert {
