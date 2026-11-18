@@ -25,6 +25,33 @@ resource "google_storage_bucket" "cache" {
       type = "Delete"
     }
   }
+  # Versioned (Jody, 2026-11-18, #80): an entry overwritten or deleted stays, noncurrent, for a week, so a poisoned
+  # write can be looked at and undone; then it goes, and the rule above still bounds the cache.
+  versioning {
+    enabled = true
+  }
+  lifecycle_rule {
+    condition {
+      days_since_noncurrent_time = 7
+      with_state                 = "ARCHIVED"
+    }
+    action {
+      type = "Delete"
+    }
+  }
+  depends_on = [terraform_data.iam_ready]
+}
+
+# The cache's writes are logged (#80, Jody's decision 1(b)): Data Access audit logs of Cloud Storage in this project,
+# object writes and deletes (DATA_WRITE), where a poisoned entry would show, and not reads, which would log every
+# build's. Not the bucket's usage logs: they need Google's own writer granted on a log bucket, which the host's
+# iam.allowedPolicyMemberDomains refuses (README, Security checks).
+resource "google_project_iam_audit_config" "storage" {
+  project = google_project.ci.project_id
+  service = "storage.googleapis.com"
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
   depends_on = [terraform_data.iam_ready]
 }
 

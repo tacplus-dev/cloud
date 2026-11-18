@@ -62,6 +62,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | `stacks/gitlab/files/build.gitlab-ci.yml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
+| `security-baseline.json` | The build pipeline's MEDIUM and LOW findings of the stacks' Terraform accepted until production, `{tool, id, file, count}` as looper-scan writes them; each one's reason is below (Security checks). |
 | `tests/` | The tests (`ci/checks.sh` runs them all), their fixtures and stubs. |
 
 ## How it runs
@@ -247,6 +248,24 @@ report in `security/raw/`; the job's artifact, kept 30 days. The vulnerability d
 that passed can fail the next night: fix the pin, or accept the finding with a reason and an expiry, at most 30 days.
 `tests/security_test.sh` tests it (a planted secret, an expired exception, a clean tree, the policy) with stubs for
 the scanners that need a database.
+
+**The stacks' Terraform** is scanned by the build pipeline's nightly checks (tacplus-dev/build's looper-scan, Trivy
+config), not by this job. Its MEDIUM and LOW findings are fixed in the stacks, or recorded in `security-baseline.json`
+(`looper-scan baseline`), which holds no reason, so each entry's is here (#80, Jody's decisions of 2026-11-18). The
+cache bucket is versioned (a noncurrent version goes after 7 days) and the cluster's resources are labelled. Baselined
+in dev and ci until production (tacplus-dev/roadmap:PRODUCTION.md, PROPOSALS.md):
+
+- **GCP-0076, GCP-0029** (`modules/projects/ci/main.tf`, `modules/projects/dev/main.tf`): no VPC flow logs on the
+  `runners` and `nodes` subnets, their cost with no current need. The `runners` subnet goes with #11.
+- **GCP-0066** (`modules/projects/ci/storage.tf`): the build cache is encrypted with Google's keys, not a KMS key of
+  ours: it holds content-keyed build outputs, no secret, and a key to run would gain nothing.
+- **GCP-0077** (`modules/projects/ci/storage.tf`): the cache bucket has no usage logs. They need Google's writer,
+  `cloud-storage-analytics@google.com`, granted on a log bucket, which the host's `iam.allowedPolicyMemberDomains`
+  refuses. Its writes and deletes are logged instead, by Data Access audit logs of Cloud Storage on the ci project,
+  `DATA_WRITE` alone (`google_project_iam_audit_config.storage`): reads would log every build's.
+- **GCP-0079** (`modules/projects/ci/storage.tf`, `stacks/dev/main.tf`): Trivy wants an audit config of `allServices`
+  with every log type, reads included, which would bill every API read in dev and ci. Where it belongs is the parent
+  folder (PROPOSALS.md, Data Access audit logs on the parent folder). In ci it names the storage config above.
 
 ### How a change flows
 

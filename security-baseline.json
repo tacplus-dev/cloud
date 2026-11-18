@@ -1,0 +1,10 @@
+[
+  {"count":1,"file":"modules/projects/ci/main.tf","id":"GCP-0029","tool":"trivy"},
+  {"count":1,"file":"modules/projects/dev/main.tf","id":"GCP-0029","tool":"trivy"},
+  {"count":1,"file":"modules/projects/ci/storage.tf","id":"GCP-0066","tool":"trivy"},
+  {"count":1,"file":"modules/projects/ci/main.tf","id":"GCP-0076","tool":"trivy"},
+  {"count":1,"file":"modules/projects/dev/main.tf","id":"GCP-0076","tool":"trivy"},
+  {"count":1,"file":"modules/projects/ci/storage.tf","id":"GCP-0077","tool":"trivy"},
+  {"count":1,"file":"modules/projects/ci/storage.tf","id":"GCP-0079","tool":"trivy"},
+  {"count":1,"file":"stacks/dev/main.tf","id":"GCP-0079","tool":"trivy"}
+]

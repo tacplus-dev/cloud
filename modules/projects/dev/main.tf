@@ -139,6 +139,8 @@ resource "google_container_cluster" "dev" {
   deletion_protection      = true
   datapath_provider        = "ADVANCED_DATAPATH"
   enable_shielded_nodes    = true
+  # On the cluster's VMs and disks, as on the buckets (#80).
+  resource_labels = { managed-by = "tacplus-dev-cloud" }
 
   release_channel {
     channel = var.cluster.release_channel

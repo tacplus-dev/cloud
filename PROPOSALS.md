@@ -29,6 +29,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   config (`google_folder_iam_audit_config` on the parent folder) for IAM and Secret Manager reads, in the folder stack,
   unless the host sets it above. Why: break-glass and the pipeline's secret reads are then traced beyond Admin
   Activity.
+- **The stacks' baselined Trivy findings, for production** (Jody, #80, 2026-11-18). What: VPC flow logs on every
+  subnet (GCP-0076, GCP-0029), CMEK on the buckets (GCP-0066), bucket usage logs (GCP-0077, once the host admits
+  Google's log writer, or kept as Cloud Storage's Data Access audit logs) and a full audit config (GCP-0079, at the
+  folder), for `prod`, and their `security-baseline.json` entries reviewed then (README, Security checks). Why: Jody
+  baselined them in dev and ci for their cost with no current need, to revisit for production
+  (tacplus-dev/roadmap:PRODUCTION.md).
 - **Deterministic security checks in this pipeline** (nightly scan, 2026-11-03): done by #10 (the `security` job,
   `ci/security.sh`; the runners' default image is not scanned: the runners go with #11). What: a `security` job, run on every
   push and nightly, applying tacplus-dev/looper#49's floor to what this repository pins: `govulncheck -mode=binary` of

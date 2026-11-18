@@ -424,8 +424,20 @@ run "ci" {
     error_message = "Something other than tacplus-dev/build's jobs may become the build identity."
   }
   assert {
-    condition     = length(google_storage_bucket.cache.lifecycle_rule) == 1 && one(google_storage_bucket.cache.lifecycle_rule[0].condition).age == 30 && one(google_storage_bucket.cache.lifecycle_rule[0].action).type == "Delete"
+    condition     = length(google_storage_bucket.cache.lifecycle_rule) == 2 && one(google_storage_bucket.cache.lifecycle_rule[0].condition).age == 30 && one(google_storage_bucket.cache.lifecycle_rule[0].action).type == "Delete"
     error_message = "The cache bucket does not delete an entry 30 days after it was last written."
+  }
+  # Versioned (Jody, 2026-11-18, #80): an overwritten or deleted entry stays, noncurrent, for 7 days, so a poisoned
+  # write can be looked at and undone; then it goes, and the 30-day rule still bounds the cache.
+  assert {
+    condition     = one(google_storage_bucket.cache.versioning).enabled && one(google_storage_bucket.cache.lifecycle_rule[1].condition).days_since_noncurrent_time == 7 && one(google_storage_bucket.cache.lifecycle_rule[1].condition).with_state == "ARCHIVED" && one(google_storage_bucket.cache.lifecycle_rule[1].action).type == "Delete"
+    error_message = "The cache bucket is not versioned, or does not delete a noncurrent version 7 days after it became noncurrent."
+  }
+  # Its writes are logged (#80, Jody's decision 1(b)): Data Access audit logs of Cloud Storage, DATA_WRITE alone (no
+  # read of every build), not usage logs, which the host's iam.allowedPolicyMemberDomains refuses Google's writer.
+  assert {
+    condition     = google_project_iam_audit_config.storage.project == "tacplus-ci" && google_project_iam_audit_config.storage.service == "storage.googleapis.com" && [for c in google_project_iam_audit_config.storage.audit_log_config : c.log_type] == ["DATA_WRITE"] && alltrue([for c in google_project_iam_audit_config.storage.audit_log_config : try(length(c.exempted_members), 0) == 0])
+    error_message = "The ci project does not log Cloud Storage's data writes, and those alone, with no one exempted."
   }
   assert {
     condition     = !google_artifact_registry_repository.cache.cleanup_policy_dry_run && length(google_artifact_registry_repository.cache.cleanup_policies) == 1 && one(google_artifact_registry_repository.cache.cleanup_policies).action == "DELETE" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].tag_state == "ANY" && one(google_artifact_registry_repository.cache.cleanup_policies).condition[0].older_than == "2592000s"

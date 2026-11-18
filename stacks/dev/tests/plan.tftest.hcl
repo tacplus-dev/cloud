@@ -224,6 +224,11 @@ run "dev" {
     condition     = toset(keys(google_container_node_pool.pool)) == toset(["normal", "spot"]) && google_container_cluster.dev.deletion_protection
     error_message = "The cluster's pools are not normal and spot, or the cluster is not deletion-protected."
   }
+  # The cluster's VMs and disks carry the label the buckets do (#80, Trivy GCP-0051).
+  assert {
+    condition     = google_container_cluster.dev.resource_labels == { managed-by = "tacplus-dev-cloud" }
+    error_message = "The cluster's resources are not labelled managed-by = tacplus-dev-cloud."
+  }
   assert {
     condition     = google_container_node_pool.pool["normal"].node_config[0].machine_type == "c4a-standard-2" && google_container_node_pool.pool["normal"].node_count == 3 && length(google_container_node_pool.pool["normal"].autoscaling) == 0 && !google_container_node_pool.pool["normal"].node_config[0].spot && length(google_container_node_pool.pool["normal"].node_config[0].taint) == 0
     error_message = "The normal pool is not 3 x c4a-standard-2, fixed, on demand, untainted."
