@@ -69,3 +69,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-17 looper issue security: GO-2026-5932's fix is out (x/crypto v0.59.0, 2026-11-11): build the google provider with it (#76)
 - 2026-11-18 looper issue security: the dev cluster's public control plane has no master authorized networks, failing the build's security policy (Trivy GCP-0061, HIGH) (#79)
 - 2026-11-18 looper issue security: the pipeline's roles/owner on its folders fails the build's security policy (Trivy GCP-0007, HIGH, modules/folder/main.tf) (#78)
+- 2026-11-19 looper issue The looper's kicker and plan need a runner of their own: register kick (arm64, kick) and its token secret gitlab-runner-kick (cluster#36) (#81)
