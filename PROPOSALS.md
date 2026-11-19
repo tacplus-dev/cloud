@@ -523,6 +523,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   moving each `tacplus.token` to version 2. Why: the hub does not hand-copy runner tokens (Jody, 2026-11-16, #64); today
   `build`'s and `control`'s were typed once, and the adders' role is the one write grant to a person this pipeline makes
   (**The runners' token adders' account**, above). `infra` already shows the pattern.
+- **apply:gitlab after the secrets it writes to** (looper, #81, 2026-11-19). What: `apply:gitlab` writes a version
+  to a secret the dev stack makes (`gitlab-runner-infra`, #64; `gitlab-runner-kick`, #81), but `plan:gitlab` needs
+  `apply:ci` alone, so on the pipeline that adds a runner and its secret together it may reach the version before
+  `apply:dev` has made the secret, and fail after registering the runner (a retry writes it). Either the secrets move
+  to a stack `apply:gitlab` already follows, or the gitlab stack makes its own runners' secrets (its rights on dev are
+  the folder's `secretmanager.admin`), with `cluster-admin-pipeline`'s binding. Not a `needs: [apply:dev]`: the
+  break-glass (README, The cluster pipeline) runs `apply:gitlab` when `apply:dev` cannot reach the control plane. Why:
+  a red `apply:gitlab` on a land that is right, and a hand retry.
 - **The switch-over to `infra` is a commit** (looper, #64, 2026-11-16; built by #66, 2026-11-16: `stacks/gitlab/main.tf`
   unpauses `infra` and pauses the `cluster` and `deploy` pools, `contains(["cluster", "deploy"], k)`; README, The cluster
   pipeline, says why, and the break-glass if `infra` takes no job). Left: one cloud and one cluster pipeline green on
