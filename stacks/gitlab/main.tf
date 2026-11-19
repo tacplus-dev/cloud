@@ -90,7 +90,14 @@ module "gitlab" {
     # and paused the cluster and deploy pools above, which carry the same tags, in the same commit. Its token is the
     # first version of the dev stack's secret gitlab-runner-infra, the version its file names, written by this
     # pipeline, so that no person or agent ever types it; cluster-admin-pipeline alone reads it.
-    { infra = local.infra_runner },
+    # The in-cluster kick runner (#81; tacplus-dev/cluster#36, its gitlab-runner/runners/kick.yaml): the looper's kicker
+    # and plan alone, so one always runs while the control runner's slots are full of reports. Tags arm64 and kick, not
+    # control: GitLab gives a runner every job whose tags are a subset of its own, so one holding control would take the
+    # reports too and fill up as control does; control, lacking kick, never takes kick's jobs. Any ref (the kicker and
+    # plan run on main's schedules, as the looper's other control jobs), unpaused: no job carries kick until
+    # tacplus-dev/looper moves them to it, after cluster's pipeline has applied the runner. Its token, as infra's, the
+    # first version of the dev stack's gitlab-runner-kick, written by this pipeline; cluster-admin-pipeline alone reads it.
+    { infra = local.infra_runner, kick = local.kick_runner },
   )
 }
 
@@ -104,6 +111,16 @@ locals {
     paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-infra"
     description  = "tacplus-dev infra (tacplus-dev/cloud: the cluster, ci namespace, normal pool; protected refs; cloud, cluster and deploy pipelines)"
+  }
+  kick_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["arm64", "kick"]
+    protected    = false
+    paused       = false
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-kick"
+    description  = "tacplus-dev kick (tacplus-dev/cloud: the cluster, normal pool; the looper's kicker and plan alone)"
   }
 }
 

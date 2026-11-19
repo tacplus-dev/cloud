@@ -4,7 +4,7 @@
 # The gitlab stack's plan against a stub GitLab and stub secrets (mock providers: no token, no cloud): the stack
 # plans, and its module, with the stack's inputs, gives protected settings, variables from Secret Manager by
 # version, runners whose tokens go to Secret Manager only (the pools' to the ci project's, the in-cluster infra
-# runner's to the dev project's gitlab-runner-infra, #64), infra taking the jobs the paused cluster and deploy pools took (#66), and memberships of other projects that read only (Reporter,
+# runner's to the dev project's gitlab-runner-infra, #64, and the kick runner's to gitlab-runner-kick, #81), infra taking the jobs the paused cluster and deploy pools took (#66), and memberships of other projects that read only (Reporter,
 # 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -47,8 +47,8 @@ run "stack" {
     error_message = "tacplus-dev/cloud has not exactly the hourly schedule audit on main."
   }
   assert {
-    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra"])
-    error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra runner (#64)."
+    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra", "kick"])
+    error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra (#64) and kick (#81) runners."
   }
   # The infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): a tacplus-dev group runner for
   # the cloud, cluster and deploy pipelines, those three tags and no other, untagged off, protected refs only, unpaused
@@ -70,6 +70,32 @@ run "stack" {
     condition     = output.runners["infra"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-infra"
     error_message = "The infra runner's token is not written to the dev project's gitlab-runner-infra, tacplus-dev/cluster's tacplus.token."
   }
+  # The kick runner (#81; tacplus-dev/cluster#36, its gitlab-runner/runners/kick.yaml): a tacplus-dev group runner for
+  # the looper's kicker and plan alone, tags arm64 and kick and no other (not control: GitLab gives a runner every job
+  # whose tags are a subset of its own, so one holding control would take the reports too), untagged off, any ref (the
+  # kicker and plan run on main's schedules), unpaused (no job carries kick until tacplus-dev/looper moves them to it),
+  # its token the dev project's gitlab-runner-kick (version 1, the first of an empty secret), which no person types.
+  assert {
+    condition     = output.runners["kick"].type == "group_type" && output.runners["kick"].group_id == 88
+    error_message = "The kick runner is not a group runner of tacplus-dev."
+  }
+  assert {
+    condition     = output.runners["kick"].tags == toset(["arm64", "kick"]) && !output.runners["kick"].untagged
+    error_message = "The kick runner's tags are not arm64 and kick, and no other, or it takes untagged jobs."
+  }
+  assert {
+    condition     = output.runners["kick"].access_level == "not_protected" && !output.runners["kick"].paused
+    error_message = "The kick runner takes protected refs only, or is paused: the kicker and plan run on main's schedules, and take it once tacplus-dev/looper tags them kick."
+  }
+  assert {
+    condition     = output.runners["kick"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-kick"
+    error_message = "The kick runner's token is not written to the dev project's gitlab-runner-kick, tacplus-dev/cluster's tacplus.token."
+  }
+  # No other runner carries kick: its jobs (the kicker and plan) go to kick alone.
+  assert {
+    condition     = [for k, r in output.runners : k if contains(r.tags, "kick")] == ["kick"]
+    error_message = "A runner besides kick carries the tag kick."
+  }
   # The build pool's runner (#70): arm64 and build, which it keeps until #11 removes it, and build-docker, which
   # tacplus-dev/looper#172's BUILD_DOCKER_TAGS asks for, so a job that still needs host Docker never lands on the
   # in-cluster build runner (no socket) once it takes arm64 and build too.
@@ -81,10 +107,10 @@ run "stack" {
   # them; shared and build keep taking jobs. Each pool's token goes to its own secret of the ci project.
   assert {
     condition     = toset([for k, r in output.runners : k if r.paused]) == toset(["cluster", "deploy"])
-    error_message = "The paused runners are not the cluster and deploy pools' (#66): infra, shared and build take jobs."
+    error_message = "The paused runners are not the cluster and deploy pools' (#66): infra, kick, shared and build take jobs."
   }
   assert {
-    condition     = alltrue([for k, r in output.runners : r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if k != "infra"])
+    condition     = alltrue([for k, r in output.runners : r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if !contains(["infra", "kick"], k)])
     error_message = "A pool's token does not go to the ci project's runner-token-<pool>."
   }
   # The cluster and deploy pools carry the tags infra takes over, and no other runner does: the switch-over paused them

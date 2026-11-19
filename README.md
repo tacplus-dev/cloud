@@ -797,7 +797,8 @@ the hub does, steps 4 and 7, are this pipeline's):
   plan or the state. On a plan before the cluster exists, or of its replacement, the provider's endpoint is known only
   after apply, and the binding is made once the cluster is; a cluster rebuilt by hand loses it, and the drift plan
   shows it to be made again. The drift job's plan of `dev` reads it from the cluster.
-- **The runners' token secrets:** `gitlab-runner-build`, `gitlab-runner-control` and `gitlab-runner-infra` (#64),
+- **The runners' token secrets:** `gitlab-runner-build`, `gitlab-runner-control`, `gitlab-runner-infra` (#64) and
+  `gitlab-runner-kick` (#81),
   us-central1, created empty, one per runner of tacplus-dev/cluster's `gitlab-runner/runners/`, whose `tacplus.token`
   names a version of each. Only `cluster-admin-pipeline` reads them (`secretAccessor`); only the dev stack's
   `runner_token_adders` add versions by hand (`secretVersionAdder`, which reads none): authoritative bindings, so a
@@ -807,7 +808,7 @@ the hub does, steps 4 and 7, are this pipeline's):
   file here names (Jody's today: the hosting note, above). For `build` and `control`, the hub registers the runner
   through GitLab's API and pipes its token into a new version as that account (`gcloud secrets versions add
   gitlab-runner-build --project=tacplus-dev --data-file=-`); a new token is a new version, and a pull request in
-  tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names the three secrets.
+  tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names the four secrets.
 - **The `infra` runner (#64; tacplus-dev/cluster#25, its README, The infra runner):** the in-cluster runner of the
   cloud, cluster and deploy pipelines, so the runner VMs can go (#11). The **gitlab stack registers it** (`stacks/gitlab/main.tf`,
   `infra`), and nothing else does: a tacplus-dev group runner, tags `cloud`, `cluster` and `deploy` and no other, "run
@@ -835,6 +836,16 @@ the hub does, steps 4 and 7, are this pipeline's):
   update dev --zone us-central1-a --project tacplus-dev --no-enable-private-endpoint` and
   `--enable-master-authorized-networks --master-authorized-networks 10.20.0.0/20,10.24.0.0/14,<that address>/32`), and the first `apply:dev` on
   `infra` again closes it (drift the stack undoes).
+- **The `kick` runner (#81; tacplus-dev/cluster#36, its `gitlab-runner/runners/kick.yaml`):** the in-cluster runner
+  of the looper's kicker and plan alone (tacplus-dev/looper's `.control` jobs), so one always runs while `control`'s
+  slots are full of reports. The gitlab stack registers it (`stacks/gitlab/main.tf`, `kick`) and writes its token as
+  `gitlab-runner-kick`'s **version 1**, as it does `infra`'s: a tacplus-dev group runner, tags `arm64` and `kick` and no
+  other, "run untagged jobs" off, any ref (the kicker and plan run on main's schedules), unpaused. Not `control` among
+  its tags: GitLab gives a runner every job whose tags are a subset of its own, so a runner holding `control` would
+  take the reports too and fill up as `control` does; `control`, lacking `kick`, never takes `kick`'s jobs. No job
+  carries `kick` until tacplus-dev/looper tags `.control` `arm64, kick`, after cluster's pipeline has applied the
+  runner. `apply:gitlab` does not wait on `apply:dev` (it needs no control plane: the break-glass above): if it reaches
+  the version before `apply:dev` has made the secret, it fails after registering the runner, and a retry writes it.
 - **Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12):** the Artifact Registry Docker
   repository `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, for the GitLab Runner and helper images
   tacplus-dev/cluster builds itself (crane, no container runtime) and its `gitlab-runner/pin.yaml` names by digest.
