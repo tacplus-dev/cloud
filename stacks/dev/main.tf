@@ -66,8 +66,9 @@ module "dev" {
     release_channel = "REGULAR"
     disk_gb         = 100
     # Jody, 2026-11-04 (#7): 3 x c4a-standard-2 on demand; builds on c4a-standard-4 spot, from 0 to 3.
+    # Jody, 2026-11-20: the spot build pool to 5 (tacplus gates take a whole c4a-standard-4 each; it scales from 0, so idle costs nothing).
     normal = { machine_type = "c4a-standard-2", nodes = 3 }
-    spot   = { machine_type = "c4a-standard-4", max_nodes = 3 }
+    spot   = { machine_type = "c4a-standard-4", max_nodes = 5 }
   }
   network = {
     nodes         = "10.20.0.0/20"
