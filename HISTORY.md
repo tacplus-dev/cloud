@@ -71,3 +71,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-18 looper issue security: the pipeline's roles/owner on its folders fails the build's security policy (Trivy GCP-0007, HIGH, modules/folder/main.tf) (#78)
 - 2026-11-19 looper issue The looper's kicker and plan need a runner of their own: register kick (arm64, kick) and its token secret gitlab-runner-kick (cluster#36) (#81)
 - 2026-11-20 looper issue tacplus gates are OOM-killed in the build pod: black 'signal: killed' and the Java member port dying mid-test, three batches in two days (#82)
+- 2026-11-20 looper issue tacplus gates CPU request: BUILD_GATES_REQUESTS_tacplus '2 12Gi ...' slowed the gates (test 488s vs 192s); request 3500m (#83)
