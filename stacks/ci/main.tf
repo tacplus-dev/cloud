@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: runners, the build cache, the GitHub Apps' keys and their federation. Its folder is the folder
-# stack's; its billing account is the bootstrap project's.
+# The ci project: runners, the build cache, the GitHub Apps' keys and their federation, and the Admiral's credentials
+# (#84). Its folder is the folder stack's; its billing account is the bootstrap project's.
 
 variable "parent_folder" {
   description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
@@ -11,6 +11,12 @@ variable "parent_folder" {
 
 variable "kms_key_importers" {
   description = "Who imports the apps' keys (#19): the protected GitLab variable GCP_KMS_KEY_IMPORTERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account for the import, then cleared."
+  type        = list(string)
+  default     = []
+}
+
+variable "admiral_secret_adders" {
+  description = "Who adds the Admiral's secret's versions by hand (#84): the protected GitLab variable GCP_ADMIRAL_SECRET_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
   type        = list(string)
   default     = []
 }
@@ -89,6 +95,16 @@ module "ci" {
     keys = { for k, a in module.settings.github_apps.apps : k => { import = a.import, namespace = a.namespace, environments = a.environments, accounts = a.accounts, projects = a.projects } }
   }
   kms_key_importers = var.kms_key_importers
+  # The Admiral's credentials (#84): its account, which only its SPIFFE ID becomes, through the dev project's pool
+  # for its fleet kernel's issuer (the dev stack's); the key it alone signs with; the secret it alone reads.
+  admiral = {
+    account_id = module.settings.admiral.account_id
+    pool       = "projects/${data.google_project.dev.number}/locations/global/workloadIdentityPools/${module.settings.admiral.pool}"
+    subject    = module.settings.admiral.subject
+    key        = module.settings.admiral.key
+    secret     = module.settings.admiral.secret
+  }
+  admiral_secret_adders = var.admiral_secret_adders
   # The audit job's account (#77): read roles on both projects, which only this repository's protected main becomes,
   # through the pipeline's own pool (bootstrap/bootstrap.sh's provider admits nothing else of gitlab.com).
   hub_audit = {
@@ -124,6 +140,22 @@ output "app_accounts" {
 # The audit job's account (#77): the CI file's GCP_AUDIT_SA.
 output "hub_audit" {
   value = module.ci.hub_audit
+}
+
+# The Admiral's Config (#84; tacplus-dev/admiral#5): what it federates through and the names it signs and reads with,
+# none of them secret. The provider is the dev stack's (its output admiral), named here from the dev project's number.
+output "admiral" {
+  value = merge(module.ci.admiral, {
+    wif_provider    = local.admiral_provider
+    audience        = "//iam.googleapis.com/${local.admiral_provider}"
+    subject         = module.settings.admiral.subject
+    app_id          = module.settings.github_apps.apps[module.settings.admiral.key].app_id
+    installation_id = module.settings.github_apps.apps[module.settings.admiral.key].installation_id
+  })
+}
+
+locals {
+  admiral_provider = "projects/${data.google_project.dev.number}/locations/global/workloadIdentityPools/${module.settings.admiral.pool}/providers/${module.settings.admiral.provider}"
 }
 
 # The looper project's variables (tacplus-dev/looper README, Only the manager writes main, Setting it up), which the

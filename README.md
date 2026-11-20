@@ -19,8 +19,10 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     bootstrap script, below);
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
-    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper` and `tacplus-reader`, import-only), their import jobs,
-    the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The GitHub Apps' keys);
+    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader` and `tacplus-admiral`, import-only),
+    their import jobs, the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The
+    GitHub Apps' keys), and the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
+    Admiral's credentials);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 5 over the region's zones
     with c4a, for build pods only: below, The network rules), the DNS zone
@@ -34,7 +36,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     which Jody writes in the Console and only its identity reads (below, The Google sign-in client),
     the one public IP, the global address `gateway`, its TCP proxy load balancer passing TLS through to the NEGs of the
     gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
-    The tacplus.dev cutover);
+    The tacplus.dev cutover), and the Admiral's workload identity provider, for its fleet kernel's issuer (below, The
+    Admiral's credentials);
   - `prod` is designed but **not built**: see PRODUCTION.md.
 - **The Anthropic organization** (#34): for each deployment that runs llmproxy, its llmproxy's workload identity, the
   federation issuer, the service account, its workspace membership and the rule (below, The Anthropic organization);
@@ -345,7 +348,9 @@ pipeline seabeam/cloud (GitLab), `tacplus-dev/roadmap:decisions/cloud-org-seabea
 it: another host is another folder ID. The runners' token adders (`GCP_RUNNER_TOKEN_ADDERS`, below, The cluster
 pipeline) are `user:jody@seabeam.net` today (#18), and so are the apps' key importers (`GCP_KMS_KEY_IMPORTERS`, below,
 The GitHub Apps' keys), for the one run that imports them (#19), and the Google sign-in client's adders
-(`GCP_GOOGLE_SIGNIN_ADDERS`, below, The Google sign-in client, #37).
+(`GCP_GOOGLE_SIGNIN_ADDERS`, below, The Google sign-in client, #37), and the Admiral's secret's adders
+(`GCP_ADMIRAL_SECRET_ADDERS`, below, The Admiral's credentials, #84), whose token is the triage project
+seabeam/triage's.
 <!-- /hosting note -->
 
 ### What Jody runs, in order
@@ -876,6 +881,7 @@ each are `modules/settings` (`github_apps`); the ci module's `github-apps.tf` ma
 | `tacplus-manager` | 5632100 | 179024536 | tacplus-dev/looper's main, environments `looper-manager` and `looper-scan` (never `looper-report`: the module refuses it) |
 | `tacplus-looper` | 5632122 | 179024135 | tacplus-dev/looper's main, environments `looper-report`, `looper-scan`, `looper-plan` and `kicker` |
 | `tacplus-reader` | 5531358 | 176655068 | every protected ref of the namespace tacplus-dev (kernel's prepare, once it exchanges its id_token through `gitlab-com` here); tacplus-dev/cloud's jobs (its drift issue), through tacplus-bootstrap's pool, and tacplus-dev/cluster's (its drift issue), through the dev project's; tacplus-dev/fleet-seatrials' jobs as the account `fleet-seatrials-reader` (#30) |
+| `tacplus-admiral` | 5853599 | 184144753 | the Admiral alone, as the account `admiral` (#84; below, The Admiral's credentials): no GitLab job |
 
 - **The keys:** asymmetric signing, `RSA_SIGN_PKCS1_2048_SHA256`, software, **import-only**, created with no version
   (`prevent_destroy`). Cloud KMS never exports a key's material, so a key leaving jody1-328023 is a new one (#30).
@@ -952,6 +958,70 @@ still work, until it is revoked. Then, in order:
    signs with jody1-328023's key any more; `fleet-seatrials-reader@jody1-328023` and the key go with jody1-328023. The looper project's variables, its pipeline file, the ruleset and the probe are
 the looper README's steps (Only the manager writes main, Setting it up, 4 to 6), with `P=tacplus-ci` and the values of
 `looper_variables`.
+
+## The Admiral's credentials
+
+#84; tacplus-dev/admiral#5 (Jody's option A, 2026-11-20). The Admiral, a fleet service in `/system` of the dev
+cluster's fleet (seatrials), files issues on GitHub as the `tacplus-admiral` App and in the triage project on GitLab.com
+holding no long-lived secret in its config: it federates its own identity, the kernel-signed ES256 JWT whose `sub` is
+its SPIFFE ID (`ServiceManager::token_for_external(aud)`), into one service account, which has KMS sign its App's JWT
+and reads the GitLab token at run time. Its names are `modules/settings` (`admiral`); the dev module's `admiral.tf`
+makes the federation, the ci module's `admiral.tf` the rest.
+
+- **The federation** (`tacplus-dev`): the pool `fleet-kernels`, for fleet services by their kernel's identity (not
+  GitLab's jobs, not GKE Workload Identity), and in it the provider `seatrials`, an OIDC provider for the seatrials
+  kernel's issuer `https://seatrials.tacplus.dev` (its keys by discovery, as llmproxy's Anthropic issuer, #34), mapping
+  `google.subject` to `assertion.sub` and admitting `spiffe://local.dev/system/services/admiral` alone. One issuer URL,
+  never a pattern: every fleet's kernel may mint that SPIFFE ID (`local.dev` is every fleet's trust domain), so another
+  fleet's Admiral is another provider, a commit. The audience is the provider's own (GCP's default):
+  `//iam.googleapis.com/projects/<tacplus-dev's number>/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials`.
+  The issuer must stay publicly discoverable; if it ever is not, the provider takes its JWKS inline (`jwks_json`), and
+  a kernel key rotation becomes a commit.
+- **The account** `admiral@tacplus-ci.iam.gserviceaccount.com`: only
+  `principal://iam.googleapis.com/projects/<tacplus-dev's number>/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://local.dev/system/services/admiral`
+  becomes it (`roles/iam.workloadIdentityUser`, authoritative). It is in `tacplus-ci`, beside the keys, whose project
+  enables Cloud KMS (`tacplus-dev` does not).
+- **The key** `tacplus-admiral`, a `github_apps` key like the others (above, The GitHub Apps' keys: import-only, no
+  version, `prevent_destroy`, its import job `tacplus-admiral-import`, imported by `GCP_KMS_KEY_IMPORTERS`'s members),
+  on which `admiral` alone is `roles/cloudkms.signerVerifier` (as #84 asks: it signs, and may read the public key),
+  authoritative; no GitLab job signs with it (the module refuses a `github_apps` signer on it).
+- **The secret** `admiral-triage-gitlab` in `tacplus-ci` (us-central1), made with no version: `admiral` alone reads
+  it (`secretAccessor`); the members of the protected GitLab variable `GCP_ADMIRAL_SECRET_ADDERS` (comma-separated, as
+  `GCP_RUNNER_TOKEN_ADDERS`; `ci/lib.sh` gives them to the ci stack as `admiral_secret_adders` and refuses one that is
+  not a member) alone add its versions (`secretVersionAdder`: add, never read). Unset or empty: nobody adds one.
+  Authoritative bindings: a grant added by hand is drift.
+- **Outputs:** the ci stack's `admiral`, the Admiral's Config, none of it secret: `wif_provider` and `audience`, the
+  provider's name and the audience its kernel's token is for; `subject`; `service_account`; `key` and `key_version`
+  (`cryptoKeyVersions/1`, once imported); `secret` (`projects/tacplus-ci/secrets/admiral-triage-gitlab`); `app_id`
+  and `installation_id`. The dev stack's `admiral` gives the provider too.
+
+**Jody's steps**, once `apply:dev` then `apply:ci` of the commit that makes them have run, with `GCP_KMS_KEY_IMPORTERS`
+and `GCP_ADMIRAL_SECRET_ADDERS` set to his account before that pipeline (the import job lives three days from then):
+
+1. The App's key: on the `tacplus-admiral` App's page (app 5853599, Settings, Private keys), Generate a private key,
+   and import it at once:
+
+   ```sh
+   k=tacplus-admiral
+   openssl pkcs8 -topk8 -nocrypt -inform PEM -outform DER -in $k.private-key.pem -out $k.der
+   gcloud kms keys versions import --import-job=$k-import --keyring=looper --location=us-central1 --project=tacplus-ci \
+     --key=$k --algorithm=rsa-sign-pkcs1-2048-sha256 --target-key-file=$k.der   # version 1
+   shred -u $k.private-key.pem $k.der
+   ```
+
+   Then `GCP_KMS_KEY_IMPORTERS` is cleared, as for the other keys.
+2. The GitLab token: on the triage project (Settings, Access tokens), a project access token, role Reporter, scope
+   `api`, its expiry at most GitLab's cap (a year); then, its value never in a file or a shell's history:
+
+   ```sh
+   gcloud secrets versions add admiral-triage-gitlab --project=tacplus-ci --data-file=-   # paste, then Ctrl-D
+   ```
+
+   A rotation is the same, before the token expires: a new token, a new version, then the old token revoked on GitLab
+   (GitLab.com has no inbound federation, admiral#5, so this token is the one long-lived secret, of one project,
+   Reporter).
+
+Nothing of it is tested end to end here: the first exchange is the Admiral's (admiral#5), after both steps.
 
 ## Certificates
 

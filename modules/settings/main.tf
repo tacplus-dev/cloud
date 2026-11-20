@@ -102,7 +102,36 @@ output "github_apps" {
         accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }
         projects = [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }]
       }
+      # The Admiral's (#84; tacplus-dev/admiral#5, option A; Jody created it on 2026-11-20: issues write, metadata read,
+      # every repository of tacplus-dev, no webhook). No GitLab job signs with it: its one signer is the account admiral
+      # (below, admiral), on the key alone.
+      tacplus-admiral = { app_id = "5853599", installation_id = "184144753", import = true, namespace = false, environments = [], accounts = {}, projects = [] }
     }
+  }
+}
+
+output "admiral" {
+  description = <<-EOT
+    The Admiral's credentials (#84; tacplus-dev/admiral#5, Jody's option A, 2026-11-20): what the Admiral of the dev
+    cluster's fleet reaches with its own kernel-signed identity (its ES256 JWT, sub its SPIFFE ID, subject), through
+    Workload Identity Federation: the pool pool of the dev project, whose provider provider trusts the fleet kernel's
+    OIDC issuer issuer (by discovery) for subject alone; the service account account_id in the ci project, which only
+    that subject becomes; key, its GitHub App's import-only key in github_apps' key ring, on which the account alone
+    is roles/cloudkms.signerVerifier; and secret, a Secret Manager secret in the ci project with no version, which the
+    account alone reads (the triage project's GitLab access token, which the ci stack's admiral_secret_adders add by
+    hand). None of it is secret.
+  EOT
+  value = {
+    # The fleet whose kernel issues it: the seatrials fleet in the dev cluster, the issuer llmproxy's Anthropic
+    # identity trusts too (deployments' llmproxy, #34). One issuer URL, never a pattern: every fleet's kernel may
+    # mint this SPIFFE ID (its trust domain local.dev is every fleet's), so another fleet's Admiral is another provider.
+    pool       = "fleet-kernels"
+    provider   = "seatrials"
+    issuer     = "https://seatrials.tacplus.dev"
+    subject    = "spiffe://local.dev/system/services/admiral"
+    account_id = "admiral"
+    key        = "tacplus-admiral"
+    secret     = "admiral-triage-gitlab"
   }
 }
 

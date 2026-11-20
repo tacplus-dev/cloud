@@ -4,7 +4,7 @@
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
 # certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone, the runners' token secrets and
 # the cluster pipeline's cluster-admin in the cluster (#18), and the TCP proxy load balancer on the gateway's address
-# (#21). Its folder is the folder stack's; its billing account is the bootstrap
+# (#21), and the Admiral's workload identity provider (#84). Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
 variable "parent_folder" {
@@ -93,6 +93,9 @@ module "dev" {
   google_signin_adders = var.google_signin_adders
   # The TCP proxy on the address gateway, to the NEGs the settings name (#21).
   load_balancer = module.settings.load_balancer
+  # The Admiral's federation (#84): its fleet kernel's issuer, for its SPIFFE ID alone; its account, key and secret
+  # are the ci stack's.
+  admiral = { for a, v in module.settings.admiral : a => v if contains(["pool", "provider", "issuer", "subject"], a) }
 }
 
 output "project_id" {
@@ -129,4 +132,8 @@ output "runner_tokens" {
 
 output "load_balancer" {
   value = module.dev.load_balancer
+}
+
+output "admiral" {
+  value = module.dev.admiral
 }

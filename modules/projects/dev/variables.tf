@@ -174,6 +174,21 @@ variable "google_signin_adders" {
   }
 }
 
+variable "admiral" {
+  description = "The Admiral's federation (admiral.tf, #84): the workload identity pool pool, and in it the provider provider for the fleet kernel's OIDC issuer issuer (https, one URL), admitting the subject (the Admiral's SPIFFE ID) alone. Null: none."
+  type = object({
+    pool     = string
+    provider = string
+    issuer   = string
+    subject  = string
+  })
+  default = null
+  validation {
+    condition     = var.admiral == null ? true : (can(regex("^https://[a-z0-9.-]+$", var.admiral.issuer)) && can(regex("^spiffe://[a-z0-9.-]+(/[A-Za-z0-9._-]+)+$", var.admiral.subject)) && can(regex("^[a-z0-9-]{4,32}$", var.admiral.pool)) && can(regex("^[a-z0-9-]{4,32}$", var.admiral.provider)))
+    error_message = "The Admiral's issuer is one https URL (a host, no pattern), its subject a SPIFFE ID, and its pool and provider IDs 4 to 32 of a-z, 0-9 and -."
+  }
+}
+
 variable "load_balancer" {
   description = "The global external proxy Network Load Balancer (TCP proxy) on the address gateway (load-balancer.tf, #21): by listener name, its port on the address, the name of the standalone zonal NEG its connections go to (in the cluster's zone), the port of that NEG's endpoints (the pods'), and whether the NEG exists yet (false: no backend)."
   type = map(object({

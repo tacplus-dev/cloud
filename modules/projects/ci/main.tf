@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, shared by job containers), the build
-# cache, and the GitHub Apps' keys in Cloud KMS (github-apps.tf).
+# cache, the GitHub Apps' keys in Cloud KMS (github-apps.tf) and the Admiral's credentials (admiral.tf).
 
 resource "google_project" "ci" {
   project_id          = var.project_id

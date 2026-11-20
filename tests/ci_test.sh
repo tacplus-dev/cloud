@@ -13,8 +13,8 @@
 # does; drift never applies. ci/pin.sh sets CLOUD_COMMIT and nothing else, --check accepts its output and refuses
 # any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
 # GCP_PARENT_FOLDER, and refuses a job without a valid one, and the dev stack the runners' token adders from
-# GCP_RUNNER_TOKEN_ADDERS (#18) and the Google sign-in secrets' adders from GCP_GOOGLE_SIGNIN_ADDERS (#37), refusing
-# one that is not a member. The anthropic stack (#34): its jobs only once the bootstrap rule's IDs are set, beside the
+# GCP_RUNNER_TOKEN_ADDERS (#18) and the Google sign-in secrets' adders from GCP_GOOGLE_SIGNIN_ADDERS (#37), and the
+# ci stack the Admiral's secret's adders from GCP_ADMIRAL_SECRET_ADDERS (#84), refusing one that is not a member. The anthropic stack (#34): its jobs only once the bootstrap rule's IDs are set, beside the
 # other stacks, with ID tokens for Anthropic; ci_anthropic gives its provider and the stack the rule, refusing IDs of
 # the wrong form. Needs bash and yq.
 #
@@ -296,6 +296,27 @@ importers() { # importers [GCP_KMS_KEY_IMPORTERS]: ci_gcp's TF_VAR_kms_key_impor
 [ "$(importers)" = '[] []' ] && [ "$(importers '')" = '[] []' ] && ok "ci_gcp gives no importer without GCP_KMS_KEY_IMPORTERS" || fail "ci_gcp without GCP_KMS_KEY_IMPORTERS: [$(importers)]"
 [ -z "$(importers a@example.com)" ] && grep -q GCP_KMS_KEY_IMPORTERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   ok "ci_gcp refuses a GCP_KMS_KEY_IMPORTERS entry that is not a member" || fail "ci_gcp with a bad importer: $(cat "$work/gcp-err")"
+
+# ci_gcp gives the ci stack the Admiral's secret's adders (#84) from the protected variable GCP_ADMIRAL_SECRET_ADDERS
+# alone, as the importers: an HCL list, none when it is unset or empty, a refusal of one that is not a member before
+# any gcloud.
+admiral_adders() { # admiral_adders [GCP_ADMIRAL_SECRET_ADDERS]: ci_gcp's TF_VAR_admiral_secret_adders, or its refusal
+  (
+    unset GCP_ADMIRAL_SECRET_ADDERS TF_VAR_admiral_secret_adders GCP_KMS_KEY_IMPORTERS
+    [ $# = 0 ] || export GCP_ADMIRAL_SECRET_ADDERS=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=y GCP_DEPLOY_SA=z GCP_PARENT_FOLDER=111111111111 ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud ran" >&2; }
+    ci_gcp >/dev/null 2>"$work/gcp-err" && echo "${TF_VAR_admiral_secret_adders-unset} ${TF_VAR_kms_key_importers-unset}"
+  )
+}
+[ "$(admiral_adders user:a@example.com)" = '["user:a@example.com"] []' ] && [ "$(admiral_adders 'user:a@example.com, group:b@example.com')" = '["user:a@example.com","group:b@example.com"] []' ] &&
+  ok "ci_gcp gives the ci stack GCP_ADMIRAL_SECRET_ADDERS as admiral_secret_adders, and nobody else" || fail "ci_gcp's admiral_secret_adders: [$(admiral_adders 'user:a@example.com, group:b@example.com')] $(cat "$work/gcp-err")"
+[ "$(admiral_adders)" = '[] []' ] && [ "$(admiral_adders '')" = '[] []' ] && ok "ci_gcp gives no Admiral's secret adder without GCP_ADMIRAL_SECRET_ADDERS" || fail "ci_gcp without GCP_ADMIRAL_SECRET_ADDERS: [$(admiral_adders)]"
+[ -z "$(admiral_adders a@example.com)" ] && grep -q GCP_ADMIRAL_SECRET_ADDERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  ok "ci_gcp refuses a GCP_ADMIRAL_SECRET_ADDERS entry that is not a member" || fail "ci_gcp with a bad Admiral's secret adder: $(cat "$work/gcp-err")"
 
 # ci_audit (#77) federates the job as GCP_AUDIT_SA, hub-audit, alone: no parent folder, no stack's input; and refuses a
 # job without its account before any gcloud (a function stands in for gcloud, logging its calls).

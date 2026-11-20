@@ -56,7 +56,7 @@ run "stack" {
     error_message = "The looper project's variables are not its provider, its key ring and the apps' IDs."
   }
   assert {
-    condition     = output.app_keys == { for k in ["tacplus-reader", "tacplus-manager", "tacplus-looper"] : k => "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/${k}" }
+    condition     = output.app_keys == { for k in ["tacplus-reader", "tacplus-manager", "tacplus-looper", "tacplus-admiral"] : k => "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/${k}" }
     error_message = "The stack does not give each app's key."
   }
   # The reader's account and its pools (#30): the dev project's, which plan:ci reads after apply:dev made it, and
@@ -70,7 +70,27 @@ run "stack" {
     condition     = output.hub_audit == "hub-audit@tacplus-ci.iam.gserviceaccount.com"
     error_message = "The stack does not give the audit's account hub-audit."
   }
+  # The Admiral's Config (#84): the dev project's provider for its fleet kernel and its audience, its account, its
+  # App's key and IDs, and its secret, none of them secret.
+  assert {
+    condition = output.admiral == {
+      wif_provider    = "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
+      audience        = "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
+      subject         = "spiffe://local.dev/system/services/admiral"
+      service_account = "admiral@tacplus-ci.iam.gserviceaccount.com"
+      key             = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral"
+      key_version     = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral/cryptoKeyVersions/1"
+      secret          = "projects/tacplus-ci/secrets/admiral-triage-gitlab"
+      app_id          = "5853599"
+      installation_id = "184144753"
+    }
+    error_message = "The stack does not give the Admiral's Config its provider, audience, account, key, secret and App IDs."
+  }
   # Computed at apply: the provider's name and the key ring's and keys' IDs, as Google gives them.
+  override_resource {
+    target = module.ci.google_service_account.admiral
+    values = { email = "admiral@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/admiral@tacplus-ci.iam.gserviceaccount.com" }
+  }
   override_resource {
     target = module.ci.google_iam_workload_identity_pool_provider.looper
     values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-loopers/providers/gitlab-looper" }
@@ -168,8 +188,15 @@ run "settings" {
       tacplus-manager = ["5632100", "179024536", true, false, toset(["looper-manager", "looper-scan"]), {}, []]
       tacplus-looper  = ["5632122", "179024135", true, false, toset(["looper-report", "looper-scan", "looper-plan", "kicker"]), {}, []]
       tacplus-reader  = ["5531358", "176655068", true, true, toset([]), { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }]]
+      tacplus-admiral = ["5853599", "184144753", true, false, toset([]), {}, []]
     }
-    error_message = "The apps, their IDs or their signers are not the ones #19 and #30 list."
+    error_message = "The apps, their IDs or their signers are not the ones #19, #30 and #84 list."
+  }
+  # The Admiral's (#84; tacplus-dev/admiral#5): the seatrials fleet's kernel, by its one issuer URL, for the Admiral's
+  # SPIFFE ID alone; its account, its App's key (no GitLab job signs with it, above) and its secret.
+  assert {
+    condition     = output.admiral == { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral", account_id = "admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" } && contains(keys(output.github_apps.apps), output.admiral.key)
+    error_message = "The Admiral's credentials are not seatrials' kernel's provider for its SPIFFE ID, the account admiral, the key tacplus-admiral and the secret admiral-triage-gitlab."
   }
   assert {
     condition     = output.github_apps.key_ring == "looper" && output.github_apps.pool == "gitlab-loopers" && output.github_apps.looper == { project = "tacplus-dev/looper", project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" } && output.github_apps.namespace == { path = "tacplus-dev", id = "145863835", wif_provider = "gitlab-com" }
@@ -1140,4 +1167,185 @@ run "manager_build_replaced" {
     condition     = google_compute_instance.manager.name != "runner-manager-6cadb835" && can(regex("^runner-manager-[0-9a-f]{8}$", google_compute_instance.manager.name))
     error_message = "A new build of the manager keeps its name: the new one could not be made before the old one goes."
   }
+}
+
+# The Admiral's credentials (#84; tacplus-dev/admiral#5, option A): its account, which only its SPIFFE ID, through the
+# dev project's pool for its fleet kernel, becomes; its App's import-only key, imported like the others, on which it
+# alone is signerVerifier; its secret, made with no version, which it alone reads and the adders alone add to.
+run "admiral" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] }, tacplus-admiral = { import = true, namespace = false, environments = [] } } }
+    # As GCP_KMS_KEY_IMPORTERS and GCP_ADMIRAL_SECRET_ADDERS give them: accounts of the host's directory.
+    kms_key_importers     = ["user:jody@example.com"]
+    admiral               = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+    admiral_secret_adders = ["user:jody@example.com"]
+  }
+  override_resource {
+    target = google_service_account.admiral
+    values = { email = "admiral@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/admiral@tacplus-ci.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = google_kms_key_ring.looper
+    values = { id = "projects/tacplus-ci/locations/us-central1/keyRings/looper" }
+  }
+  assert {
+    condition     = google_service_account.admiral["admiral"].account_id == "admiral" && google_service_account.admiral["admiral"].project == "tacplus-ci"
+    error_message = "The Admiral's account is not admiral in tacplus-ci."
+  }
+  assert {
+    condition     = google_service_account_iam_binding.admiral["admiral"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_binding.admiral["admiral"].members == toset(["principal://iam.googleapis.com/projects/444/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://local.dev/system/services/admiral"])
+    error_message = "Someone besides the Admiral's SPIFFE ID, through the fleet kernels' pool, becomes its account."
+  }
+  # Its key is an app's like the others: import-only, no version, imported through its own job by the importers.
+  assert {
+    condition     = google_kms_crypto_key.app["tacplus-admiral"].import_only && google_kms_crypto_key.app["tacplus-admiral"].skip_initial_version_creation && google_kms_crypto_key.app["tacplus-admiral"].purpose == "ASYMMETRIC_SIGN" && google_kms_crypto_key.app["tacplus-admiral"].version_template[0].algorithm == "RSA_SIGN_PKCS1_2048_SHA256" && google_kms_key_ring_import_job.app["tacplus-admiral"].import_job_id == "tacplus-admiral-import" && google_kms_crypto_key_iam_binding.importer["tacplus-admiral"].members == toset(["user:jody@example.com"])
+    error_message = "The Admiral's key is not an import-only RSA 2048 signing key with no version, imported through tacplus-admiral-import by the importers."
+  }
+  assert {
+    condition     = google_kms_crypto_key_iam_binding.admiral["admiral"].role == "roles/cloudkms.signerVerifier" && google_kms_crypto_key_iam_binding.admiral["admiral"].members == toset(["serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com"]) && !contains(keys(google_kms_crypto_key_iam_binding.signer), "tacplus-admiral")
+    error_message = "Someone besides the Admiral's account signs with its key, or it does not."
+  }
+  assert {
+    condition     = google_secret_manager_secret.admiral["admiral"].secret_id == "admiral-triage-gitlab" && google_secret_manager_secret.admiral["admiral"].project == "tacplus-ci" && google_secret_manager_secret.admiral["admiral"].replication[0].user_managed[0].replicas[0].location == "us-central1" && length(google_secret_manager_secret.admiral["admiral"].replication[0].user_managed[0].replicas) == 1
+    error_message = "The Admiral's secret is not admiral-triage-gitlab in tacplus-ci, in us-central1 alone."
+  }
+  assert {
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.admiral)) == toset(["roles/secretmanager.secretAccessor", "roles/secretmanager.secretVersionAdder"]) && google_secret_manager_secret_iam_binding.admiral["roles/secretmanager.secretAccessor"].members == toset(["serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com"]) && google_secret_manager_secret_iam_binding.admiral["roles/secretmanager.secretVersionAdder"].members == toset(["user:jody@example.com"])
+    error_message = "Someone besides the Admiral's account reads its secret, or besides the adders adds its versions."
+  }
+  assert {
+    condition = output.admiral == {
+      service_account = "admiral@tacplus-ci.iam.gserviceaccount.com"
+      key             = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral"
+      key_version     = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral/cryptoKeyVersions/1"
+      secret          = "projects/tacplus-ci/secrets/admiral-triage-gitlab"
+    }
+    error_message = "The module does not give the Admiral's account, key, key version and secret."
+  }
+}
+
+# Without adders (GCP_ADMIRAL_SECRET_ADDERS unset or cleared), nobody adds the secret's versions: no binding of the
+# role. The reader stays. Without admiral, nothing of it.
+run "admiral_without_adders" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = [] } } }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+  }
+  assert {
+    condition     = keys(google_secret_manager_secret_iam_binding.admiral) == ["roles/secretmanager.secretAccessor"] && google_secret_manager_secret_iam_binding.admiral["roles/secretmanager.secretAccessor"].members == toset(["serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com"])
+    error_message = "Without adders, someone adds the Admiral's secret's versions, or its account does not read it."
+  }
+}
+
+# The Admiral alone signs with its key: a github_apps signer on it is refused, and a key that is not one of the apps'.
+run "admiral_other_signer_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = ["looper-report"] } } }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+  }
+  expect_failures = [google_kms_crypto_key_iam_binding.admiral]
+}
+
+run "admiral_unknown_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] } } }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+  }
+  expect_failures = [var.admiral]
 }

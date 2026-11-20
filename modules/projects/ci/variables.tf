@@ -186,6 +186,32 @@ variable "kms_key_importers" {
   }
 }
 
+variable "admiral" {
+  description = "The Admiral's credentials (admiral.tf, #84): its account's ID, here; the workload identity pool (projects/N/locations/global/workloadIdentityPools/P) whose provider admits its fleet kernel's issuer, and its subject there (its SPIFFE ID), which alone becomes it; key, the github_apps key it alone signs with; and secret, the ID of the secret it alone reads. Null: none."
+  type = object({
+    account_id = string
+    pool       = string
+    subject    = string
+    key        = string
+    secret     = string
+  })
+  default = null
+  validation {
+    condition     = var.admiral == null ? true : (can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.admiral.account_id)) && can(regex("^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+$", var.admiral.pool)) && can(regex("^spiffe://[a-z0-9.-]+(/[A-Za-z0-9._-]+)+$", var.admiral.subject)) && contains(keys(var.github_apps.keys), var.admiral.key) && can(regex("^[A-Za-z0-9_-]{1,255}$", var.admiral.secret)))
+    error_message = "The Admiral's account ID is not a service account's, its pool not a pool's resource name, its subject not a SPIFFE ID, its key not one of github_apps' keys, or its secret not a secret's ID."
+  }
+}
+
+variable "admiral_secret_adders" {
+  description = "Who adds the Admiral's secret's versions by hand (admiral.tf): secretVersionAdder on it, which adds versions and reads none. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for m in var.admiral_secret_adders : can(regex("^(user|group|serviceAccount):[^@]+@[^@]+$", m))])
+    error_message = "An adder is user:, group: or serviceAccount: and an email."
+  }
+}
+
 variable "hub_audit" {
   description = "The audit job's account (#77, hub-audit.tf): its account ID, here; the projects it reads and its roles on each, read roles only; the workload identity pool (projects/N/locations/global/workloadIdentityPools/P, whose provider maps attribute.project_path) and the GitLab project whose jobs alone become it."
   type = object({

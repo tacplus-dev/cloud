@@ -22,7 +22,7 @@
 # init-secrets job's account adds (only its project's jobs in the environment init-secrets become it) and only its
 # identity reads, and (#37) its Google sign-in client's secret google-signin-<deployment>, made with no version, whose
 # versions only the listed people add (Jody, in the Console: Google has no API for a web client) and only its identity
-# reads.
+# reads, and (#84) the Admiral's provider, for its fleet kernel's issuer and its SPIFFE ID alone.
 # (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -129,6 +129,15 @@ run "stack" {
     condition     = output.load_balancer.address == "203.0.113.10" && output.load_balancer.source_ranges == tolist(["130.211.0.0/22", "35.191.0.0/16"])
     error_message = "The stack does not give the load balancer's address and the ranges the nodes admit it from."
   }
+  # The Admiral's provider (#84), the settings' admiral: the ci stack names it from the dev project's number.
+  assert {
+    condition     = output.admiral.wif_provider == "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" && output.admiral.audience == "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
+    error_message = "The stack does not give the Admiral's provider seatrials of the pool fleet-kernels."
+  }
+  override_resource {
+    target = module.dev.google_iam_workload_identity_pool_provider.admiral
+    values = { name = "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" }
+  }
 }
 
 run "dev" {
@@ -190,6 +199,26 @@ run "dev" {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
       test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
     }
+    admiral = { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral" }
+  }
+
+  # The Admiral's federation (#84): a pool of its own, not the GitLab jobs', whose one provider trusts the seatrials
+  # kernel's issuer alone, by discovery, for the Admiral's SPIFFE ID alone.
+  assert {
+    condition     = google_iam_workload_identity_pool.fleet_kernels[0].workload_identity_pool_id == "fleet-kernels" && google_iam_workload_identity_pool_provider.admiral[0].workload_identity_pool_provider_id == "seatrials" && google_iam_workload_identity_pool_provider.admiral[0].oidc[0].issuer_uri == "https://seatrials.tacplus.dev" && google_iam_workload_identity_pool_provider.admiral[0].oidc[0].jwks_json == null && try(length(google_iam_workload_identity_pool_provider.admiral[0].oidc[0].allowed_audiences), 0) == 0
+    error_message = "The Admiral's provider is not seatrials, in the pool fleet-kernels, for the seatrials kernel's issuer by discovery, with the provider's own audience."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.admiral[0].attribute_condition == "assertion.sub == 'spiffe://local.dev/system/services/admiral'" && google_iam_workload_identity_pool_provider.admiral[0].attribute_mapping == tomap({ "google.subject" = "assertion.sub" })
+    error_message = "The Admiral's provider admits more than its SPIFFE ID, or maps more than its subject."
+  }
+  override_resource {
+    target = google_iam_workload_identity_pool_provider.admiral
+    values = { name = "projects/555/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" }
+  }
+  assert {
+    condition     = output.admiral == { wif_provider = "projects/555/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials", audience = "//iam.googleapis.com/projects/555/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" }
+    error_message = "The module does not give the Admiral's provider and its audience."
   }
 
   # A zone of the region without the build pool's machine type.

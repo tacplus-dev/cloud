@@ -584,3 +584,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   host grant to cloud-admin-pipeline (`roles/logging.configWriter`, for the views) before its apply. The other way,
   `roles/logging.viewer` to hub-audit, needs no host grant but lets it read every job pod's output, unmasked, where a
   secret can be. Why: on 2026-11-20 the spot pool's no-scale-up reason was inferred, not read (#85).
+- **The Admiral's credentials** (looper, #84, 2026-11-20; tacplus-dev/admiral#5, Jody's option A): `promoted`
+  2026-11-20 (ROADMAP.md, Next) and built in #84 (README, The Admiral's credentials). What: a workload identity provider
+  for the Admiral's fleet kernel's issuer, admitting only its SPIFFE ID; a service account `admiral` only that subject
+  becomes; the `tacplus-admiral` App's import-only KMS key, `admiral` its only signer; a secret `admiral-triage-gitlab`
+  with no version, `admiral` its only reader, Jody adding the triage project's access token; outputs naming them for
+  the Admiral's Config. Why: the Admiral files issues holding no long-lived secret in its config.

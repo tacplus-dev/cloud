@@ -92,3 +92,11 @@ output "load_balancer" {
     source_ranges = sort(local.google_proxy_ranges)
   }
 }
+
+output "admiral" {
+  description = "The Admiral's provider (#84): its resource name, and the audience its kernel's token is for (the provider's own, //iam.googleapis.com/ and its name); null without admiral."
+  value = var.admiral == null ? null : {
+    wif_provider = google_iam_workload_identity_pool_provider.admiral[0].name
+    audience     = "//iam.googleapis.com/${google_iam_workload_identity_pool_provider.admiral[0].name}"
+  }
+}

@@ -40,3 +40,13 @@ output "hub_audit" {
   description = "The audit job's account (#77): its email, the CI file's GCP_AUDIT_SA."
   value       = google_service_account.hub_audit.email
 }
+
+output "admiral" {
+  description = "The Admiral's credentials (#84), for its Config: its account's email, its key (version 1 once imported) and its secret (projects/P/secrets/S); null without admiral."
+  value = var.admiral == null ? null : {
+    service_account = google_service_account.admiral["admiral"].email
+    key             = "${google_kms_key_ring.looper.id}/cryptoKeys/${google_kms_crypto_key.app[var.admiral.key].name}"
+    key_version     = "${google_kms_key_ring.looper.id}/cryptoKeys/${google_kms_crypto_key.app[var.admiral.key].name}/cryptoKeyVersions/1"
+    secret          = "projects/${google_project.ci.project_id}/secrets/${google_secret_manager_secret.admiral["admiral"].secret_id}"
+  }
+}
