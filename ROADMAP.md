@@ -29,6 +29,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: the test IdP's certificate and seed secrets, its challenge zone, its listener ready (#32). Agent, at Jody's request, 2026-11-09 (fleet-seatrials#27).
 - Anthropic workload identity for llmproxy (issuer, rule, service account) owned by the pipeline; the hand-made seatrials entries adopted, design first (#34). Agent, at Jody's request, 2026-11-09.
 - A scheduled read-only audit job (exposure, inventory, quotas, utilization) through WIF as hub-audit, its report the artifact the hub reads; gcloud on the Mac retired (#77). Jody, 2026-11-17.
+- ci: the Admiral's credentials: a WIF service account, the tacplus-admiral App's import-only KMS key (Jody imports, never the hub) and the `admiral-triage-gitlab` Secret Manager secret (#84; tacplus-dev/admiral#5, option A). Hub, at Jody's request, 2026-11-20 (`tacplus-dev/roadmap:decisions/skipper-and-admiral-2026-11-01.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
