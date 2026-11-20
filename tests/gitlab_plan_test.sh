@@ -98,6 +98,15 @@ if plan; then
     jq -e '.actions == ["create"] and .after.project == "88136765" and .after.key == "BUILD_TRIGGER_TOKEN" and .after.protected and .after.masked and .after_unknown.value' <<< "$variable" > /dev/null &&
     ok "a trigger of tacplus-dev/build, its token the looper project's protected, masked BUILD_TRIGGER_TOKEN (#26)" ||
     fail "the build trigger: $trigger; its variable: $(jq -c 'del(.before)' <<< "$variable")"
+  # tacplus's gates job's size (#82, tacplus-dev/looper#202): its plan reads the build project's variable, a setting
+  # and no secret, on every ref the build runs; no other variable of the build project, so every other repository's
+  # gates job keeps the runner's defaults.
+  variable=$(change 'module.gitlab.gitlab_project_variable.build["BUILD_GATES_REQUESTS_tacplus"]')
+  jq -e '.actions == ["create"] and .after.project == "4003" and .after.key == "BUILD_GATES_REQUESTS_tacplus" and
+    .after.value == "2 12Gi 3500m 12Gi" and (.after.protected | not) and (.after.masked | not) and .after.raw and .after.environment_scope == "*"' <<< "$variable" > /dev/null &&
+    [ "$(jq -c '[.resource_changes[] | select(.type == "gitlab_project_variable" and .change.after.project == "4003") | .change.after.key]' "$work/plan.json")" = '["BUILD_GATES_REQUESTS_tacplus"]' ] &&
+    ok "tacplus-dev/build's BUILD_GATES_REQUESTS_tacplus: tacplus's gates job 12Gi, no other repository's (#82)" ||
+    fail "BUILD_GATES_REQUESTS_tacplus: $variable"
   schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["nightly"]')
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and
     .after.description == "nightly" and .after.cron == "0 3 * * *" and .after.cron_timezone == "UTC" and

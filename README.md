@@ -501,6 +501,11 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   with (tacplus-dev/looper README, Build jobs). Nobody sees it: GitLab makes it, the apply writes it
   (`decisions/secrets-by-pipeline-2026-11-05.md`). The trigger is owned by the user of the token this pipeline runs as
   (`gitlab-token`), and a triggered pipeline runs as its owner.
+- **Its settings** (#82): project variables that `looper-build` reads, written by `apply:gitlab` from the stack's
+  `build.variables` (no secret: unprotected, unmasked). `BUILD_GATES_REQUESTS_tacplus` = `2 12Gi 3500m 12Gi` sizes
+  tacplus's gates job (`"<cpu> <memory> <cpu limit> <memory limit>"`, tacplus-dev/looper#202), whose gates were
+  OOM-killed in the runner's default 8Gi pod; every other repository's keeps the defaults. It takes effect once the
+  looper image pinned in `build.gitlab-ci.yml` carries #202.
 - **Its rotation**, every 90 days: the trigger's `rotate_by` in `stacks/gitlab/main.tf` is a date in the commit, never
   computed (the plan is the commit's alone). The drift job's expiry check (`ci/expiry.sh`) reports it from 30 days
   before; a commit of a date 90 days later replaces the trigger: the new one is made and becomes the variable's

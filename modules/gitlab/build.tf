@@ -71,6 +71,20 @@ resource "gitlab_project_variable" "build_trigger" {
   environment_scope = "*"
 }
 
+# Its settings (#82): what looper-build reads from the build project's variables, BUILD_GATES_REQUESTS_<repo> (a
+# repository's gates job's requests and limits, tacplus-dev/looper#202). No secret, so neither protected nor masked:
+# the plan job reads them on every ref it builds.
+resource "gitlab_project_variable" "build" {
+  for_each          = var.build == null ? {} : var.build.variables
+  project           = local.other_project_id[var.build.project]
+  key               = each.key
+  value             = each.value
+  protected         = false
+  masked            = false
+  raw               = true
+  environment_scope = "*"
+}
+
 resource "gitlab_pipeline_schedule" "build" {
   for_each      = var.build == null ? {} : var.build.schedules
   project       = local.other_project_id[var.build.project]

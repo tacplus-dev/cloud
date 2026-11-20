@@ -83,7 +83,8 @@ variable "build" {
     source, or null to leave the file alone. trigger: its pipeline trigger, rotated whenever rotate_by (a date
     YYYY-MM-DD in the commit, never computed) changes, its token the protected, masked variable key of the project
     variable_project (a path or ID). schedules: by name, a schedule on main, its cron (UTC) and its inputs; at most 10,
-    GitLab's limit for a project.
+    GitLab's limit for a project. variables: the project's settings by key, no secret (unprotected, unmasked), as
+    tacplus-dev/looper's looper-build reads them (BUILD_GATES_REQUESTS_<repo>, #82).
   EOT
   type = object({
     project = string
@@ -101,6 +102,7 @@ variable "build" {
       cron   = string
       inputs = map(string)
     }))
+    variables = optional(map(string), {})
   })
   default = null
   validation {
