@@ -225,6 +225,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   locally (Trivy 0.76.1). Tested with the dev plan test (mock providers), the policy's and the audit's fixtures; not yet
   seen live: `apply:dev` on main closing the endpoint (an in-place update), then a cluster and a deploy pipeline green
   on `infra` against it, and the next nightly security report without GCP-0061.
+- **The spot build pool over the region (#85):** on 2026-11-20 from 21:00Z tacplus gates pods waited Pending (`0/5
+  nodes are available`) and their build jobs failed (`runner_system_failure`) with the `spot` pool at 2 nodes of 5,
+  both in us-central1-a, the zonal cluster's only zone, out of spot c4a. The pool now spreads over every zone of the
+  region whose machine types include its own (`google_compute_zones` and `google_compute_machine_types`, read at plan
+  in tacplus-dev), with `total_min_node_count` 0 and `total_max_node_count` 5 (the maximum in all zones, unchanged)
+  and location policy `ANY`; `normal` and the cluster stay in us-central1-a. Tested with the dev plan test (mock
+  providers); not yet seen live: `apply:dev` (an in-place update of the pool), then a gates pod scheduled while the
+  pool is under 5. Gap: a dev project not yet made cannot plan (its zones are read in it). The audit job's autoscaler
+  events (the issue's part 2) wait on a decision: reading Cloud Logging needs either a new host grant or a wider read
+  for hub-audit (#85).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
