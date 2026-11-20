@@ -411,7 +411,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (c0f7304 since #75: the looper image ffd21be6, looper#173's retry of
+  `build_ci_commit` (e877150 since #82: the looper image cd7d3689, looper#202's `BUILD_GATES_REQUESTS_<repo>`, looper#185's
+  nightly slots and looper#195's report slots; before it c0f7304, #75: the looper image ffd21be6, looper#173's retry of
   `runner_external_dependency_failure` and `api_failure`, an image a cold spot node could not pull in time, and
   the manager's one rebuild of an infra-only red, so the in-cluster build runner can be unpaused; before it f2f5237, #72: looper#172's `BUILD_DOCKER_TAGS: "arm64, build-docker"`, a host-Docker
   publish only on the VM build pool's runner, so the in-cluster build runner can be unpaused; before it 1d25d29, #69:
@@ -422,8 +423,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
   before; the new trigger before the old one goes); its settings (#82, `build.variables`, unprotected, unmasked):
-  `BUILD_GATES_REQUESTS_tacplus` = `2 12Gi 3500m 12Gi`, tacplus's gates job's size (looper#202), inert until the looper
-  image pinned in the copy carries #202 (ffd21be6 does not: looper#200's repin, then a bump here); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
+  `BUILD_GATES_REQUESTS_tacplus` = `2 12Gi 3500m 12Gi`, tacplus's gates job's size (looper#202), read since the
+  bump to e877150 (its peak, the gates job's `pod use at the end` line, not yet confirmed); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
   input `nightly: true` and no `repo`: its pipeline lists the repositories whose main pins a build image and runs each
   one's nightly in a child pipeline (looper#164), so every pinned repository has a nightly again and no list is kept
   here (`ci/nightly-builds.sh`, `pinned-repositories.yaml` and the drift's `nightly-builds` check are gone). It
