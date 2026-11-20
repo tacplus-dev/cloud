@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by the looper (#78).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by the looper (#84).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -337,6 +337,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   ci stack's output `app_accounts`. The ci stack reads the dev project's number, so `plan:ci` now needs `apply:dev`.
   Tested with the stack's plan tests (mock providers) and `tests/ci_test.sh`; not applied yet, and no seatrials job
   has minted a token through it: `apply:ci`, Jody's import, then fleet-seatrials' variables (its own issue).
+- **The Admiral's credentials (#84; tacplus-dev/admiral#5, Jody's option A, 2026-11-20):** `modules/settings`
+  (`admiral`; `github_apps`' fourth app, `tacplus-admiral`, 5853599 / 184144753). The dev stack's `admiral.tf`: the
+  pool `fleet-kernels` and its provider `seatrials`, OIDC for the seatrials kernel's issuer `https://seatrials.tacplus.dev`
+  (discovery), admitting `spiffe://local.dev/system/services/admiral` alone, its audience the provider's own. The ci
+  stack's `admiral.tf`: the account `admiral@tacplus-ci`, which only that subject becomes; `signerVerifier` on the
+  import-only key `tacplus-admiral` (import job `tacplus-admiral-import`), for it alone (a `github_apps` signer on it is
+  refused); the secret `admiral-triage-gitlab`, no version, which it alone reads and `GCP_ADMIRAL_SECRET_ADDERS`'s
+  members alone add to (`ci/lib.sh`). The ci stack's output `admiral` is the Admiral's Config (README, The Admiral's
+  credentials). Tested with the stacks' plan tests (mock providers) and `tests/ci_test.sh`; not applied yet: `apply:dev`
+  then `apply:ci`, with `GCP_KMS_KEY_IMPORTERS` and `GCP_ADMIRAL_SECRET_ADDERS` set first (the hub), then Jody's import
+  within three days and the token's first version; the first exchange is the Admiral's (admiral#5).
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
