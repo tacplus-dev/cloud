@@ -421,7 +421,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-18 by th
   linted by GitLab's `ci/lint` in `plan:gitlab` before every plan (`ci/build-ci.sh`; `update` bumps it); a pipeline
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
-  before; the new trigger before the old one goes); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
+  before; the new trigger before the old one goes); its settings (#82, `build.variables`, unprotected, unmasked):
+  `BUILD_GATES_REQUESTS_tacplus` = `2 12Gi 3500m 12Gi`, tacplus's gates job's size (looper#202), inert until the looper
+  image pinned in the copy carries #202 (ffd21be6 does not: looper#200's repin, then a bump here); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
   input `nightly: true` and no `repo`: its pipeline lists the repositories whose main pins a build image and runs each
   one's nightly in a child pipeline (looper#164), so every pinned repository has a nightly again and no list is kept
   here (`ci/nightly-builds.sh`, `pinned-repositories.yaml` and the drift's `nightly-builds` check are gone). It
