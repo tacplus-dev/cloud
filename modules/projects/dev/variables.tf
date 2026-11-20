@@ -27,7 +27,7 @@ variable "region" {
 }
 
 variable "cluster" {
-  description = "The dev GKE cluster: its name and zone, its release channel, its nodes' disk, and its two node pools (arm64, Axion C4A): normal, a fixed number of on-demand nodes, and spot, the build pool, from 0 to max_nodes."
+  description = "The dev GKE cluster: its name and zone, its release channel, its nodes' disk, and its two node pools (arm64, Axion C4A): normal, a fixed number of on-demand nodes, and spot, the build pool, from 0 to max_nodes in all the region's zones that offer its machine type."
   type = object({
     name            = string
     zone            = string

@@ -4,7 +4,7 @@
 # The dev stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no
 # cloud): the stack plans, and its module, with the stack's inputs, gives the arm64 cluster (private COS nodes: a normal
 # pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
-# spot=true, #7), the dev zone and the
+# spot=true, #7, over the region's zones with c4a, #85), the dev zone and the
 # cluster pipeline's identity, federated from tacplus-dev/cluster's protected main alone, and each deployment's
 # certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6), and the
 # gateway's one global address, kept from destruction (ci/policy.sh checks prevent_destroy and that no other external
@@ -38,6 +38,13 @@ mock_provider "google" {
   }
   mock_resource "google_iam_workload_identity_pool" {
     defaults = { name = "projects/555/locations/global/workloadIdentityPools/gitlab-com" }
+  }
+  # us-central1's zones, each offering every machine type (a run overrides a zone without).
+  mock_data "google_compute_zones" {
+    defaults = { names = ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"] }
+  }
+  mock_data "google_compute_machine_types" {
+    defaults = { machine_types = [{ name = "c4a-standard-4", accelerators = [], architecture = "ARM64", deprecated = [], description = "4 vCPUs, 16 GB RAM", guest_cpus = 4, is_shared_cpus = false, maximum_persistent_disks = 128, maximum_persistent_disks_size_gb = 263168, memory_mb = 16384, self_link = "https://www.googleapis.com/compute/v1/projects/tacplus-dev/zones/us-central1-a/machineTypes/c4a-standard-4" }] }
   }
   mock_resource "google_container_cluster" {
     defaults = { endpoint = "203.0.113.20" }
@@ -185,6 +192,11 @@ run "dev" {
     }
   }
 
+  # A zone of the region without the build pool's machine type.
+  override_data {
+    target = data.google_compute_machine_types.spot["us-central1-c"]
+    values = { machine_types = [] }
+  }
   # Each account its own member, so that a binding's members show whose they are.
   override_resource {
     target = google_service_account.deploy["seatrials"]
@@ -228,9 +240,21 @@ run "dev" {
     condition     = google_container_node_pool.pool["normal"].node_config[0].machine_type == "c4a-standard-2" && google_container_node_pool.pool["normal"].node_count == 3 && length(google_container_node_pool.pool["normal"].autoscaling) == 0 && !google_container_node_pool.pool["normal"].node_config[0].spot && length(google_container_node_pool.pool["normal"].node_config[0].taint) == 0
     error_message = "The normal pool is not 3 x c4a-standard-2, fixed, on demand, untainted."
   }
+  # Its maximum is the pool's, in all its zones (#85).
   assert {
-    condition     = google_container_node_pool.pool["spot"].node_config[0].machine_type == "c4a-standard-4" && google_container_node_pool.pool["spot"].node_config[0].spot && google_container_node_pool.pool["spot"].autoscaling[0].min_node_count == 0 && google_container_node_pool.pool["spot"].autoscaling[0].max_node_count == 3
-    error_message = "The build pool is not c4a-standard-4 spot, from 0 to 3."
+    condition     = google_container_node_pool.pool["spot"].node_config[0].machine_type == "c4a-standard-4" && google_container_node_pool.pool["spot"].node_config[0].spot && google_container_node_pool.pool["spot"].autoscaling[0].total_min_node_count == 0 && google_container_node_pool.pool["spot"].autoscaling[0].total_max_node_count == 3 && google_container_node_pool.pool["spot"].autoscaling[0].min_node_count == null && google_container_node_pool.pool["spot"].autoscaling[0].max_node_count == null
+    error_message = "The build pool is not c4a-standard-4 spot, from 0 to 3 in all its zones (total, not per zone)."
+  }
+  # A zone out of spot c4a stalls no build (#85): the pool spreads over the region's zones that offer its machine type
+  # (us-central1-c does not, here), and GKE makes each node where there is capacity. The normal pool stays in the
+  # cluster's zone.
+  assert {
+    condition     = toset(google_container_node_pool.pool["spot"].node_locations) == toset(["us-central1-a", "us-central1-b", "us-central1-f"]) && google_container_node_pool.pool["spot"].autoscaling[0].location_policy == "ANY"
+    error_message = "The build pool does not spread over the zones of us-central1 with c4a-standard-4 (a, b and f), location policy ANY."
+  }
+  assert {
+    condition     = google_container_node_pool.pool["normal"].location == "us-central1-a" && length(google_container_node_pool.pool["normal"].node_locations) == 0 && google_container_cluster.dev.location == "us-central1-a"
+    error_message = "The normal pool or the cluster is not in us-central1-a alone."
   }
   assert {
     condition     = google_container_node_pool.pool["spot"].node_config[0].labels["spot"] == "true" && length(google_container_node_pool.pool["spot"].node_config[0].taint) == 1 && google_container_node_pool.pool["spot"].node_config[0].taint[0].key == "spot" && google_container_node_pool.pool["spot"].node_config[0].taint[0].value == "true" && google_container_node_pool.pool["spot"].node_config[0].taint[0].effect == "NO_SCHEDULE" && !contains(keys(google_container_node_pool.pool["normal"].node_config[0].labels), "spot")

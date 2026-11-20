@@ -180,26 +180,48 @@ resource "google_container_cluster" "dev" {
   depends_on = [google_project_iam_member.nodes]
 }
 
+# The zones of the region that offer the build pool's machine type (#85), as Compute Engine lists them in the project:
+# the build pool spreads over them. Read at plan, by the project's ID and not through the project or the IAM gate:
+# a pool's zones are its for_each, which must be known then (a project not yet made has none to read).
+data "google_compute_zones" "region" {
+  project = var.project_id
+  region  = var.region
+  status  = "UP"
+}
+
+data "google_compute_machine_types" "spot" {
+  for_each = toset(data.google_compute_zones.region.names)
+  project  = var.project_id
+  zone     = each.key
+  filter   = "name = \"${var.cluster.spot.machine_type}\""
+}
+
 # The nodes (decisions/cluster-node-pools-2026-11-03.md): private, Container-Optimized OS, arm64 (Axion C4A). The normal
-# pool, fixed and on demand, runs the platform; the build pool, spot and from 0, runs build pods only: they alone
-# tolerate its taint (tacplus-dev/cluster#6). Both pools share the rest.
+# pool, fixed and on demand, runs the platform in the cluster's zone; the build pool, spot and from 0, runs build pods
+# only: they alone tolerate its taint (tacplus-dev/cluster#6). Both pools share the rest.
+# The build pool spreads over every zone of the region with its machine type (#85): on 2026-11-20 spot c4a ran out in
+# us-central1-a, its only zone, and gates pods waited Pending at 2 nodes of 5. Its maximum is the pool's in all zones
+# (total_max), not each zone's, and GKE makes each node in whichever zone has the capacity (location policy ANY).
 locals {
+  spot_zones = sort([for z, t in data.google_compute_machine_types.spot : z if length(t.machine_types) > 0])
   pools = {
     normal = {
-      machine_type = var.cluster.normal.machine_type
-      node_count   = var.cluster.normal.nodes
-      autoscaling  = null
-      spot         = false
-      labels       = {}
-      taints       = []
+      machine_type   = var.cluster.normal.machine_type
+      node_count     = var.cluster.normal.nodes
+      node_locations = null
+      autoscaling    = null
+      spot           = false
+      labels         = {}
+      taints         = []
     }
     spot = {
-      machine_type = var.cluster.spot.machine_type
-      node_count   = null
-      autoscaling  = { min = 0, max = var.cluster.spot.max_nodes }
-      spot         = true
-      labels       = { spot = "true" }
-      taints       = [{ key = "spot", value = "true", effect = "NO_SCHEDULE" }]
+      machine_type   = var.cluster.spot.machine_type
+      node_count     = null
+      node_locations = local.spot_zones
+      autoscaling    = { total_min = 0, total_max = var.cluster.spot.max_nodes, location_policy = "ANY" }
+      spot           = true
+      labels         = { spot = "true" }
+      taints         = [{ key = "spot", value = "true", effect = "NO_SCHEDULE" }]
     }
   }
 }
@@ -211,17 +233,26 @@ resource "google_container_node_pool" "pool" {
   location   = var.cluster.zone
   cluster    = google_container_cluster.dev.name
   node_count = each.value.node_count
+  # Null: the cluster's zone.
+  node_locations = each.value.node_locations
 
   dynamic "autoscaling" {
     for_each = each.value.autoscaling == null ? [] : [each.value.autoscaling]
     content {
-      min_node_count = autoscaling.value.min
-      max_node_count = autoscaling.value.max
+      total_min_node_count = autoscaling.value.total_min
+      total_max_node_count = autoscaling.value.total_max
+      location_policy      = autoscaling.value.location_policy
     }
   }
   management {
     auto_repair  = true
     auto_upgrade = true
+  }
+  lifecycle {
+    precondition {
+      condition     = try(length(each.value.node_locations), 1) > 0
+      error_message = "No zone of ${var.region} offers ${var.cluster.spot.machine_type}: the build pool has nowhere to make a node."
+    }
   }
   network_config {
     enable_private_nodes = true

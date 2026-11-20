@@ -22,8 +22,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper` and `tacplus-reader`, import-only), their import jobs,
     the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The GitHub Apps' keys);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
-    pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, for build pods only:
-    below, The network rules), the DNS zone
+    pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 5 over the region's zones
+    with c4a, for build pods only: below, The network rules), the DNS zone
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
     cluster-admin in the cluster, the runners' token secrets it reads and its registry `ci-images` (below, The cluster
     pipeline), each deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below,
@@ -155,9 +155,13 @@ is applied:
   internet, the runner VMs in `tacplus-ci` and the hub's own machine included, reaches it. A cluster with a public
   endpoint, with no master authorized networks, or authorizing a public range or Google Cloud's public ranges, is
   refused in a plan, and the live audit reports one.
-- **The pools:** `normal`, 3 x c4a-standard-2, on demand and fixed, runs the platform; `spot`, c4a-standard-4 spot from 0
-  to 3, labelled `spot=true` and tainted `spot=true:NoSchedule`, runs build pods only: only they tolerate the taint
-  (tacplus-dev/cluster#6). The dev stack's output `cluster` gives the label and the taint.
+- **The pools:** `normal`, 3 x c4a-standard-2, on demand and fixed, runs the platform in the cluster's zone; `spot`,
+  c4a-standard-4 spot from 0 to 5, labelled `spot=true` and tainted `spot=true:NoSchedule`, runs build pods only: only
+  they tolerate the taint (tacplus-dev/cluster#6). The dev stack's output `cluster` gives the label and the taint.
+  `spot` spreads over every zone of the region that offers its machine type (#85: the provider's machine-type data,
+  read at plan): on 2026-11-20 spot c4a ran out in us-central1-a, then its only zone, and gates pods waited Pending at
+  2 nodes of 5. Its 5 are the pool's in all zones (`total_max_node_count`), and GKE makes each node in whichever zone
+  has the capacity (location policy `ANY`).
 
 A drift plan sees only what a stack has in its state, so a rule, a VM or a node pool made by hand is in none. The nightly
 **live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, address, cluster and node
