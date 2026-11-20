@@ -73,9 +73,10 @@ module "gitlab" {
     trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
     schedules = local.nightly_builds
     # tacplus's gates were OOM-killed in the runner's default 8Gi pod (#82): its gates job gets the 12Gi the build runner
-    # allows (its ceilings 3500m 12Gi), "<cpu> <memory> <cpu limit> <memory limit>" (tacplus-dev/looper#202). Every other
-    # repository's keeps the defaults.
-    variables = { BUILD_GATES_REQUESTS_tacplus = "2 12Gi 3500m 12Gi" }
+    # allows (its ceilings 3500m 12Gi), "<cpu> <memory> <cpu limit> <memory limit>" (tacplus-dev/looper#202), and the
+    # 3500m ceiling as its CPU request too (#83: at 2 CPU its gates ran 4404 s against ~3300-3600 s, `test` 488 s
+    # against 192 s, and the timing-bound legs failed). Every other repository's keeps the defaults.
+    variables = { BUILD_GATES_REQUESTS_tacplus = "3500m 12Gi 3500m 12Gi" }
   }
   # The pools replaced jody1-328023's runners (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the
   # loopers' always-on node) and build (on demand, from zero) take jobs; deploy (fleet-seatrials') and cluster
