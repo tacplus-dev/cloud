@@ -28,6 +28,9 @@
 # repo-looper passes it once this project's copy declares it): a gates job that starts later than that after the pipeline's
 # creation writes the verdict "abandoned: no verdict wanted after Nh" and runs
 # no gates. A nightly, a release and a verify run pass none: never abandoned.
+# "report": true is a report's --build (looper#195), not a manager's land: its
+# gates job holds one of BUILD_REPORT_SLOTS resource groups, so report builds
+# never take every build slot and a land's build, which moves main, finds one.
 # A release runs on this project's protected tag <repo>/vX.Y.Z, with
 # "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
 # does the publish job get its GCP identity (tacplus-dev/tacplus#223). The
@@ -69,7 +72,8 @@
 # 10, tacplus-dev/cloud#65). Its plan lists the repositories whose main pins a
 # build image (tacplus.lock or build.lock) and its child pipeline runs each
 # one's nightly, as above, in a pipeline of its own (strategy: depend): one's
-# failure stops no other's.
+# failure stops no other's. BUILD_NIGHTLY_SLOTS of them at a time, on
+# BUILD_NIGHTLY_TAGS (looper#185): the lands' builds never wait behind it.
 #
 # The runner image (looper#43): a web or scheduled run on main with
 # "runner_image": true is a pipeline of one job, runner-image, which bakes the
@@ -115,6 +119,10 @@ spec:
       description: "The seconds the requester waits for the verdict: a gates job starting later runs no gates (empty: no limit)"
       default: ""
       regex: '^([0-9]+)?$'
+    report:
+      description: "A report's build, not a land's: its gates take one of BUILD_REPORT_SLOTS slots (looper#195)"
+      type: boolean
+      default: false
     smoke:
       description: "The macOS smoke: a web run on main whose one manual job checks the Mac runner (no repo, sha or tag)"
       type: boolean
@@ -171,6 +179,7 @@ variables:
   BUILD_GATES: "$[[ inputs.gates ]]"
   BUILD_BASE: "$[[ inputs.base ]]"
   BUILD_WAIT: "$[[ inputs.wait ]]"
+  BUILD_REPORT: "$[[ inputs.report ]]"
   BUILD_SMOKE: "$[[ inputs.smoke ]]"
   BUILD_RUNNER_IMAGE: "$[[ inputs.runner_image ]]"
   BUILD_NIGHTLY: "$[[ inputs.nightly ]]"
@@ -185,9 +194,24 @@ variables:
   # lacks.
   BUILD_BUILDER_IMAGE: ""
   BUILD_DOCKER_TAGS: "arm64, build-docker"
+  # The nightly (looper#185): a land's build waits on a run and blocks a
+  # queue, a nightly waits on nobody, so the nightly never takes every build
+  # slot (2026-11-18 03:00Z its children held all of them, and tacplus#340's
+  # land got no runner in 15 min). Its fan-out runs this many repositories at
+  # a time (each a resource group, nightly-slot-<n>), its jobs on these tags:
+  # the build runner's until the cluster's runner file serves a nightly entry
+  # of its own (arm64, build-nightly) whose concurrent leaves the pool room.
+  BUILD_NIGHTLY_SLOTS: "1"
+  # The report builds' gates at a time (looper#195): each report's holds a
+  # resource group report-slot-<n>, so the rest of the build pool (the
+  # in-cluster runner's concurrent 6 and the VM pool's) is left to the lands'
+  # builds. On 2026-11-19 tacplus's 18-land batch build waited 11 min behind
+  # six report builds holding every slot, ~55 min each.
+  BUILD_REPORT_SLOTS: "4"
+  BUILD_NIGHTLY_TAGS: "arm64, build"
 
 default:
-  image: ghcr.io/tacplus-dev/looper@sha256:ffd21be69119996d2ddf7ca5929475e79fff541afd8cb7074c98bd22d8ab714f
+  image: ghcr.io/tacplus-dev/looper@sha256:cd7d3689ff60cc9721ba9c451a6495535d5b91d0474f06558c7349ff63352516
   tags: [arm64, build]
   retry:
     max: 2
