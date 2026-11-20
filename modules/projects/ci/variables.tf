@@ -213,13 +213,14 @@ variable "admiral_secret_adders" {
 }
 
 variable "hub_audit" {
-  description = "The audit job's account (#77, hub-audit.tf): its account ID, here; the projects it reads and its roles on each, read roles only; the workload identity pool (projects/N/locations/global/workloadIdentityPools/P, whose provider maps attribute.project_path) and the GitLab project whose jobs alone become it."
+  description = "The audit job's account (#77, hub-audit.tf): its account ID, here; the projects it reads and its roles on each, read roles only; the workload identity pool (projects/N/locations/global/workloadIdentityPools/P, whose provider maps attribute.project_path) and the GitLab project whose jobs alone become it; and autoscaler_log (#85), whether it reads the cluster autoscaler's log: the view hub-audit-autoscaler on each project's _Default bucket and roles/logging.viewAccessor on that view alone, false (none) until the host grants the pipeline roles/logging.configWriter, which the views need."
   type = object({
     account_id     = string
     projects       = list(string)
     roles          = list(string)
     pool           = string
     gitlab_project = string
+    autoscaler_log = optional(bool, false)
   })
   validation {
     condition     = alltrue([for r in var.hub_audit.roles : contains(["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], r)])

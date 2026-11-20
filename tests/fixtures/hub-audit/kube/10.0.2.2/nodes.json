@@ -1,0 +1,5 @@
+{"kind": "NodeList", "items": [
+ {"metadata": {"name": "gke-dev-normal-1", "labels": {"cloud.google.com/gke-nodepool": "normal", "topology.kubernetes.io/zone": "us-central1-a"}}, "status": {"allocatable": {"cpu": "1930m", "memory": "6Gi"}}},
+ {"metadata": {"name": "gke-dev-spot-1", "creationTimestamp": "2026-11-20T18:52:00Z", "labels": {"cloud.google.com/gke-nodepool": "spot", "cloud.google.com/gke-spot": "true", "topology.kubernetes.io/zone": "us-central1-a"}}, "status": {"allocatable": {"cpu": "3920m", "memory": "13456244Ki"}}},
+ {"metadata": {"name": "gke-dev-spot-2", "creationTimestamp": "2026-11-23T09:35:00Z", "labels": {"cloud.google.com/gke-nodepool": "spot", "cloud.google.com/gke-spot": "true", "topology.kubernetes.io/zone": "us-central1-b"}}, "status": {"allocatable": {"cpu": "3920m", "memory": "13Gi"}}}
+]}

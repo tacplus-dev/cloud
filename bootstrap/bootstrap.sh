@@ -71,6 +71,7 @@ HOST_ROLES=(
   roles/cloudkms.admin                        # the apps' key ring, keys, import job and IAM
   roles/storage.admin                         # the buckets, their objects and IAM
   roles/artifactregistry.admin                # the registries and their IAM
+  roles/logging.configWriter                  # the log views: hub-audit-autoscaler (#85), once modules/settings' autoscaler_log is true
 )
 TOO_MUCH=(roles/owner roles/editor)
 

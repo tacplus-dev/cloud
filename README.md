@@ -322,7 +322,10 @@ The host organization's admin (its own pipeline, outside this repository) provid
   - `roles/secretmanager.admin`: the secrets, their versions (the runners' tokens) and IAM;
   - `roles/cloudkms.admin`: the apps' key ring, keys, import job and IAM;
   - `roles/storage.admin`: the buckets (the build cache, the manager's binaries), their objects and IAM;
-  - `roles/artifactregistry.admin`: the registries and their IAM.
+  - `roles/artifactregistry.admin`: the registries and their IAM;
+  - `roles/logging.configWriter`: the log views, `hub-audit-autoscaler` on each project's `_Default` bucket (#85; below,
+    The hub's audit). Granted before `modules/settings`' `autoscaler_log` is set `true`, in a commit of its own: until
+    then the ci stack makes no log view.
 
   A role here is one a stack's resource needs (`tests/apis_test.sh` names the API of each); a new kind of resource
   is a new line here, and the host's grant, before its first apply. Nothing beyond these, and nothing at the
@@ -420,7 +423,13 @@ project's protected `main` becomes, through the pipeline's own provider.
 - **Its rights:** on `tacplus-ci` and `tacplus-dev`, `roles/compute.viewer`, `roles/container.viewer`,
   `roles/monitoring.viewer`, `roles/serviceusage.serviceUsageConsumer` and `roles/secretmanager.viewer` (names and
   versions' metadata, never their values: no accessor). No write role: `ci/policy.sh` refuses any other role to it in a
-  plan, and the module refuses one in its input.
+  plan, and the module refuses one in its input. And the cluster autoscaler's log alone (#85), once `modules/settings`'
+  `autoscaler_log` is `true` (after the host's `roles/logging.configWriter`, above): `roles/logging.viewAccessor` on
+  each project, conditioned on `resource.name` being that project's view `hub-audit-autoscaler`, on its `_Default`
+  bucket, whose filter is `LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")` and nothing more.
+  `ci/policy.sh` refuses any other log grant to it (unconditioned, on another view, or in a binding or a policy
+  document) and that view with any other filter; never `roles/logging.viewer`, as a job's output, in the logs, may hold
+  a secret (#77).
 - **When:** hourly at minute 7, the schedule `audit` on `main` that the gitlab stack makes (`stacks/gitlab/main.tf`), and
   on demand: Run pipeline on `main` with `CLOUD_AUDIT` set to `true`, from the web or the API
   (`glab ci run -b main --variables CLOUD_AUDIT:true`). Either pipeline is the `audit` job alone (the other jobs'
@@ -437,7 +446,17 @@ project's protected `main` becomes, through the pipeline's own provider.
     `C4A_CPUS`, with usage (null where the region lists none);
   - **utilization** over the last hour, the maximum of its 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace `ci`;
-  - **secrets:** their names and their versions' states only.
+  - **secrets:** their names and their versions' states only;
+  - **scheduling** (#85), through the cluster's API (`roles/container.viewer`; the job runs in the cluster, which alone
+    reaches its private endpoint): each spot node, its allocatable CPU and memory against the sum of its pods'
+    requests, and each pod on it with its phase, creation, owner (its owner references, or the GitLab job of a runner's
+    pod, by URL) and CPU and memory requests; and the pods not scheduled, with the scheduler's reason. What fills a
+    spot node is read, not inferred. A pod's spec, its env with it, never leaves the job's temporary directory;
+  - **the cluster autoscaler** (#85) over the last 6 hours, from its visibility log through the view
+    `hub-audit-autoscaler` alone: each no-scale-up by pool, zone and reason (a pool rejected or skipped, or the
+    autoscaler's own reason, a backoff say), its count, first and last times and the pods it left; and each scale-up
+    error, joined to the pools its decision tried. Only once `modules/settings`' `autoscaler_log` is `true` (above, Its
+    rights); until then `autoscaler.read` is `false` and `unavailable` says why.
 
   An API not enabled in a project (GKE's in `tacplus-ci`) is noted in `unavailable`, its list empty. `findings` are
   the exposure findings, `errors` the reads it could not make.

@@ -33,6 +33,11 @@ output "region" {
   value       = "us-central1"
 }
 
+output "autoscaler_log" {
+  description = "Whether the cluster autoscaler's log is read by the audit (#85; README, The hub's audit): the log view hub-audit-autoscaler on each project's _Default bucket, hub-audit's conditional roles/logging.viewAccessor on it alone, and ci/hub-audit.sh's read of it. False until the host organization grants cloud-admin-pipeline roles/logging.configWriter on the parent folder, which the views need (README, What the host organization provides); then true, in a commit of its own, so that no apply:ci fails before the grant."
+  value       = false
+}
+
 output "bootstrap" {
   description = "What bootstrap/bootstrap.sh created: never changed by the pipeline."
   value = {

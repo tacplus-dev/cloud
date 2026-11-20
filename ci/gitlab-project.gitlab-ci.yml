@@ -330,7 +330,8 @@ drift:
 # where the federation admits this project, as hub-audit, which reads and never writes. It needs no tool of the tools
 # job (gcloud, curl and jq are the image's). Its report, audit.json and audit.md, is the artifact the hub downloads
 # (README, The hub's audit), kept 30 days, for project members only, and kept when the job fails: on an exposure finding
-# (an ingress rule open to 0.0.0.0/0, a VM's external IP) or a read it could not make, the job is red.
+# (an ingress rule open to 0.0.0.0/0, a VM's external IP) or a read it could not make, the job is red. It reads the
+# cluster autoscaler's log (#85) only once modules/settings' autoscaler_log is true (the host's grant made its views).
 audit:
   extends: .gcp
   stage: audit
@@ -339,7 +340,7 @@ audit:
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "audit"
     - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CLOUD_AUDIT == "true"
   script:
-    - cd src && source ci/lib.sh && ci_audit && ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)
+    - cd src && source ci/lib.sh && ci_audit && log=$(ci_autoscaler_log) && AUDIT_AUTOSCALER_LOG=$log ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)
   artifacts:
     when: always
     access: developer

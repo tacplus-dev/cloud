@@ -151,6 +151,15 @@ ci_region() {
   echo "$r"
 }
 
+# ci_autoscaler_log: true or false, whether the audit reads the cluster autoscaler's log view (#85), as modules/settings
+# says (autoscaler_log).
+ci_autoscaler_log() {
+  local v
+  v=$(sed -n '/^output "autoscaler_log"/,/^}/s/^ *value *= *\(true\|false\)$/\1/p' "$ci_here/../modules/settings/main.tf")
+  [ "$v" = true ] || [ "$v" = false ] || { echo "autoscaler_log: modules/settings/main.tf says neither true nor false" >&2; return 1; }
+  echo "$v"
+}
+
 # ci_gitlab_secret: the GitLab token's secret version, as modules/settings names it.
 ci_gitlab_secret() {
   local s

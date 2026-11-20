@@ -32,7 +32,12 @@
 #     it is a ClusterRoleBinding, not IAM;
 #   - in a plan, any role to the audit job's account hub-audit (#77) but its read roles (compute, container, monitoring
 #     and secretmanager viewer, serviceusage.serviceUsageConsumer), in a member, a member list or a policy document: it
-#     never writes, and never reads a secret's value;
+#     never writes, and never reads a secret's value; the one exception the cluster autoscaler's log (#85, Jody's
+#     option A): roles/logging.viewAccessor in a google_project_iam_member whose condition is exactly that the
+#     resource is the view hub-audit-autoscaler of the member's own project's _Default bucket (in a member list or a
+#     policy document, or unconditioned, or on another view, it is refused), and that view, wherever it is planned,
+#     filters exactly the autoscaler's visibility log: never logging.viewer nor any other log, as a job's output may
+#     hold a secret;
 #   - in a plan, the Anthropic organization (#34): an identity adopted (imported) with a change, as a live deployment
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
@@ -59,6 +64,10 @@ pipeline_sa=cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
 # writes, and reads no secret's value (secretmanager.viewer: names and versions' metadata, never accessor).
 audit_sa=hub-audit@tacplus-ci.iam.gserviceaccount.com
 audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer roles/serviceusage.serviceUsageConsumer roles/secretmanager.viewer)
+# And the cluster autoscaler's log alone (#85): the view hub-audit-autoscaler of each project's _Default bucket, its
+# filter exactly this, which hub-audit reads by roles/logging.viewAccessor conditioned on that view alone.
+audit_view=hub-audit-autoscaler
+audit_view_filter='LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")'
 
 source_check() {
   local dir f n line
@@ -200,8 +209,16 @@ plan_check() {
                 ($b.members[] | select(startswith("serviceAccount:") and . != $pipeline)
                  | "\($a) grants \($b.role) to \(.): no service account holds it but the pipeline itself (it could delete the cluster)")
               end),
-           (select($b.role | IN($audit_roles[]) | not) | $b.members[] | select(. == $audit)
-            | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")))")),
+           # hub-audit'"'"'s viewAccessor (#85): in a member alone, conditioned on its project'"'"'s view hub-audit-autoscaler alone.
+           (select($b.role == "roles/logging.viewAccessor") | $b.members[] | select(. == $audit)
+            | select($rc.type != "google_project_iam_member"
+                or ($after.condition // [] | map(.expression)) != ["resource.name == \"projects/\($after.project)/locations/global/buckets/_Default/views/\($audit_view)\""])
+            | "\($a) grants \($b.role) to \(.) but on the view \($audit_view) of its project alone (a google_project_iam_member, its condition resource.name == \"projects/\($after.project // "PROJECT")/locations/global/buckets/_Default/views/\($audit_view)\"): the audit'"'"'s account reads the cluster autoscaler'"'"'s log alone (#85)"),
+           (select($b.role | IN($audit_roles[], "roles/logging.viewAccessor") | not) | $b.members[] | select(. == $audit)
+            | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")), and roles/logging.viewAccessor on the view \($audit_view) alone; never logging.viewer, as a job'"'"'s output may hold a secret)")),
+        # The view hub-audit reads (#85) holds the cluster autoscaler'"'"'s visibility log alone.
+        (select(.type == "google_logging_log_view" and $after.name == $audit_view and $after.filter != $audit_view_filter)
+         | "\($a): the view \($audit_view) filters \($after.filter // "a value known only after apply" | tojson), not exactly \($audit_view_filter): hub-audit reads the cluster autoscaler'"'"'s log alone, never a job'"'"'s output (#85)"),
         (select(.type == "google_container_cluster")
          | (select($after.private_cluster_config[0].enable_private_nodes != true)
             | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
@@ -236,7 +253,7 @@ plan_check() {
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
             | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" \
-      --arg audit "serviceAccount:$audit_sa" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
+      --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done

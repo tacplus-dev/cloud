@@ -145,6 +145,16 @@ refuses "a plan granting hub-audit a write role" "grants roles/compute.admin to 
 refuses "a plan with hub-audit in an editor binding" "grants roles/editor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-binding.json"
 refuses "a plan with a secret's accessor to hub-audit in a policy document" "grants roles/secretmanager.secretAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-policy.json"
 passes "a plan with hub-audit's read roles on both projects, its federation and a write role deleted" plan "$fx/plans/hub-audit-clean.json"
+# The cluster autoscaler's log (#85, Jody's option A): hub-audit reads the view hub-audit-autoscaler alone, by
+# roles/logging.viewAccessor in a member conditioned on that view of the member's own project, and the view holds that
+# log alone; never logging.viewer, nor any other log, as a job's output may hold a secret.
+passes "a plan with the views hub-audit-autoscaler and hub-audit's viewAccessor on them alone (#85)" plan "$fx/plans/hub-audit-autoscaler-clean.json"
+refuses "a plan granting hub-audit viewAccessor with no condition (#85)" "grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com but on the view hub-audit-autoscaler of its project alone" plan "$fx/plans/hub-audit-accessor-unconditioned.json"
+refuses "a plan granting hub-audit viewAccessor on another view (#85)" "grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com but on the view hub-audit-autoscaler of its project alone" plan "$fx/plans/hub-audit-accessor-other-view.json"
+refuses "a plan granting hub-audit viewAccessor on another project's view (#85)" "grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com but on the view hub-audit-autoscaler of its project alone" plan "$fx/plans/hub-audit-accessor-other-project.json"
+refuses "a plan with hub-audit in a viewAccessor binding, conditioned or not (#85)" "google_project_iam_binding.view_accessors grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-accessor-binding.json"
+refuses "a plan granting hub-audit logging.viewer (#85)" "grants roles/logging.viewer to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/hub-audit-logging-viewer.json"
+refuses "a plan widening the view hub-audit-autoscaler's filter (#85)" "the view hub-audit-autoscaler filters" plan "$fx/plans/hub-audit-autoscaler-wide.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

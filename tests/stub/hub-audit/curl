@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
-# A stub curl for tests/hub_audit_test.sh: Monitoring's timeSeries.list as ci/hub-audit.sh calls it (GET -G, its
-# token, the hour STUB_START to STUB_END in 600s windows, ALIGN_RATE for the CPU usage and ALIGN_MAX for the rest), from
-# STUB_AUDIT/<project>/m-<metric>.json (m-<metric>.<pageToken>.json for a later page); with no such file, no series. A
-# project with no directory is refused (403). Every call is logged (STUB_LOG: curl, the project, the metric, the
-# aligner and the page); any other call fails loudly.
+# A stub curl for tests/hub_audit_test.sh, answering what ci/hub-audit.sh calls, each with its token:
+#   - Monitoring's timeSeries.list (GET -G, the hour STUB_START to STUB_END in 600s windows, ALIGN_RATE for the CPU
+#     usage and ALIGN_MAX for the rest), from STUB_AUDIT/<project>/m-<metric>.json (m-<metric>.<pageToken>.json for a
+#     later page); with no such file, no series;
+#   - Cloud Logging's entries:list (POST, its JSON body a file): only the view hub-audit-autoscaler of the project's
+#     _Default bucket, filtered to the autoscaler's log from STUB_LOG_START to STUB_END, from
+#     STUB_AUDIT/<project>/autoscaler.json (autoscaler.<pageToken>.json for a later page); with no such file, none;
+#   - a cluster's API (GET -G, its CA the cluster's, STUB_CA): its nodes, and its pods not finished, from
+#     STUB_AUDIT/kube/<endpoint>/nodes.json and pods.json.
+# A project with no directory is refused (403). Every call is logged (STUB_LOG: curl, then the project, the metric,
+# the aligner and the page; the project, autoscaler and the page; or kube, the endpoint and what); any other call fails
+# loudly.
 set -euo pipefail
-out='' fmt='' auth='' url=''
+out='' fmt='' auth='' url='' method=GET body='' cacert='' type=''
 declare -A q=()
 while [ $# -gt 0 ]; do
   case $1 in
     -sS | -G) ;;
     -o) out=$2; shift ;;
     -w) fmt=$2; shift ;;
-    -H) auth=$2; shift ;;
+    -X) method=$2; shift ;;
+    -H) case $2 in @*) auth=$2 ;; 'Content-Type: application/json') type=$2 ;; *) echo "stub curl: a header ci/hub-audit.sh does not send: $2" >&2; exit 99 ;; esac; shift ;;
+    --cacert) cacert=$2; shift ;;
+    --data-binary) body=$2; shift ;;
     --data-urlencode) q[${2%%=*}]=${2#*=}; shift ;;
     -*) echo "stub curl: a flag ci/hub-audit.sh does not pass: $1" >&2; exit 99 ;;
     *) url=$1 ;;
@@ -21,7 +31,47 @@ while [ $# -gt 0 ]; do
 done
 [ "$fmt" = '%{http_code}' ] && [ -n "$out" ] || { echo "stub curl: no -o or -w '%{http_code}'" >&2; exit 99; }
 [ "${auth#@}" != "$auth" ] && [ "$(cat "${auth#@}")" = "Authorization: Bearer stub-token" ] || { echo "stub curl: not the token" >&2; exit 99; }
-[[ $url =~ ^$STUB_API/v3/projects/([a-z0-9-]+)/timeSeries$ ]] || { echo "stub curl: not timeSeries.list: $url" >&2; exit 99; }
+# refused PROJECT WHAT: no such project, as the API refuses it.
+refused() {
+  [ -d "$STUB_AUDIT/$1" ] && return 1
+  echo "{\"error\":{\"code\":403,\"message\":\"Permission $2 denied (stub)\",\"status\":\"PERMISSION_DENIED\"}}" > "$out"
+  printf 403
+}
+
+if [[ $url =~ ^$STUB_LOGGING_API/v2/entries:list$ ]]; then
+  [ "$method" = POST ] && [ -n "$type" ] && [ "${body#@}" != "$body" ] && [ -f "${body#@}" ] && [ "${#q[@]}" = 0 ] ||
+    { echo "stub curl: entries:list is a POST of a JSON file" >&2; exit 99; }
+  b=$(cat "${body#@}")
+  project=$(jq -r '.resourceNames[0] | capture("^projects/(?<p>[a-z0-9-]+)/locations/global/buckets/_Default/views/hub-audit-autoscaler$").p // empty' <<< "$b")
+  [ -n "$project" ] && [ "$(jq '.resourceNames | length' <<< "$b")" = 1 ] || { echo "stub curl: not the view hub-audit-autoscaler: $b" >&2; exit 99; }
+  want="logName=\"projects/$project/logs/container.googleapis.com%2Fcluster-autoscaler-visibility\" AND timestamp>=\"$STUB_LOG_START\" AND timestamp<\"$STUB_END\""
+  [ "$(jq -r .filter <<< "$b")" = "$want" ] && [ "$(jq -r .orderBy <<< "$b")" = "timestamp asc" ] ||
+    { echo "stub curl: not the autoscaler's log over its hours, oldest first: $b" >&2; exit 99; }
+  page=$(jq -r '.pageToken // empty' <<< "$b")
+  echo "curl $project autoscaler ${page:-first}" >> "$STUB_LOG"
+  refused "$project" logging.views.access && exit 0
+  f=$STUB_AUDIT/$project/autoscaler${page:+.$page}.json
+  if [ -f "$f" ]; then cp "$f" "$out"; else echo '{}' > "$out"; fi
+  printf 200
+  exit 0
+fi
+
+[ "$method" = GET ] && [ -z "$body" ] || { echo "stub curl: not a GET: $method $url" >&2; exit 99; }
+if [[ $url =~ ^https://([0-9.]+)/api/v1/(nodes|pods)$ ]]; then
+  endpoint=${BASH_REMATCH[1]} what=${BASH_REMATCH[2]}
+  [ -n "$cacert" ] && [ "$(cat "$cacert")" = "$STUB_CA" ] || { echo "stub curl: not the cluster's CA" >&2; exit 99; }
+  case $what in
+    nodes) [ "${#q[@]}" = 0 ] || { echo "stub curl: nodes with a query: $(declare -p q)" >&2; exit 99; } ;;
+    pods) [ "${#q[@]}" = 1 ] && [ "${q[fieldSelector]:-}" = 'status.phase!=Succeeded,status.phase!=Failed' ] ||
+      { echo "stub curl: not the pods not finished: $(declare -p q)" >&2; exit 99; } ;;
+  esac
+  echo "curl kube $endpoint $what" >> "$STUB_LOG"
+  f=$STUB_AUDIT/kube/$endpoint/$what.json
+  if [ -f "$f" ]; then cp "$f" "$out"; printf 200; else echo '{"kind":"Status","message":"forbidden (stub)"}' > "$out"; printf 403; fi
+  exit 0
+fi
+
+[[ $url =~ ^$STUB_API/v3/projects/([a-z0-9-]+)/timeSeries$ ]] && [ -z "$cacert" ] || { echo "stub curl: not timeSeries.list: $url" >&2; exit 99; }
 project=${BASH_REMATCH[1]}
 case ${q[filter]:-} in
   *'"compute.googleapis.com/instance/cpu/utilization"'*) m=vm-cpu a=ALIGN_MAX ;;
@@ -37,12 +87,7 @@ esac
   { echo "stub curl: not the hour in 600s windows by $a: $(declare -p q)" >&2; exit 99; }
 page=${q[pageToken]:-}
 echo "curl $project $m $a ${page:-first}" >> "$STUB_LOG"
-dir=$STUB_AUDIT/$project
-if [ ! -d "$dir" ]; then
-  echo '{"error":{"code":403,"message":"Permission monitoring.timeSeries.list denied (stub)","status":"PERMISSION_DENIED"}}' > "$out"
-  printf 403
-  exit 0
-fi
-f=$dir/m-$m${page:+.$page}.json
+refused "$project" monitoring.timeSeries.list && exit 0
+f=$STUB_AUDIT/$project/m-$m${page:+.$page}.json
 if [ -f "$f" ]; then cp "$f" "$out"; else echo '{}' > "$out"; fi
 printf 200

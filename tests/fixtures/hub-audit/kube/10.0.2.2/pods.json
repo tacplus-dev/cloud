@@ -1,0 +1,22 @@
+{"kind": "PodList", "items": [
+ {"metadata": {"namespace": "ci", "name": "runner-abc-project-1-concurrent-0", "creationTimestamp": "2026-11-23T11:40:00Z", "annotations": {"job.runner.gitlab.com/url": "https://gitlab.com/tacplus-dev/build/-/jobs/18234995653", "job.runner.gitlab.com/sha": "0123456"}},
+  "spec": {"nodeName": "gke-dev-spot-1",
+   "initContainers": [{"name": "init-permissions", "resources": {"requests": {"cpu": "50m", "memory": "64Mi"}}}],
+   "containers": [{"name": "build", "env": [{"name": "CI_JOB_TOKEN", "value": "stub-secret-value"}], "resources": {"requests": {"cpu": "2", "memory": "6Gi"}}}, {"name": "helper", "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}}}]},
+  "status": {"phase": "Running"}},
+ {"metadata": {"namespace": "kube-system", "name": "fluentbit-gke-xyz", "creationTimestamp": "2026-11-20T18:53:00Z", "ownerReferences": [{"kind": "DaemonSet", "name": "fluentbit-gke"}]},
+  "spec": {"nodeName": "gke-dev-spot-1", "containers": [{"name": "fluentbit", "resources": {"requests": {"cpu": "100m", "memory": "200Mi"}}}]},
+  "status": {"phase": "Running"}},
+ {"metadata": {"namespace": "ci", "name": "runner-def-project-1-concurrent-1", "creationTimestamp": "2026-11-23T09:40:00Z", "annotations": {"job.runner.gitlab.com/url": "https://gitlab.com/tacplus-dev/build/-/jobs/18200000000"}},
+  "spec": {"nodeName": "gke-dev-spot-2", "containers": [{"name": "build", "resources": {"requests": {"cpu": "1500m", "memory": "4G"}}}]},
+  "status": {"phase": "Running"}},
+ {"metadata": {"namespace": "kube-system", "name": "pdcsi-node-abc", "creationTimestamp": "2026-11-23T09:36:00Z", "ownerReferences": [{"kind": "DaemonSet", "name": "pdcsi-node"}]},
+  "spec": {"nodeName": "gke-dev-spot-2", "containers": [{"name": "csi-driver"}]},
+  "status": {"phase": "Running"}},
+ {"metadata": {"namespace": "ci", "name": "gitlab-runner-0", "creationTimestamp": "2026-11-15T10:00:00Z", "ownerReferences": [{"kind": "StatefulSet", "name": "gitlab-runner"}]},
+  "spec": {"nodeName": "gke-dev-normal-1", "containers": [{"name": "runner", "resources": {"requests": {"cpu": "100m", "memory": "128Mi"}}}]},
+  "status": {"phase": "Running"}},
+ {"metadata": {"namespace": "ci", "name": "runner-pending-1", "creationTimestamp": "2026-11-23T11:50:00Z", "annotations": {"job.runner.gitlab.com/url": "https://gitlab.com/tacplus-dev/build/-/jobs/18235434424"}},
+  "spec": {"containers": [{"name": "build", "env": [{"name": "SECRET", "value": "stub-secret-value"}], "resources": {"requests": {"cpu": "2", "memory": "6Gi"}}}]},
+  "status": {"phase": "Pending", "conditions": [{"type": "PodScheduled", "status": "False", "reason": "Unschedulable", "message": "0/5 nodes are available: 2 Insufficient cpu, 2 Insufficient memory, 3 node(s) didn't match Pod's node affinity/selector."}]}}
+]}

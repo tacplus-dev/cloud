@@ -1,0 +1,9 @@
+{"entries": [
+ {"timestamp": "2026-11-23T09:31:00Z", "jsonPayload": {"resultInfo": {"measureTime": "1795426260", "results": [{"eventId": "ev-1", "errorMsg": {"messageId": "scale.up.error.out.of.resources", "parameters": ["https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-a/instanceGroups/gke-dev-spot-a-grp"]}}]}}},
+ {"timestamp": "2026-11-23T09:34:00Z", "jsonPayload": {"decision": {"eventId": "ev-2", "scaleUp": {"increasedMigs": [{"mig": {"name": "gke-dev-spot-b-grp", "nodepool": "spot", "zone": "us-central1-b"}, "requestedNodes": 1}]}}}},
+ {"timestamp": "2026-11-23T09:35:00Z", "jsonPayload": {"resultInfo": {"results": [{"eventId": "ev-2"}]}}},
+ {"timestamp": "2026-11-23T10:00:00Z", "jsonPayload": {"noDecisionStatus": {"noScaleUp": {
+   "reason": {"messageId": "no.scale.up.in.backoff"},
+   "unhandledPodGroups": [{"podGroup": {"samplePod": {"name": "runner-pending-2", "namespace": "ci"}, "totalPodCount": 1}, "rejectedMigs": [
+     {"mig": {"name": "gke-dev-spot-a-grp", "nodepool": "spot", "zone": "us-central1-a"}, "reason": {"messageId": "no.scale.up.mig.failing.predicate", "parameters": ["NodeResourcesFit", "Insufficient cpu"]}}]}]}}}}
+]}

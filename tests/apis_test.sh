@@ -32,6 +32,7 @@ declare -A api_of=(
   [google_container]=container
   [google_dns]=dns
   [google_kms]=cloudkms
+  [google_logging]=logging
 )
 # google_project, the resource and the data source: the project (Resource Manager) and its billing (Cloud Billing).
 project_apis="cloudresourcemanager cloudbilling"
@@ -58,6 +59,10 @@ declare -A counts=(
   [dns]=resource
   [compute]=resource
   [container]=resource
+  # Cloud Logging's configuration (the log views of #85): the project of the bucket, whose logs it is. Each project
+  # module enables it in its own project; the ci module's views on tacplus-dev's bucket count against tacplus-dev, whose
+  # module enables it too.
+  [logging]=resource
 )
 
 api() { # api TYPE: the API(s) of a type, or nothing when the type is not audited

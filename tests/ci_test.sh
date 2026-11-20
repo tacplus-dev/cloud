@@ -142,11 +142,11 @@ check "another schedule on main (the nightly's): the checks and drift" "${lint}d
   ok "CLOUD_AUDIT is false unless a schedule or a run sets it" || fail "CLOUD_AUDIT: $(q '.variables.CLOUD_AUDIT')"
 [ "$(q '.variables.GCP_AUDIT_SA')" = hub-audit@tacplus-ci.iam.gserviceaccount.com ] &&
   [ "$(q '.audit.needs | length')" = 0 ] && [ "$(q '.audit.stage')" = audit ] &&
-  [[ $(q '.audit.script | join(" ")') == *'source ci/lib.sh && ci_audit && ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)' ]] &&
+  [[ $(q '.audit.script | join(" ")') == *'source ci/lib.sh && ci_audit && log=$(ci_autoscaler_log) && AUDIT_AUTOSCALER_LOG=$log ci/hub-audit.sh audit "$(ci_region)" $(ci_projects)' ]] &&
   [[ $(q '.audit.script | join(" ")') != *ci_gcp* ]] &&
   [ "$(q '.audit.artifacts.paths | join(",")')" = src/audit/ ] && [ "$(q '.audit.artifacts.when')" = always ] &&
   [ "$(q '.audit.artifacts.access')" = developer ] && [ "$(q '.audit.artifacts.expire_in')" = "30 days" ] &&
-  ok "audit: as hub-audit alone, needing no job, its report the artifact src/audit/ for 30 days, kept when it fails" || fail "audit: $(q '.audit')"
+  ok "audit: as hub-audit alone, needing no job, reading the autoscaler's log as modules/settings says, its report the artifact src/audit/ for 30 days, kept when it fails" || fail "audit: $(q '.audit')"
 [ "$(q '.variables.ANTHROPIC_FEDERATION_RULE_ID')" = fdrl_01JYRHz8AjGZ7TBcEQL9Eqvo ] && [ "$(q '.variables.ANTHROPIC_SERVICE_ACCOUNT_ID')" = svac_011SKzqJqvTtj2LmUFbbDztN ] &&
   ok "the bootstrap rule and account Jody made are set, so a push to main plans the anthropic stack (#34)" || fail "the bootstrap rule or account is not the one made in the Console (#34)"
 

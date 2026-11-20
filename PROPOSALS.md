@@ -590,3 +590,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   becomes; the `tacplus-admiral` App's import-only KMS key, `admiral` its only signer; a secret `admiral-triage-gitlab`
   with no version, `admiral` its only reader, Jody adding the triage project's access token; outputs naming them for
   the Admiral's Config. Why: the Admiral files issues holding no long-lived secret in its config.
+- **The cluster autoscaler's events in the audit job, switched on** (looper, #85, 2026-11-20). What: once the host
+  organization grants `cloud-admin-pipeline` `roles/logging.configWriter` on the parent folder (Jody's step as host;
+  README, What the host organization provides), a commit of its own sets `modules/settings`' `autoscaler_log` to `true`:
+  `apply:ci` then makes the view `hub-audit-autoscaler` on each project's `_Default` bucket and hub-audit's
+  `roles/logging.viewAccessor` conditioned on it alone, and the next `audit` reads the autoscaler's events. Then check
+  that a run's `autoscaler.read` is `true` with no error (the conditional grant suffices for `entries.list` on the
+  view, which no test here can prove). Why: #85 landed the view, the grant and the audit's reading gated off, so that
+  no `apply:ci` fails before the grant (Jody's decision, option A: never `roles/logging.viewer`, as a job's output may
+  hold a secret).

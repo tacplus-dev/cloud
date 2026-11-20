@@ -12,23 +12,44 @@
 #   - quotas: CPUS_ALL_REGIONS, and REGION's CPUS, SSD_TOTAL_GB, PREEMPTIBLE_CPUS, T2A_CPUS and C4A_CPUS, with usage;
 #   - utilization, over the last hour, the maximum of 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
 #     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace ci;
-#   - secrets: their names and their versions' states, never a value.
-# It only reads: lists and describes, and Monitoring's timeSeries.list. An API not enabled in a project is noted, its
-# list empty (none can exist there). It fails, both files written, on an exposure finding (an ingress rule open to
-# 0.0.0.0/0 or ::/0, a VM with an external IP) or a read it could not make, so the job shows red. AUDIT_NOW (epoch
-# seconds, default now) ends the hour, and MONITORING_API is Monitoring's endpoint, for tests/hub_audit_test.sh.
+#   - secrets: their names and their versions' states, never a value;
+#   - scheduling (#85), through each cluster's API (container.viewer; the job runs in the cluster, which alone reaches
+#     its private endpoint): each spot node (of a pool with spot, or labelled so), its allocatable CPU and memory, and
+#     the pods on it, each with its phase, creation, owner (its owner references, or the GitLab job of a runner's pod)
+#     and requests (its containers', or an init container's if more, and its overhead), summed; and the pods not
+#     scheduled, with why. A pod's spec, its env with it, is read into the temporary directory and never written out;
+#   - the cluster autoscaler (#85), when AUDIT_AUTOSCALER_LOG is true (ci/lib.sh ci_autoscaler_log): its events of the
+#     last 6 hours (container.googleapis.com/cluster-autoscaler-visibility), through the log view hub-audit-autoscaler
+#     of each project's _Default bucket, the one log hub-audit may read (modules/projects/ci/hub-audit.tf): each
+#     no-scale-up by pool, zone and reason (a pool rejected or skipped, or none), with its count, first and last times
+#     and the pods it left, and each scale-up error, joined to the pools its decision tried. False, until the host
+#     grants what the views need, it is noted as not read.
+# It only reads: lists and describes, Monitoring's timeSeries.list, Logging's entries.list of that view, and the
+# cluster's nodes and pods. An API not enabled in a project is noted, its list empty (none can exist there). It fails,
+# both files written, on an exposure finding (an ingress rule open to 0.0.0.0/0 or ::/0, a VM with an external IP) or
+# a read it could not make, so the job shows red. AUDIT_NOW (epoch seconds, default now) ends the hour and the
+# autoscaler's hours, and MONITORING_API and LOGGING_API are Monitoring's and Logging's endpoints, for
+# tests/hub_audit_test.sh.
 #
-#   ci/hub-audit.sh DIR REGION PROJECT...    # needs gcloud (signed in: ci/lib.sh ci_audit), curl, jq and date
+#   AUDIT_AUTOSCALER_LOG=true|false ci/hub-audit.sh DIR REGION PROJECT...
+#                                     # needs gcloud (signed in: ci/lib.sh ci_audit), curl, jq, base64 and date
 set -uo pipefail
 [ $# -ge 3 ] || { echo "usage: ci/hub-audit.sh DIR REGION PROJECT..." >&2; exit 2; }
+autoscaler_log=${AUDIT_AUTOSCALER_LOG:-false}
+case $autoscaler_log in
+  true | false) ;;
+  *) echo "usage: AUDIT_AUTOSCALER_LOG is true or false (ci/lib.sh ci_autoscaler_log), not [$autoscaler_log]" >&2; exit 2 ;;
+esac
 out=$1 region=$2
 shift 2
 mkdir -p "$out" || exit 2
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 now=${AUDIT_NOW:-$(date -u +%s)}
-end=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ) && start=$(date -u -d "@$((now - 3600))" +%Y-%m-%dT%H:%M:%SZ) || exit 2
+end=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ) && start=$(date -u -d "@$((now - 3600))" +%Y-%m-%dT%H:%M:%SZ) &&
+  log_start=$(date -u -d "@$((now - 6 * 3600))" +%Y-%m-%dT%H:%M:%SZ) || exit 2
 api=${MONITORING_API:-https://monitoring.googleapis.com}
+logging=${LOGGING_API:-https://logging.googleapis.com}
 : > "$tmp/errors"
 : > "$tmp/unavailable"
 
@@ -84,6 +105,48 @@ series() {
     [ -n "$page" ] && [ "$n" -lt 100 ] || break
   done
 }
+# entries PROJECT FILE WHAT: the cluster autoscaler's log entries of the last 6 hours, oldest first, through the view
+# hub-audit-autoscaler of PROJECT's _Default bucket, every page, as one array in FILE, each entry's time and payload
+# alone ([] and the failure if a page is refused).
+entries() {
+  local p=$1 f=$2 what=$3 page='' code n=0
+  echo '[]' > "$f"
+  [ -f "$tmp/auth" ] || return 1
+  while :; do
+    n=$((n + 1))
+    jq -nc --arg view "projects/$p/locations/global/buckets/_Default/views/hub-audit-autoscaler" --arg page "$page" \
+      --arg filter "logName=\"projects/$p/logs/container.googleapis.com%2Fcluster-autoscaler-visibility\" AND timestamp>=\"$log_start\" AND timestamp<\"$end\"" \
+      '{resourceNames: [$view], filter: $filter, orderBy: "timestamp asc", pageSize: 1000} + (if $page == "" then {} else {pageToken: $page} end)' > "$f.body"
+    code=$(curl -sS -o "$f.page" -w '%{http_code}' -X POST -H @"$tmp/auth" -H 'Content-Type: application/json' \
+      --data-binary @"$f.body" "$logging/v2/entries:list" 2> "$f.err")
+    if [ "$code" != 200 ] || ! jq -e 'type == "object"' "$f.page" > /dev/null 2>&1; then
+      { echo "HTTP ${code:-none}"; cat "$f.page" 2>/dev/null; } >> "$f.err"
+      failed "$p" "$f" "$what"
+      echo '[]' > "$f"
+      return 1
+    fi
+    jq -s '.[0] + [.[1].entries[]? | {timestamp, payload: (.jsonPayload // {})}]' "$f" "$f.page" > "$f.next" && mv "$f.next" "$f"
+    page=$(jq -r '.nextPageToken // empty' "$f.page")
+    [ -n "$page" ] && [ "$n" -lt 100 ] || break
+  done
+}
+# kube PROJECT FILE WHAT ENDPOINT CA PATH [CURL-ARGS...]: a GET of PATH on the cluster's API at ENDPOINT (its CA the
+# file CA), as hub-audit, into FILE (the failure if refused, FILE removed).
+kube() {
+  local p=$1 f=$2 what=$3 ep=$4 ca=$5 path=$6 code
+  shift 6
+  [ -f "$tmp/auth" ] || return 1
+  code=$(curl -sS -G -o "$f" -w '%{http_code}' --cacert "$ca" -H @"$tmp/auth" "https://$ep$path" "$@" 2> "$f.err")
+  [ "$code" = 200 ] && jq -e 'type == "object"' "$f" > /dev/null 2>&1 && return
+  { echo "HTTP ${code:-none}"; head -c 300 "$f" 2>/dev/null; } >> "$f.err"
+  rm -f "$f"
+  failed "$p" "$f" "$what"
+  return 1
+}
+# A Kubernetes quantity (100m, 2, 13456244Ki, 4G), as a number: cores or bytes.
+qty='def qty: if . == null then 0 else tostring | capture("^(?<n>[0-9.eE+-]+?)(?<s>m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$") as $c
+  | ($c.n | tonumber) * ({"": 1, m: 0.001, k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, E: 1e18, Ki: 1024, Mi: 1048576,
+      Gi: 1073741824, Ti: 1099511627776, Pi: 1125899906842624, Ei: 1152921504606846976}[$c.s // ""]) end;'
 
 for p in "$@"; do
   d=$tmp/p/$p
@@ -94,6 +157,37 @@ for p in "$@"; do
   read_json "$p" "$d/forwarding-rules.json" '[]' "forwarding rules" compute forwarding-rules list
   read_json "$p" "$d/disks.json" '[]' "disks" compute disks list
   read_json "$p" "$d/clusters.json" '[]' "clusters" container clusters list
+  # Each cluster's nodes and its pods not finished, read whole into the temporary directory and cut down at once to
+  # what the report says: no pod's spec (its env) goes further.
+  : > "$d/kube.jsonl"
+  jq -c '.[] | {name, endpoint: (.endpoint // ""), ca: (.masterAuth.clusterCaCertificate // "")}' "$d/clusters.json" | while read -r c; do
+    name=$(jq -r .name <<< "$c") ep=$(jq -r .endpoint <<< "$c")
+    if [ -z "$ep" ] || ! jq -r .ca <<< "$c" | base64 -d > "$d/ca-$name.pem" 2> /dev/null || [ ! -s "$d/ca-$name.pem" ]; then
+      jq -nc --arg p "$p" --arg w "the cluster $name's nodes and pods" '{project: $p, what: $w, error: "its description has no endpoint or CA"}' >> "$tmp/errors"
+      continue
+    fi
+    kube "$p" "$d/nodes.raw" "the cluster $name's nodes" "$ep" "$d/ca-$name.pem" /api/v1/nodes &&
+      kube "$p" "$d/pods.raw" "the cluster $name's pods" "$ep" "$d/ca-$name.pem" /api/v1/pods \
+        --data-urlencode 'fieldSelector=status.phase!=Succeeded,status.phase!=Failed' &&
+      jq -nc --arg cluster "$name" --slurpfile nodes "$d/nodes.raw" --slurpfile pods "$d/pods.raw" "$qty"'
+        def cpu: . * 1000 | round / 1000;
+        def requests($r): ([(.spec.containers // [])[] | .resources.requests[$r]? | qty] | add // 0) as $run
+          | ([(.spec.initContainers // [])[] | .resources.requests[$r]? | qty] | max // 0) as $init
+          | ([$run, $init] | max) + ((.spec.overhead // {})[$r] | qty);
+        {cluster: $cluster,
+         nodes: [$nodes[0].items[]? | .metadata.labels as $l
+           | {name: .metadata.name, pool: $l["cloud.google.com/gke-nodepool"], zone: $l["topology.kubernetes.io/zone"],
+              spot: ($l["cloud.google.com/gke-spot"] == "true"), created: .metadata.creationTimestamp,
+              cpu: (.status.allocatable.cpu | qty | cpu), memory: (.status.allocatable.memory | qty | round)}] | sort_by(.name),
+         pods: [$pods[0].items[]? | (.metadata.annotations // {})["job.runner.gitlab.com/url"] as $job | (.metadata.ownerReferences // []) as $o
+           | {namespace: .metadata.namespace, name: .metadata.name, node: .spec.nodeName, phase: .status.phase,
+              created: .metadata.creationTimestamp,
+              owner: (if ($o | length) > 0 then $o | map("\(.kind)/\(.name)") | join(", ") elif $job then "GitLab job \($job)" else null end),
+              cpu: (requests("cpu") | cpu), memory: (requests("memory") | round),
+              why: ([.status.conditions[]? | select(.type == "PodScheduled" and .status == "False") | .message // .reason][0])}]}' >> "$d/kube.jsonl" ||
+      jq -nc --arg p "$p" --arg w "the cluster $name's nodes and pods" '{project: $p, what: $w, error: "cannot read them"}' >> "$tmp/errors"
+    rm -f "$d/nodes.raw" "$d/pods.raw"
+  done
   read_json "$p" "$d/project-info.json" '{}' "the project's quotas" compute project-info describe
   read_json "$p" "$d/region.json" '{}' "the quotas of $region" compute regions describe "$region"
   : > "$d/secrets.jsonl"
@@ -110,18 +204,24 @@ for p in "$@"; do
   series "$p" "$d/m-ctr-cpu-req.json" "the containers' CPU requests" ALIGN_MAX "metric.type = \"kubernetes.io/container/cpu/request_cores\" AND $ns"
   series "$p" "$d/m-ctr-mem.json" "the containers' memory" ALIGN_MAX "metric.type = \"kubernetes.io/container/memory/used_bytes\" AND metric.labels.memory_type = \"non-evictable\" AND $ns"
   series "$p" "$d/m-ctr-mem-req.json" "the containers' memory requests" ALIGN_MAX "metric.type = \"kubernetes.io/container/memory/request_bytes\" AND $ns"
+  if [ "$autoscaler_log" = true ]; then
+    entries "$p" "$d/autoscaler.json" "the cluster autoscaler's events"
+  else
+    echo '[]' > "$d/autoscaler.json"
+    jq -nc --arg p "$p" '{project: $p, what: "the cluster autoscaler'"'"'s events", why: "its log view waits on the host'"'"'s grant (modules/settings autoscaler_log)"}' >> "$tmp/unavailable"
+  fi
   args=(--arg project "$p")
   for f in "$d"/*.json; do
     k=$(basename "$f" .json)
     case $k in secrets | versions) continue ;; esac
     args+=(--slurpfile "${k//-/_}" "$f")
   done
-  jq -n "${args[@]}" --slurpfile secrets <(jq -s . "$d/secrets.jsonl") \
-    '$ARGS.named | with_entries(.value |= if type == "array" then .[0] else . end) | .secrets = $secrets[0]' > "$tmp/p/$p.json" ||
+  jq -n "${args[@]}" --slurpfile secrets <(jq -s . "$d/secrets.jsonl") --slurpfile kube <(jq -s . "$d/kube.jsonl") \
+    '$ARGS.named | with_entries(.value |= if type == "array" then .[0] else . end) | .secrets = $secrets[0] | .kube = $kube[0]' > "$tmp/p/$p.json" ||
     jq -nc --arg p "$p" '{project: $p, what: "its lists", error: "cannot read them"}' >> "$tmp/errors"
 done
 
-jq -n --arg start "$start" --arg end "$end" --arg region "$region" --arg commit "${CLOUD_COMMIT:-}" \
+jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg autoscaler_log "$autoscaler_log" --arg region "$region" --arg commit "${CLOUD_COMMIT:-}" \
   --arg pipeline "${CI_PIPELINE_URL:-}" --arg job "${CI_JOB_URL:-}" \
   --slurpfile ps <(cat "$tmp"/p/*.json 2>/dev/null | jq -s .) \
   --slurpfile errors <(jq -s . "$tmp/errors") --slurpfile unavailable <(jq -s . "$tmp/unavailable") '
@@ -131,6 +231,8 @@ jq -n --arg start "$start" --arg end "$end" --arg region "$region" --arg commit 
   def scope: if .region then (.region | base) elif .zone then (.zone | base) else "global" end;
   def maxv: [.points[]?.value | (.doubleValue // (.int64Value | tonumber?)) // empty] | max;
   def world: IN("0.0.0.0/0", "::/0");
+  # An autoscaler message: its ID and parameters.
+  def msg: .messageId + (if (.parameters // []) | length > 0 then ": " + (.parameters | join(", ")) else "" end);
   $ps[0] as $ps
   | ([$ps[] | .project as $p | .firewall_rules[]
       | select((.direction // "INGRESS") == "INGRESS" and ((.allowed // []) | length > 0) and any(.sourceRanges[]?; world))
@@ -188,6 +290,38 @@ jq -n --arg start "$start" --arg end "$end" --arg region "$region" --arg commit 
         | {project: $p, cluster: .cluster_name, pod: .pod_name, container: .container_name,
            cpu_used_max: $cpu[$k], cpu_requested: $cpu_req[$k], memory_used_max: $mem[$k], memory_requested: $mem_req[$k]}]
     },
+    scheduling: {
+      spot_nodes: [$ps[] | .project as $p
+        | ([.clusters[] | {key: .name, value: [.nodePools[]? | select(.config.spot) | .name]}] | from_entries) as $spot
+        | .kube[] | .cluster as $c | .pods as $pods | .nodes[]
+        | select(.spot or (.pool as $n | any(($spot[$c] // [])[]; . == $n)))
+        | . as $node | [$pods[] | select(.node == $node.name)] | sort_by(.namespace, .name)
+        | {project: $p, cluster: $c, pool: $node.pool, node: $node.name, zone: $node.zone, created: $node.created,
+           cpu_allocatable: $node.cpu, memory_allocatable: $node.memory,
+           cpu_requested: (map(.cpu) | add // 0 | . * 1000 | round / 1000), memory_requested: (map(.memory) | add // 0),
+           pods: [.[] | {namespace, name, phase, created, owner, cpu_requested: .cpu, memory_requested: .memory}]}],
+      pending_pods: [$ps[] | .project as $p | .kube[] | .cluster as $c | .pods[] | select(.node == null and .phase == "Pending")
+        | {project: $p, cluster: $c, namespace, name, created, owner, cpu_requested: .cpu, memory_requested: .memory, why}]
+    },
+    autoscaler: {
+      read: ($autoscaler_log == "true"),
+      window: {start: $log_start, end: $end},
+      # Each event once per pool, zone and reason, then counted across the hours.
+      no_scale_up: ([$ps[] | .project as $p | .autoscaler[] | .timestamp as $t | .payload.noDecisionStatus.noScaleUp // empty
+          | [(.unhandledPodGroups[]? | [.podGroup.samplePod // empty | "\(.namespace)/\(.name)"] as $pods
+              | .rejectedMigs[]? | {pool: .mig.nodepool, zone: .mig.zone, reason: (.reason | msg), pods: $pods}),
+             (.skippedMigs[]? | {pool: .mig.nodepool, zone: .mig.zone, reason: (.reason | msg), pods: []}),
+             (.reason // empty | {pool: null, zone: null, reason: msg, pods: []})]
+          | group_by([.pool, .zone, .reason])[] | {project: $p, pool: .[0].pool, zone: .[0].zone, reason: .[0].reason, t: $t, pods: (map(.pods[]) | unique)}]
+        | group_by([.project, .pool, .zone, .reason])
+        | map({project: .[0].project, pool: .[0].pool, zone: .[0].zone, reason: .[0].reason, count: length,
+               first: (map(.t) | min), last: (map(.t) | max), pods: (map(.pods[]) | unique)})),
+      scale_up_errors: [$ps[] | .project as $p | .autoscaler as $e
+        | ([$e[] | .payload.decision // empty | select(.eventId)
+            | {key: .eventId, value: [.scaleUp.increasedMigs[]? | {pool: .mig.nodepool, zone: .mig.zone, requested: .requestedNodes}]}] | from_entries) as $tried
+        | $e[] | .timestamp as $t | .payload.resultInfo.results[]? | select(.errorMsg)
+        | {project: $p, time: $t, event_id: .eventId, error: (.errorMsg | msg), pools: ($tried[.eventId] // [])}]
+    },
     secrets: [$ps[] | .project as $p | .secrets[] | {project: $p} + .],
     findings: ([$open[] | select(.disabled | not)
         | "\(.project): firewall rule \(.name) allows ingress from \(.sources | join(" and ")) (\(.allowed | join(" ")))"]
@@ -207,7 +341,7 @@ jq -r '
   "Projects \(.projects | join(", ")), region \(.region); tacplus-dev/cloud@\(.commit | if . == "" then "unknown" else . end), read as hub-audit. \(if .pipeline != "" then "Pipeline: \(.pipeline)." else "" end)", "",
   (if (.findings | length) > 0 then "**Exposure findings (the job fails):**", "", (.findings[] | "- \(.)"), "" else "No exposure finding.", "" end),
   (if (.errors | length) > 0 then "**Reads that failed (the job fails):**", "", (.errors[] | "- \(.project): \(.what): \(.error)"), "" else empty end),
-  (if (.unavailable | length) > 0 then "Not enabled, so none: \(.unavailable | map("\(.project) \(.what)") | join("; ")).", "" else empty end),
+  (.unavailable | group_by(.why)[] | "Not read, \(.[0].why): \(map("\(.project) \(.what)") | join("; ")).", ""),
   "## Exposure", "",
   "### Ingress open to 0.0.0.0/0", "", table(["project", "rule", "network", "sources", "allows", "targets", "disabled"];
     [.exposure.open_ingress[] | [.project, .name, .network, .sources, .allowed, .target_tags, .disabled]]),
@@ -228,6 +362,20 @@ jq -r '
   "### CPU per node (of its allocatable)", "", table(["project", "cluster", "node", "CPU max"]; [.utilization.nodes[] | [.project, .cluster, .node, (.cpu_max | pct)]]),
   "### Containers in namespace ci: used against requested", "", table(["project", "cluster", "pod", "container", "CPU used (cores)", "CPU requested", "memory used", "memory requested"];
     [.utilization.containers[] | [.project, .cluster, .pod, .container, (.cpu_used_max | cores), (.cpu_requested | cores), (.memory_used_max | mib), (.memory_requested | mib)]]),
+  "## Scheduling", "",
+  "### Spot nodes: requested against allocatable", "", table(["project", "cluster", "pool", "node", "zone", "created", "CPU (cores)", "memory", "pods"];
+    [.scheduling.spot_nodes[] | [.project, .cluster, .pool, .node, .zone, .created, "\(.cpu_requested | cores) of \(.cpu_allocatable | cores)",
+      "\(.memory_requested / 1048576 | round) of \(.memory_allocatable / 1048576 | round) MiB", (.pods | length)]]),
+  "### Pods on the spot nodes", "", table(["project", "node", "pod", "phase", "created", "owner", "CPU requested", "memory requested"];
+    [.scheduling.spot_nodes[] | . as $n | .pods[] | [$n.project, $n.node, "\(.namespace)/\(.name)", .phase, .created, .owner, (.cpu_requested | cores), (.memory_requested | mib)]]),
+  "### Pods not scheduled", "", table(["project", "cluster", "pod", "created", "owner", "CPU requested", "memory requested", "why"];
+    [.scheduling.pending_pods[] | [.project, .cluster, "\(.namespace)/\(.name)", .created, .owner, (.cpu_requested | cores), (.memory_requested | mib), .why]]),
+  "## Cluster autoscaler, \(.autoscaler.window.start) to \(.autoscaler.window.end)", "",
+  (if .autoscaler.read | not then "Not read: its log view waits on the host'"'"'s grant of roles/logging.configWriter to the pipeline (modules/settings autoscaler_log; README, What the host organization provides).", "" else empty end),
+  "### No scale-up, by pool, zone and reason", "", table(["project", "pool", "zone", "reason", "times", "first", "last", "pods left"];
+    [.autoscaler.no_scale_up[] | [.project, .pool, .zone, .reason, .count, .first, .last, .pods]]),
+  "### Scale-up errors", "", table(["project", "time", "event", "error", "pools tried"];
+    [.autoscaler.scale_up_errors[] | [.project, .time, .event_id, .error, [.pools[] | "\(.pool) \(.zone) +\(.requested)"]]]),
   "## Secrets (names and version states only)", "", table(["project", "secret", "versions"];
     [.secrets[] | [.project, .name, [.versions[] | "\(.version) \(.state)"]]])
   ' "$out/audit.json" > "$out/audit.md" || { echo "audit: cannot write its summary" >&2; exit 1; }

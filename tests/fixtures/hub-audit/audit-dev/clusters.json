@@ -22,6 +22,10 @@
      "maxNodeCount": 3
     }
    }
-  ]
+  ],
+  "endpoint": "10.0.2.2",
+  "masterAuth": {
+   "clusterCaCertificate": "c3R1Yi1jYQo="
+  }
  }
 ]

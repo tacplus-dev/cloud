@@ -608,6 +608,63 @@ run "ci" {
     condition     = { for k, m in google_project_iam_member.hub_audit : k => [m.project, m.role, m.member] } == { for g in setproduct(["tacplus-ci", "tacplus-dev"], ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"]) : "${g[0]}:${g[1]}" => [g[0], g[1], "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com"] }
     error_message = "hub-audit does not hold exactly its five read roles on tacplus-ci and tacplus-dev."
   }
+  # The cluster autoscaler's log (#85): no view and no grant on one until autoscaler_log is true, which waits for the
+  # host's roles/logging.configWriter (the stack's input, modules/settings' autoscaler_log, is false).
+  assert {
+    condition     = length(google_logging_log_view.hub_audit_autoscaler) == 0 && length(google_project_iam_member.hub_audit_autoscaler) == 0
+    error_message = "With autoscaler_log unset, the plan makes a log view or grants hub-audit viewAccessor: the host's logging.configWriter may not be in place."
+  }
+}
+
+# With autoscaler_log true (#85, Jody's option A), hub-audit reads the cluster autoscaler's log alone: on each project's
+# _Default bucket the view hub-audit-autoscaler holds that log, and nothing else; and hub-audit holds
+# roles/logging.viewAccessor on each project conditioned on that project's view alone, never logging.viewer (a job's
+# output may hold a secret). Its five read roles are unchanged.
+run "hub_audit_autoscaler_log" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.5.3", branch = "19-5-stable", commit = "33227fd48c5b411d0b49a74e129d187728abcc3b", runner_sha256 = "b4e9583669395f4b84e333ffdda4f02662cdbc609c0ff9d8683779638404fb34"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.5.3@sha256:3f7033e38c6ee7b440fcfc8f1b4a8b8aa3fe7e694e5380f0c299ff3513155564"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      shared = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 4, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud", autoscaler_log = true }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+  }
+  assert {
+    condition     = { for k, v in google_logging_log_view.hub_audit_autoscaler : k => [v.name, v.bucket, v.filter] } == { for p in ["tacplus-ci", "tacplus-dev"] : p => ["hub-audit-autoscaler", "projects/${p}/locations/global/buckets/_Default", "LOG_ID(\"container.googleapis.com/cluster-autoscaler-visibility\")"] }
+    error_message = "Each project's _Default bucket does not have the one view hub-audit-autoscaler, of the cluster autoscaler's visibility log alone."
+  }
+  assert {
+    condition     = { for k, m in google_project_iam_member.hub_audit_autoscaler : k => [m.project, m.role, m.member, length(m.condition), m.condition[0].expression] } == { for p in ["tacplus-ci", "tacplus-dev"] : p => [p, "roles/logging.viewAccessor", "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com", 1, "resource.name == \"projects/${p}/locations/global/buckets/_Default/views/hub-audit-autoscaler\""] }
+    error_message = "hub-audit does not hold roles/logging.viewAccessor on each project conditioned on that project's view hub-audit-autoscaler alone."
+  }
+  assert {
+    condition     = length(google_project_iam_member.hub_audit) == 10 && alltrue([for m in google_project_iam_member.hub_audit : !startswith(m.role, "roles/logging.")])
+    error_message = "autoscaler_log changes hub-audit's read roles, or gives it another logging role."
+  }
 }
 
 # A pool that runs one job per VM, or lets a job swap, is refused (#5).

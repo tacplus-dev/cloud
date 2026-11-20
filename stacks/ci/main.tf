@@ -113,6 +113,9 @@ module "ci" {
     roles          = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"]
     pool           = "projects/${data.google_project.bootstrap.number}/locations/global/workloadIdentityPools/${module.settings.bootstrap.wif_pool}"
     gitlab_project = module.settings.gitlab_project
+    # The cluster autoscaler's log alone (#85): its views and hub-audit's grant on them, once the host's
+    # roles/logging.configWriter is in place.
+    autoscaler_log = module.settings.autoscaler_log
   }
 }
 

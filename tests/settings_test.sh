@@ -4,9 +4,9 @@
 #
 # Tests that the names agree wherever they are written: modules/settings (what the stacks read), the stacks'
 # backends (state in the bootstrap bucket, one prefix per stack), bootstrap/bootstrap.sh (what it creates), the
-# GitLab CI file (the account the jobs become), ci/lib.sh (the GitLab token's secret, by version) and the README (the
-# host's grants to the pipeline, neither owner nor editor, #78); and that the parent folder is the stacks' input,
-# written nowhere. Needs bash.
+# GitLab CI file (the account the jobs become), ci/lib.sh (the GitLab token's secret, by version, and whether the
+# audit reads the cluster autoscaler's log, #85) and the README (the host's grants to the pipeline, neither owner nor
+# editor, #78); and that the parent folder is the stacks' input, written nowhere. Needs bash.
 #
 #   tests/settings_test.sh
 set -uo pipefail
@@ -49,6 +49,22 @@ gitlab_secret=$(setting gitlab_token_secret)
   ok "the GitLab token is bootstrap's secret gitlab-token, by version" || fail "gitlab_token_secret: $gitlab_secret"
 # shellcheck source=ci/lib.sh
 same "ci/lib.sh reads that version" "$(source "$here/ci/lib.sh" && ci_gitlab_secret)" "$gitlab_secret"
+# The cluster autoscaler's log (#85): ci/lib.sh's ci_autoscaler_log says modules/settings' autoscaler_log, true or
+# false, and fails on anything else (a copy of the two files, the setting rewritten).
+autoscaler_log=$(sed -n '/^output "autoscaler_log"/,/^}/s/^ *value *= *\([a-z]*\)$/\1/p' "$settings")
+same "ci/lib.sh reads autoscaler_log" "$(source "$here/ci/lib.sh" && ci_autoscaler_log)" "$autoscaler_log"
+work=$(mktemp -d)
+mkdir -p "$work/ci" "$work/modules/settings" "$work/tmp"
+cp "$here/ci/lib.sh" "$work/ci/"
+for v in true false '"true"' 'var.autoscaler_log' ''; do
+  sed "/^output \"autoscaler_log\"/,/^}/s/^\( *value *= *\).*\$/\1$v/" "$settings" > "$work/modules/settings/main.tf"
+  got=$(ci_tmp=$work/tmp && source "$work/ci/lib.sh" && ci_autoscaler_log 2>&1) && rc=0 || rc=$?
+  case $v in
+    true | false) [ "$rc" = 0 ] && [ "$got" = "$v" ] && ok "ci_autoscaler_log says $v" || fail "ci_autoscaler_log, the setting $v: rc $rc, [$got]" ;;
+    *) [ "$rc" != 0 ] && [[ $got == *"neither true nor false"* ]] && ok "ci_autoscaler_log fails on [$v]" || fail "ci_autoscaler_log, the setting [$v]: rc $rc, [$got]" ;;
+  esac
+done
+rm -rf "$work"
 
 for s in "$here"/stacks/*/; do
   name=$(basename "$s")

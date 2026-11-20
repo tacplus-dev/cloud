@@ -1,0 +1,11 @@
+{"entries": [
+ {"timestamp": "2026-11-23T07:00:00.123Z", "jsonPayload": {"noDecisionStatus": {"measureTime": "1795417200", "noScaleUp": {
+   "unhandledPodGroups": [{"podGroup": {"samplePod": {"name": "runner-pending-1", "namespace": "ci"}, "totalPodCount": 3}, "rejectedMigs": [
+     {"mig": {"name": "gke-dev-spot-a-grp", "nodepool": "spot", "zone": "us-central1-a"}, "reason": {"messageId": "no.scale.up.mig.failing.predicate", "parameters": ["NodeResourcesFit", "Insufficient cpu"]}},
+     {"mig": {"name": "gke-dev-normal-a-grp", "nodepool": "normal", "zone": "us-central1-a"}, "reason": {"messageId": "no.scale.up.mig.failing.predicate", "parameters": ["NodeAffinity", "node(s) didn't match Pod's node affinity/selector"]}}]}],
+   "skippedMigs": [{"mig": {"name": "gke-dev-spot-b-grp", "nodepool": "spot", "zone": "us-central1-b"}, "reason": {"messageId": "no.scale.up.mig.skipped", "parameters": ["max node group size reached"]}}],
+   "unhandledPodGroupsTotalCount": 1}}}},
+ {"timestamp": "2026-11-23T09:30:00Z", "jsonPayload": {"decision": {"eventId": "ev-1", "decideTime": "1795426200", "scaleUp": {
+   "increasedMigs": [{"mig": {"name": "gke-dev-spot-a-grp", "nodepool": "spot", "zone": "us-central1-a"}, "requestedNodes": 1}],
+   "triggeringPods": [{"name": "runner-pending-1", "namespace": "ci"}], "triggeringPodsTotalCount": 1}}}}
+], "nextPageToken": "p2"}
