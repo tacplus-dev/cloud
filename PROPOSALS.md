@@ -574,3 +574,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   endpoint to the runners' NAT address by hand (README, The cluster pipeline, the break-glass). Why: since #79 only the
   cluster's own nodes and pods reach the control plane, so repairing `infra` from outside needs a hand change that is
   public while it lasts. A decision for Jody (the DNS endpoint answers from the internet, behind IAM).
+- **The cluster autoscaler's events in the audit job** (looper, #85, 2026-11-20; waits on a decision there). What:
+  `ci/hub-audit.sh` reads the last hours of `container.googleapis.com/cluster-autoscaler-visibility` (each
+  `noDecisionStatus.noScaleUp`: the pool, zone and reason per rejected or skipped node pool; each `resultInfo` scale-up
+  error, joined to its decision's pools) into `audit.json` and `audit.md`. Recommended read: a log view
+  `hub-audit-autoscaler` on each project's `_Default` bucket, filter
+  `LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")`, and `roles/logging.viewAccessor` to hub-audit
+  conditioned on that view alone, `ci/policy.sh` refusing it any other log grant or a wider filter; it needs a new
+  host grant to cloud-admin-pipeline (`roles/logging.configWriter`, for the views) before its apply. The other way,
+  `roles/logging.viewer` to hub-audit, needs no host grant but lets it read every job pod's output, unmasked, where a
+  secret can be. Why: on 2026-11-20 the spot pool's no-scale-up reason was inferred, not read (#85).
