@@ -232,9 +232,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   in tacplus-dev), with `total_min_node_count` 0 and `total_max_node_count` 5 (the maximum in all zones, unchanged)
   and location policy `ANY`; `normal` and the cluster stay in us-central1-a. Tested with the dev plan test (mock
   providers); not yet seen live: `apply:dev` (an in-place update of the pool), then a gates pod scheduled while the
-  pool is under 5. Gap: a dev project not yet made cannot plan (its zones are read in it). The audit job's autoscaler
-  events (the issue's part 2) wait on a decision: reading Cloud Logging needs either a new host grant or a wider read
-  for hub-audit (#85).
+  pool is under 5. Gap: a dev project not yet made cannot plan (its zones are read in it). The audit now shows what
+  fills each spot node and the pods not scheduled, and can read the cluster autoscaler's events, switched off until
+  the host's grant (below, The hub's audit).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
@@ -497,7 +497,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   here), or a web or API run with `CLOUD_AUDIT` `true`. It writes `audit.json` and `audit.md` (exposure, inventory,
   quotas with usage, the hour's 10-minute CPU maxima per VM and node and the `ci` namespace's containers' use against
   their requests, the secrets' names and version states), the artifact `src/audit/` for 30 days (members only), and is
-  red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Tested with stubs and
+  red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Since #85 it also
+  reads the cluster's API: each spot node's allocatable against its pods' requests, each pod on it with its owner (a
+  runner pod's GitLab job), and the pods not scheduled, with why; no pod's spec is written out. And the cluster
+  autoscaler's last 6 hours (no-scale-ups by pool, zone and reason; scale-up errors joined to the pools tried) through
+  the log view `hub-audit-autoscaler` and a `roles/logging.viewAccessor` conditioned on it alone (Jody's option A; never
+  `logging.viewer`), which `ci/policy.sh` holds to that view and its one filter. That part is off: `modules/settings`'
+  `autoscaler_log` is `false` until the host grants `cloud-admin-pipeline` `roles/logging.configWriter` (a new
+  `HOST_ROLES` line), so no `apply:ci` fails before it; then a commit sets it `true` (PROPOSALS.md). Tested with stubs and
   fixtures (`tests/hub_audit_test.sh`), the policy, the pipeline's rules and the ci and gitlab plan tests. Not yet seen
   live: `apply:ci` makes the account and its grants, `apply:gitlab` the schedule, once the GitLab project is pinned to the
   commit; then the first scheduled run, which #77 waits on. The hub's download URL answers from `main`'s latest
