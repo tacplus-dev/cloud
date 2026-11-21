@@ -177,7 +177,9 @@ is applied:
   update permission on `tacplus-dev` (`ci/lib.sh` gives it to the dev stack as `quota_contact`). An increase may wait
   on Google's review: the preference is reconciling until granted, and the hub's audit shows each quota's limit, usage
   and request (below, The hub's audit). The pipeline makes them with the host's `roles/cloudquotas.admin` (below, What
-  the host organization provides). Raising a pool raises them in the same commit; a raise Google has not granted yet
+  the host organization provides), through a provider of their own whose calls count against `tacplus-dev`
+  (`billing_project`, `user_project_override`, #90), which enables the Cloud Quotas API itself, not against the
+  pipeline's `tacplus-bootstrap` (`tests/quotas_plan_test.sh`). Raising a pool raises them in the same commit; a raise Google has not granted yet
   leaves the pool short until it does.
 
 A drift plan sees only what a stack has in its state, so a rule, a VM or a node pool made by hand is in none. The nightly
@@ -341,9 +343,10 @@ The host organization's admin (its own pipeline, outside this repository) provid
     The hub's audit). Granted before `modules/settings`' `autoscaler_log` is set `true`, in a commit of its own: until
     then the ci stack makes no log view.
   - `roles/cloudquotas.admin`: the dev node pools' quota preferences, C4A CPUs and Hyperdisk Balanced GB (#88; above,
-    The network rules, The node pools' quotas). Granted before the first `apply:dev` that makes them, with `GCP_QUOTA_CONTACT` set and
-    the bootstrap run again (it enables the Cloud Quotas API in `tacplus-bootstrap`): until then that apply fails on
-    them.
+    The network rules, The node pools' quotas). Granted before the first `apply:dev` that makes them, with `GCP_QUOTA_CONTACT` set:
+    until then that apply fails on them. Their calls count against `tacplus-dev` (#90), whose Cloud Quotas API the dev
+    stack enables, with `serviceusage.services.use` there from `roles/serviceusage.serviceUsageAdmin`: the bootstrap
+    need not be run again for them (it enables the API in `tacplus-bootstrap` too, which no stack relies on).
 
   A role here is one a stack's resource needs (`tests/apis_test.sh` names the API of each); a new kind of resource
   is a new line here, and the host's grant, before its first apply. Nothing beyond these, and nothing at the

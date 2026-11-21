@@ -39,6 +39,16 @@ provider "google" {
   region = module.settings.region
 }
 
+# The quota preferences' alone (#90): Cloud Quotas counts its calls against the caller's project, tacplus-bootstrap,
+# whose API is off until the bootstrap is run again by hand; these count them against tacplus-dev, whose module enables
+# the API (the pipeline's serviceusage.services.use there is the host's serviceUsageAdmin on the parent folder).
+provider "google" {
+  alias                 = "quotas"
+  region                = module.settings.region
+  user_project_override = true
+  billing_project       = module.settings.projects.dev.project
+}
+
 # In the dev cluster, as this pipeline (cloud-admin-pipeline: its container.admin from the parent folder covers GKE's RBAC): the
 # cluster pipeline's ClusterRoleBinding. Its token is ephemeral, opened afresh by the plan and again by the apply, so
 # that none is in the saved plan or the state, and none expires while the apply waits for its turn.
@@ -60,7 +70,12 @@ data "google_project" "bootstrap" {
 }
 
 module "dev" {
-  source          = "../../modules/projects/dev"
+  source = "../../modules/projects/dev"
+  providers = {
+    google        = google
+    google.quotas = google.quotas
+    kubernetes    = kubernetes
+  }
   project_id      = module.settings.projects.dev.project
   name            = module.settings.projects.dev.name
   folder          = data.google_active_folder.dev.name

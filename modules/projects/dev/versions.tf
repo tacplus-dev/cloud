@@ -8,6 +8,8 @@ terraform {
     google = {
       source  = "hashicorp/google"
       version = ">= 8.9.0, < 9.0.0"
+      # google.quotas: the quota preferences', its calls counted against the dev project (#90).
+      configuration_aliases = [google.quotas]
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"

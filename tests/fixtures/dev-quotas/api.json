@@ -1,0 +1,82 @@
+{
+  "GET /rm/v3/folders": {
+    "folders": [
+      {
+        "name": "folders/444",
+        "displayName": "dev",
+        "parent": "folders/111111111111",
+        "state": "ACTIVE"
+      }
+    ]
+  },
+  "GET /rm/v1/projects/tacplus-bootstrap": {
+    "projectNumber": "123456789012",
+    "projectId": "tacplus-bootstrap",
+    "lifecycleState": "ACTIVE",
+    "name": "tacplus-bootstrap",
+    "parent": {
+      "type": "folder",
+      "id": "1"
+    }
+  },
+  "GET /billing/v1/projects/tacplus-bootstrap/billingInfo": {
+    "name": "projects/tacplus-bootstrap/billingInfo",
+    "projectId": "tacplus-bootstrap",
+    "billingAccountName": "billingAccounts/000000-111111-222222",
+    "billingEnabled": true
+  },
+  "GET /compute/v1/projects/tacplus-dev/zones": {
+    "kind": "compute#zoneList",
+    "items": [
+      {
+        "kind": "compute#zone",
+        "name": "us-central1-a",
+        "region": "https://www.googleapis.com/compute/v1/projects/tacplus-dev/regions/us-central1",
+        "status": "UP"
+      }
+    ]
+  },
+  "GET /compute/v1/projects/tacplus-dev/zones/us-central1-a/machineTypes": {
+    "kind": "compute#machineTypeList",
+    "items": [
+      {
+        "kind": "compute#machineType",
+        "name": "c4a-standard-4",
+        "guestCpus": 4,
+        "memoryMb": 16384,
+        "zone": "us-central1-a",
+        "architecture": "ARM64",
+        "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-dev/zones/us-central1-a/machineTypes/c4a-standard-4"
+      }
+    ]
+  },
+  "GET /quotas/v1/projects/tacplus-dev/locations/global/quotaPreferences/dev-pools-c4a-cpus-us-central1": {
+    "name": "projects/tacplus-dev/locations/global/quotaPreferences/dev-pools-c4a-cpus-us-central1",
+    "service": "compute.googleapis.com",
+    "quotaId": "CPUS-PER-VM-FAMILY-per-project-region",
+    "dimensions": {
+      "region": "us-central1",
+      "vm_family": "C4A"
+    },
+    "quotaConfig": {
+      "preferredValue": "32",
+      "grantedValue": "32"
+    },
+    "contactEmail": "jody@example.com",
+    "reconciling": false
+  },
+  "GET /quotas/v1/projects/tacplus-dev/locations/global/quotaPreferences/dev-pools-hdb-gb-us-central1": {
+    "name": "projects/tacplus-dev/locations/global/quotaPreferences/dev-pools-hdb-gb-us-central1",
+    "service": "compute.googleapis.com",
+    "quotaId": "HDB-TOTAL-GB-per-project-region",
+    "dimensions": {
+      "region": "us-central1"
+    },
+    "quotaConfig": {
+      "preferredValue": "1000",
+      "grantedValue": "1000"
+    },
+    "contactEmail": "jody@example.com",
+    "reconciling": false
+  }
+}

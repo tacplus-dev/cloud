@@ -58,6 +58,11 @@ mock_provider "google" {
   }
 }
 
+# The quota preferences' (#90): its calls count against the dev project (tests/quotas_plan_test.sh plans them with it).
+mock_provider "google" {
+  alias = "quotas"
+}
+
 mock_provider "kubernetes" {}
 
 # The parent folder, as the pipeline gives it (GCP_PARENT_FOLDER).
@@ -229,10 +234,10 @@ run "dev" {
     condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 22, preferred = 24 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 700, preferred = 1000 } }
     error_message = "The quota preferences do not name the contact, or the module does not give them."
   }
-  # The Cloud Quotas API, in the project the preferences are of.
+  # The Cloud Quotas API, in the project the preferences are of, which their calls count against (#90: tests/quotas_plan_test.sh).
   assert {
-    condition     = contains(keys(google_project_service.service), "cloudquotas.googleapis.com") && contains(terraform_data.iam_ready.input.permissions, "cloudquotas.quotas.update")
-    error_message = "The project does not enable the Cloud Quotas API, or the IAM gate does not wait for cloudquotas.quotas.update."
+    condition     = contains(keys(google_project_service.service), "cloudquotas.googleapis.com") && contains(terraform_data.iam_ready.input.permissions, "cloudquotas.quotas.update") && contains(terraform_data.iam_ready.input.permissions, "serviceusage.services.use")
+    error_message = "The project does not enable the Cloud Quotas API, or the IAM gate does not wait for cloudquotas.quotas.update and serviceusage.services.use."
   }
 
   # The Admiral's federation (#84): a pool of its own, not the GitLab jobs', whose one provider trusts the seatrials

@@ -54,7 +54,8 @@ resource "terraform_data" "iam_ready" {
 
 locals {
   # What the gate waits for: the first create of each kind in the project,
-  # the workload identity pool and the cluster among them.
+  # the workload identity pool and the cluster among them, and the project as the quota preferences' billing project
+  # (serviceusage.services.use, #90).
   iam_ready_permissions = [
     "artifactregistry.repositories.create",
     "cloudquotas.quotas.update",
@@ -65,6 +66,7 @@ locals {
     "iam.workloadIdentityPools.create",
     "resourcemanager.projects.setIamPolicy",
     "secretmanager.secrets.create",
+    "serviceusage.services.use",
     "storage.buckets.create",
   ]
 }
@@ -320,8 +322,11 @@ locals {
   }
 }
 
+# Through google.quotas (#90): its calls count against the dev project (billing_project, user_project_override), whose
+# Cloud Quotas API the project's services enable before the IAM gate, not against the caller's project.
 resource "google_cloud_quotas_quota_preference" "pools" {
   for_each      = local.quotas
+  provider      = google.quotas
   parent        = "projects/${google_project.dev.project_id}"
   name          = "dev-pools-${replace(each.key, "_", "-")}-${var.region}"
   service       = "compute.googleapis.com"

@@ -3,7 +3,9 @@
 
 // A stub HTTP API for tests/gitlab_plan_test.sh: it answers each request whose method and escaped path a fixture
 // names ("GET /api/v4/metadata") with that fixture's JSON, and anything else with 404. It writes nothing anywhere
-// but its log: every request, one line ("METHOD path status"), so that a test sees what a plan asked for. It listens
+// but its log: every request, one line ("METHOD path status"), so that a test sees what a plan asked for, and with
+// the project a Google request counts against, when it names one ("METHOD path status user-project=P", the header
+// X-Goog-User-Project, #90). It listens
 // on 127.0.0.1, on a free port it writes to ADDR_FILE once it listens. Standard library only.
 //
 //	go run tests/stubapi/main.go FIXTURE.json LOG ADDR_FILE
@@ -50,8 +52,12 @@ func main() {
 		if !found {
 			status, body = http.StatusNotFound, json.RawMessage(`{"message":"404 Not Found"}`)
 		}
+		line := fmt.Sprintf("%s %d", key, status)
+		if p := r.Header.Get("X-Goog-User-Project"); p != "" {
+			line += " user-project=" + p
+		}
 		mu.Lock()
-		fmt.Fprintf(logFile, "%s %d\n", key, status)
+		fmt.Fprintln(logFile, line)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)

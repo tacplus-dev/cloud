@@ -64,7 +64,9 @@ declare -A counts=(
   # module enables it in its own project; the ci module's views on tacplus-dev's bucket count against tacplus-dev, whose
   # module enables it too.
   [logging]=resource
-  # Cloud Quotas (the pools' quota preferences, #88): neither documented nor shown by an apply yet: both.
+  # Cloud Quotas (the pools' quota preferences, #88): the caller's (#90: apply:dev's first create was refused, Cloud
+  # Quotas off in tacplus-bootstrap); the dev stack's preferences name tacplus-dev as theirs (billing_project,
+  # tests/quotas_plan_test.sh), so it is the resource's too, and enabled in both.
   [cloudquotas]="caller resource"
 )
 
