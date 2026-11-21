@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by the looper (#84).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#86).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -348,6 +348,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   credentials). Tested with the stacks' plan tests (mock providers) and `tests/ci_test.sh`; not applied yet: `apply:dev`
   then `apply:ci`, with `GCP_KMS_KEY_IMPORTERS` and `GCP_ADMIRAL_SECRET_ADDERS` set first (the hub), then Jody's import
   within three days and the token's first version; the first exchange is the Admiral's (admiral#5).
+  The provider's first `apply:dev` (pipeline 3096232218) failed on the host's `iam.workloadIdentityPoolProviders`,
+  then `https://gitlab.com` only (#86); the host has allowed `https://seatrials.tacplus.dev` since 2026-11-21
+  (the host's pipeline), so the next `apply:dev` makes it as #84 wrote it (README, The org policies).
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
