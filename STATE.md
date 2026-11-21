@@ -233,8 +233,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   and location policy `ANY`; `normal` and the cluster stay in us-central1-a. Tested with the dev plan test (mock
   providers); not yet seen live: `apply:dev` (an in-place update of the pool), then a gates pod scheduled while the
   pool is under 5. Gap: a dev project not yet made cannot plan (its zones are read in it). The audit now shows what
-  fills each spot node and the pods not scheduled, and can read the cluster autoscaler's events, switched off until
-  the host's grant (below, The hub's audit).
+  fills each spot node, the pods not scheduled, and the cluster autoscaler's events on the cluster's objects (a pod's
+  `NotTriggerScaleUp` and its reason); its log, switched off until the host's grant (below, The hub's audit).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
@@ -501,7 +501,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   their requests, the secrets' names and version states), the artifact `src/audit/` for 30 days (members only), and is
   red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Since #85 it also
   reads the cluster's API: each spot node's allocatable against its pods' requests, each pod on it with its owner (a
-  runner pod's GitLab job), and the pods not scheduled, with why; no pod's spec is written out. And the cluster
+  runner pod's GitLab job), and the pods not scheduled, with why; no pod's spec is written out; and the cluster
+  autoscaler's events on the cluster's objects (`NotTriggerScaleUp` with its reason, `TriggeredScaleUp`; the hour
+  Kubernetes keeps them), which need no grant. And the cluster
   autoscaler's last 6 hours (no-scale-ups by pool, zone and reason; scale-up errors joined to the pools tried) through
   the log view `hub-audit-autoscaler` and a `roles/logging.viewAccessor` conditioned on it alone (Jody's option A; never
   `logging.viewer`), which `ci/policy.sh` holds to that view and its one filter. That part is off: `modules/settings`'
