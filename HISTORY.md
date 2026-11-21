@@ -73,3 +73,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-20 looper issue tacplus gates are OOM-killed in the build pod: black 'signal: killed' and the Java member port dying mid-test, three batches in two days (#82)
 - 2026-11-20 looper issue tacplus gates CPU request: BUILD_GATES_REQUESTS_tacplus '2 12Gi ...' slowed the gates (test 488s vs 192s); request 3500m (#83)
 - 2026-11-20 looper issue The Admiral's credentials: a WIF service account, a KMS import-only signing key for the tacplus-admiral App, a Secret Manager secret for seabeam/triage (#84)
+- 2026-11-21 looper issue apply:dev fails on every pipeline: the Admiral's WIF provider (#84) violates the host's iam.workloadIdentityPoolProviders (gitlab.com only); gate it on the host (#86)
