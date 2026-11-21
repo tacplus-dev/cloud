@@ -599,3 +599,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   view, which no test here can prove). Why: #85 landed the view, the grant and the audit's reading gated off, so that
   no `apply:ci` fails before the grant (Jody's decision, option A: never `roles/logging.viewer`, as a job's output may
   hold a secret).
+- **The audit's C4A CPU quota, from Cloud Quotas** (looper, #85, 2026-11-21). What: `ci/hub-audit.sh` reports
+  `C4A_CPUS` as `-` because the region's Compute Engine quotas (`regions.get`'s `quotas`) list no such metric; read the
+  per-series CPU limit and usage for the region from the Cloud Quotas API (`cloudquotas.googleapis.com`, the
+  `compute.googleapis.com` service's quota infos) instead, if hub-audit's roles reach it, or say in `audit.md` that
+  the region lists none. Why: on 2026-11-21 the spot pool stayed at 2 of 5 nodes with a gates pod Pending across every
+  C4A zone, and the hub could not rule out a C4A quota from the artifact (#85).
