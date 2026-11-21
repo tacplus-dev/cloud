@@ -75,3 +75,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-20 looper issue The Admiral's credentials: a WIF service account, a KMS import-only signing key for the tacplus-admiral App, a Secret Manager secret for seabeam/triage (#84)
 - 2026-11-21 looper issue apply:dev fails on every pipeline: the Admiral's WIF provider (#84) violates the host's iam.workloadIdentityPoolProviders (gitlab.com only); gate it on the host (#86)
 - 2026-11-21 looper issue tacplus gates never schedule in-cluster: request 3500m/12Gi doesn't fit a c4a-standard-4 after its DaemonSets; request 3 CPU/10Gi, keep limits 3500m/12Gi (#87)
+- 2026-11-21 looper issue README: the Admiral's triage token can't be a project access token on GitLab.com Free; use a dedicated user's PAT (Reporter on the triage project only) (#89)
