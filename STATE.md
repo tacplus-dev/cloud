@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#88).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#90).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -241,11 +241,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by th
   (output `quotas`): 32 C4A CPUs (6 + 20 + one c4a-standard-4 being replaced, 30) and 1000 GB of Hyperdisk Balanced
   (9 x 100, 900); `ci/policy.sh` refuses a plan whose C4A pools they do not cover, or a preference without a contact.
   The contact Google asks about an increase is the protected variable `GCP_QUOTA_CONTACT` (`quota_contact`). The
-  pipeline needs the host's `roles/cloudquotas.admin` (a new `HOST_ROLES` line), and the bootstrap enables the Cloud
-  Quotas API in `tacplus-bootstrap`. `GCP_QUOTA_CONTACT` is set (hub, 2026-11-21); the host's `roles/owner` on the
-  folder covers the grant until #78's least set replaces it; the bootstrap rerun is deferred (if `apply:dev` fails for
-  the Cloud Quotas API in `tacplus-bootstrap`, the hub asks for it). Tested with the
-  dev plan test (mock providers), the policy and ci tests; not yet seen live: `apply:dev` making them, Google granting
+  pipeline needs the host's `roles/cloudquotas.admin` (a new `HOST_ROLES` line). `GCP_QUOTA_CONTACT` is set (hub,
+  2026-11-21); the host's `roles/owner` on the folder covers the grant until #78's least set replaces it. The first
+  `apply:dev` (pipeline 3098055008) was refused, the Cloud Quotas API off in the caller's `tacplus-bootstrap`: since
+  #90 the preferences' calls count against `tacplus-dev` (the dev stack's provider alias `google.quotas`,
+  `billing_project` and `user_project_override`), whose module enables the API, so no bootstrap rerun is needed
+  (bootstrap.sh still enables it there). Tested with the dev plan test (mock providers), `tests/quotas_plan_test.sh`
+  (the real provider against the stub API: both preferences' calls name `tacplus-dev`), the policy and ci tests; not
+  yet seen live: `apply:dev` making them, Google granting
   (an increase may wait on review: the audit's Quotas table shows requested, granted and pending), then the pool at 5
   with no `QUOTA_EXCEEDED`. The Cloud Quotas ID `HDB-TOTAL-GB-per-project-region` is inferred from Compute's naming
   (PROPOSALS.md).
