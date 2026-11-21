@@ -617,3 +617,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   follow `<METRIC>-per-project-region`; `CPUS-PER-VM-FAMILY-per-project-region` with `vm_family` `C4A` is Google's
   documented one) and that the audit's Quotas table reads both, with the granted value. Why: no credentials here could
   list the service's quota infos before landing; a wrong ID fails `apply:dev` on that preference alone.
+- **The audit checks the Admiral's GitLab user belongs to nothing else** (looper, #89, 2026-11-21; Jody's decision).
+  What: the nightly drift (or the hourly `audit`) lists the GitLab.com user `tacplus-admiral`'s memberships (projects
+  and groups, through the API, as a reader) and reports any but Reporter of the triage project (README, The Admiral's
+  credentials, step 2). Why: its membership is a manual invite, not a pipeline (#89), so nothing else would notice the
+  user being added somewhere else, where its `api` token would reach too.

@@ -373,8 +373,10 @@ it: another host is another folder ID. The runners' token adders (`GCP_RUNNER_TO
 pipeline) are `user:jody@seabeam.net` today (#18), and so are the apps' key importers (`GCP_KMS_KEY_IMPORTERS`, below,
 The GitHub Apps' keys), for the one run that imports them (#19), and the Google sign-in client's adders
 (`GCP_GOOGLE_SIGNIN_ADDERS`, below, The Google sign-in client, #37), and the Admiral's secret's adders
-(`GCP_ADMIRAL_SECRET_ADDERS`, below, The Admiral's credentials, #84), whose token is the triage project
-seabeam/triage's. The node pools' quota contact (`GCP_QUOTA_CONTACT`, #88) is `jody@seabeam.net` too.
+(`GCP_ADMIRAL_SECRET_ADDERS`, below, The Admiral's credentials, #84), whose token is the GitLab.com user
+`tacplus-admiral`'s (its email `jody+tacplus-admiral@seabeam.net`, a plus-address of Jody's, #89), a Reporter of the
+triage project seabeam/triage and of nothing else. The node pools' quota contact (`GCP_QUOTA_CONTACT`, #88) is
+`jody@seabeam.net` too.
 <!-- /hosting note -->
 
 ### What Jody runs, in order
@@ -1062,16 +1064,25 @@ and `GCP_ADMIRAL_SECRET_ADDERS` set to his account before that pipeline (the imp
    ```
 
    Then `GCP_KMS_KEY_IMPORTERS` is cleared, as for the other keys.
-2. The GitLab token: on the triage project (Settings, Access tokens), a project access token, role Reporter, scope
-   `api`, its expiry at most GitLab's cap (a year); then, its value never in a file or a shell's history:
+2. The GitLab token, a dedicated user's personal access token (#89; Jody's decision, 2026-11-21, admiral#5): GitLab.com
+   offers project and group access tokens and service accounts on Premium only, and the triage project's group is on
+   Free. Its reach is a project access token's all the same: one project, Reporter.
+   1. The user: sign up on GitLab.com as `tacplus-admiral`, with its own email (a plus-address of Jody's, so the
+      mail domain needs no new account: the hosting note) and Jody's password. By hand: GitLab.com has no API for a
+      sign-up.
+   2. Its membership: on the triage project (Manage, Members), invite `tacplus-admiral` as Reporter, and nothing
+      else: no other project, no group. A manual invite, not a pipeline: a pipeline would
+      need a long-lived GitLab credential of its own able to add members, more exposure than one invite.
+   3. Its token: signed in as `tacplus-admiral` (User settings, Personal access tokens), a token with scope `api`, its
+      expiry at most a year (GitLab's cap); then, its value never in a file or a shell's history:
 
-   ```sh
-   gcloud secrets versions add admiral-triage-gitlab --project=tacplus-ci --data-file=-   # paste, then Ctrl-D
-   ```
+      ```sh
+      gcloud secrets versions add admiral-triage-gitlab --project=tacplus-ci --data-file=-   # paste, then Ctrl-D
+      ```
 
-   A rotation is the same, before the token expires: a new token, a new version, then the old token revoked on GitLab
-   (GitLab.com has no inbound federation, admiral#5, so this token is the one long-lived secret, of one project,
-   Reporter).
+   A rotation is step 3 again, before the token expires: a new token on that user, a new version, then the old token
+   revoked on GitLab (GitLab.com has no inbound federation, admiral#5, so this token is the one long-lived secret, of
+   one user who is a Reporter of one project).
 
 Nothing of it is tested end to end here: the first exchange is the Admiral's (admiral#5), after both steps.
 
