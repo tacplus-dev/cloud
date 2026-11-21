@@ -6,7 +6,9 @@
 # fixtures (tests/stub/hub-audit, tests/fixtures/hub-audit): the report's shape, audit.json's sections and their
 # fields, and audit.md's; what each says of the fixtures: the open ingress rules (a disabled one listed, not a
 # finding), the VMs with an external IP, the external addresses and their users, the load balancers, every VM, the
-# node pools with their nodes now, the disks by type, the quotas asked for, with usage (one not listed is null), the
+# node pools with their nodes now, the disks by type, the quotas asked for, with usage (one not listed is null), C4A's
+# CPUs and Hyperdisk Balanced's GB from a stub Cloud Quotas (#88): the region's limit or the default, the project's
+# preference and its state (every page read), the inventory's usage, its API not enabled noted; the
 # hour's CPU and the ci namespace's containers' use against their requests (every page read), the secrets' names and
 # version states; the spot nodes (#85), each with the pods on it, their requests and owner, against its allocatable,
 # and the pods not scheduled, from a stub cluster API (tests/fixtures/hub-audit/kube), no pod's spec written out; the
@@ -31,6 +33,7 @@ export STUB_AUDIT=$here/tests/fixtures/hub-audit STUB_LOG=$work/log PATH=$here/t
 export MONITORING_API=http://monitoring.stub STUB_API=http://monitoring.stub AUDIT_NOW=1795435200
 export STUB_START=2026-11-23T11:00:00Z STUB_END=2026-11-23T12:00:00Z
 export LOGGING_API=http://logging.stub STUB_LOGGING_API=http://logging.stub STUB_LOG_START=2026-11-23T06:00:00Z STUB_CA=stub-ca
+export CLOUDQUOTAS_API=http://cloudquotas.stub STUB_CLOUDQUOTAS_API=http://cloudquotas.stub
 export AUDIT_AUTOSCALER_LOG=true
 
 audit() { # audit PROJECT...: the report of PROJECT... in $work/out, its exit status in $rc
@@ -75,16 +78,25 @@ is "the load balancers" '.exposure.load_balancers' \
 # Inventory.
 is "every VM: name, type, provisioning, created" '[.inventory.vms[] | [.project, .name, .zone, .machine_type, .provisioning, .status, .created]] | .[0:2]' \
   '[["audit-ci","runner-manager-9c4d2d4d","us-central1-b","e2-small","STANDARD","RUNNING","2026-11-15T10:00:00.000-08:00"],["audit-ci","runner-shared-abcd","us-central1-a","t2a-standard-8","SPOT","RUNNING","2026-11-16T01:00:00.000-08:00"]]'
-is "every VM, the cluster's nodes too" '.inventory.vms | length' 6
+is "every VM, the cluster's nodes too" '.inventory.vms | length' 9
 is "the node pools: machine, spot, min and max (none when fixed), the nodes now" '.inventory.node_pools' \
   '[{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"normal","machine_type":"c4a-standard-2","spot":false,"autoscaling":false,"min":null,"max":null,"nodes":3},{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"spot","machine_type":"c4a-standard-4","spot":true,"autoscaling":true,"min":0,"max":3,"nodes":1}]'
 is "the disks by type, counted and summed" '.inventory.disks' \
-  '[{"project":"audit-ci","type":"pd-balanced","count":2,"gb":174},{"project":"audit-ci","type":"pd-standard","count":1,"gb":350},{"project":"audit-dev","type":"hyperdisk-balanced","count":1,"gb":100},{"project":"audit-dev","type":"pd-balanced","count":1,"gb":100}]'
+  '[{"project":"audit-ci","type":"pd-balanced","count":2,"gb":174},{"project":"audit-ci","type":"pd-standard","count":1,"gb":350},{"project":"audit-dev","type":"hyperdisk-balanced","count":3,"gb":650},{"project":"audit-dev","type":"pd-balanced","count":1,"gb":100}]'
 
-# Quotas: those asked for, in order, with usage; one the region does not list is null.
-is "the quotas: CPUS_ALL_REGIONS and the region's CPUS, SSD, preemptible, T2A and C4A" '[.quotas[] | select(.project == "audit-ci") | [.scope, .metric, .usage, .limit]]' \
-  '[["global","CPUS_ALL_REGIONS",10,32],["us-central1","CPUS",10,24],["us-central1","SSD_TOTAL_GB",174,500],["us-central1","PREEMPTIBLE_CPUS",0,0],["us-central1","T2A_CPUS",8,24],["us-central1","C4A_CPUS",null,null]]'
-is "every project's" '[.quotas[] | .project] | group_by(.) | map([.[0], length])' '[["audit-ci",6],["audit-dev",6]]'
+# Quotas: those asked for, in order, with usage; one the region does not list is null. C4A's CPUs and Hyperdisk
+# Balanced's GB (#88) from Cloud Quotas: the limit of the region's (and C4A's) dimensions, else the most specific one
+# that applies (the default), with the project's preference for them (requested, granted, pending) or nulls, and the
+# inventory's usage: the C4A VMs of the region's zones not stopped, their vCPUs by machine type, and the region's
+# Hyperdisk Balanced disks, zonal and regional.
+is "the quotas: CPUS_ALL_REGIONS and the region's CPUS, SSD, preemptible, T2A, C4A's and Hyperdisk Balanced's" \
+  '[.quotas[] | select(.project == "audit-ci") | [.scope, .metric, .usage, .limit, .requested, .granted, .pending]]' \
+  '[["global","CPUS_ALL_REGIONS",10,32,null,null,null],["us-central1","CPUS",10,24,null,null,null],["us-central1","SSD_TOTAL_GB",174,500,null,null,null],["us-central1","PREEMPTIBLE_CPUS",0,0,null,null,null],["us-central1","T2A_CPUS",8,24,null,null,null],["us-central1","CPUS_PER_VM_FAMILY (C4A)",0,24,null,null,null],["us-central1","HDB_TOTAL_GB",0,4000,null,null,null]]'
+is "C4A's CPUs and Hyperdisk Balanced's GB: the region's limit, the inventory's usage, the preference asked for and its state" \
+  '[.quotas[] | select(.project == "audit-dev" and (.metric | IN("CPUS_PER_VM_FAMILY (C4A)", "HDB_TOTAL_GB"))) | [.scope, .metric, .usage, .limit, .requested, .granted, .pending]]' \
+  '[["us-central1","CPUS_PER_VM_FAMILY (C4A)",18,48,96,48,true],["us-central1","HDB_TOTAL_GB",150,2000,2000,2000,false]]'
+is "every project's" '[.quotas[] | .project] | group_by(.) | map([.[0], length])' '[["audit-ci",7],["audit-dev",7]]'
+grep -qx 'curl audit-dev quotaPreferences p2' "$STUB_LOG" && ok "the quota preferences' next page is read" || fail "the preferences' pages: $(grep quotaPreferences "$STUB_LOG")"
 
 # Utilization.
 is "CPU per VM, its maximum" '.utilization.vms' \
@@ -126,8 +138,8 @@ is "the secrets: names and version states" '.secrets' \
 is "an API not enabled: noted, not an error" '.unavailable' '[{"project":"audit-ci","what":"clusters","why":"its API is not enabled"}]'
 
 # The one read-only path: lists and describes, the token for Monitoring, and its timeSeries.list.
-grep -vE '^curl [a-z-]+ autoscaler [a-z0-9]+$|^curl kube [0-9.]+ (nodes|pods|events)$|^gcloud (auth print-access-token|compute (firewall-rules|instances|addresses|forwarding-rules|disks) list --project=[a-z-]+ --format=json|container clusters list --project=[a-z-]+ --format=json|compute (project-info describe|regions describe us-central1) --project=[a-z-]+ --format=json|secrets list --project=[a-z-]+ --format=json|secrets versions list [a-z-]+ --project=[a-z-]+ --format=json)$|^curl [a-z-]+ [a-z-]+ ALIGN_(MAX|RATE) [a-z0-9]+$' "$STUB_LOG" &&
-  fail "the audit runs more than its reads" || ok "the audit only lists, describes and reads Monitoring, the autoscaler's view and the cluster's nodes and pods: no secret's value"
+grep -vE '^curl [a-z-]+ autoscaler [a-z0-9]+$|^curl kube [0-9.]+ (nodes|pods|events)$|^gcloud (auth print-access-token|compute (firewall-rules|instances|addresses|forwarding-rules|disks) list --project=[a-z-]+ --format=json|container clusters list --project=[a-z-]+ --format=json|compute (project-info describe|regions describe us-central1) --project=[a-z-]+ --format=json|secrets list --project=[a-z-]+ --format=json|secrets versions list [a-z-]+ --project=[a-z-]+ --format=json)$|^curl [a-z-]+ [a-z-]+ ALIGN_(MAX|RATE) [a-z0-9]+$|^curl [a-z-]+ quotaInfos (CPUS-PER-VM-FAMILY|HDB-TOTAL-GB)-per-project-region$|^curl [a-z-]+ quotaPreferences [a-z0-9]+$' "$STUB_LOG" &&
+  fail "the audit runs more than its reads" || ok "the audit only lists, describes and reads Monitoring, the autoscaler's view, Cloud Quotas and the cluster's nodes and pods: no secret's value"
 [ "$(grep -c '^gcloud auth print-access-token$' "$STUB_LOG")" = 1 ] && ! grep -rq stub-token "$work/out" "$work/stdout" "$work/err" &&
   ok "one Monitoring token, never written out" || fail "the token: $(grep -c print-access-token "$STUB_LOG") reads, or in the report"
 
@@ -147,6 +159,8 @@ grep -qxF '| audit-dev | dev | spot | c4a-standard-4 | true | 0 | 3 | 1 |' "$wor
   grep -qxF '| audit-ci | runner-shared-abcd | us-central1-a | 97.3% |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | dev | runner-job-1 | build | 3.25 | 2 | 4096 MiB | 2048 MiB |' "$work/out/audit.md" &&
   grep -qxF '| audit-ci | runner-token-shared | 2 ENABLED, 1 DESTROYED |' "$work/out/audit.md" &&
+  grep -qxF '| audit-ci | us-central1 | CPUS | 10.0 | 24.0 | - | - | - |' "$work/out/audit.md" &&
+  grep -qxF '| audit-dev | us-central1 | CPUS_PER_VM_FAMILY (C4A) | 18 | 48 | 96 | 48 | true |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | dev | spot | gke-dev-spot-1 | us-central1-a | 2026-11-20T18:52:00Z | 2.2 of 3.92 | 6472 of 13141 MiB | 2 |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | gke-dev-spot-1 | ci/runner-abc-project-1-concurrent-0 | Running | 2026-11-23T11:40:00Z | GitLab job https://gitlab.com/tacplus-dev/build/-/jobs/18234995653 | 2.1 | 6272 MiB |' "$work/out/audit.md" &&
   grep -qF '| audit-dev | dev | ci/runner-pending-1 | 2026-11-23T11:50:00Z | GitLab job https://gitlab.com/tacplus-dev/build/-/jobs/18235434424 | 2 | 6144 MiB | 0/5 nodes are available' "$work/out/audit.md" &&
@@ -165,12 +179,14 @@ is "the VM's external IP, and its address's user" '[.exposure.external_ips, .exp
   '[[{"project":"exposed","vm":"hand-vm","zone":"us-central1-c","ips":["35.9.9.9"]}],["instances/hand-vm"],"PREEMPTIBLE"]'
 grep -qF -- '- exposed: VM hand-vm has an external IP (35.9.9.9)' "$work/out/audit.md" && grep -q 'exposure finding' "$work/err" &&
   ok "audit.md lists the findings, and the log says why it fails" || fail "exposed: $(cat "$work/err")"
+is "Cloud Quotas not enabled: noted, not an error, its limits unknown" '[.unavailable, [.quotas[] | select(.metric | IN("CPUS_PER_VM_FAMILY (C4A)", "HDB_TOTAL_GB")) | .limit], .errors]' \
+  '[[{"project":"exposed","what":"the C4A CPU quota","why":"its API is not enabled"}],[null,null],[]]'
 
 # A read it cannot make fails it too.
 audit audit-ci missing
 [ "$rc" = 1 ] && ok "a read it cannot make fails the audit" || fail "missing: exit $rc"
 is "each read that failed is an error" '[.errors[] | select(.project == "missing") | .what]' \
-  '["firewall rules","VMs","addresses","forwarding rules","disks","clusters","the project'"'"'s quotas","the quotas of us-central1","secrets","the VMs'"'"' CPU","the nodes'"'"' CPU","the containers'"'"' CPU","the containers'"'"' CPU requests","the containers'"'"' memory","the containers'"'"' memory requests","the cluster autoscaler'"'"'s log"]'
+  '["firewall rules","VMs","addresses","forwarding rules","disks","clusters","the project'"'"'s quotas","the quotas of us-central1","the C4A CPU quota","secrets","the VMs'"'"' CPU","the nodes'"'"' CPU","the containers'"'"' CPU","the containers'"'"' CPU requests","the containers'"'"' memory","the containers'"'"' memory requests","the cluster autoscaler'"'"'s log"]'
 is "the other project is still reported" '[.inventory.vms[] | .project] | unique' '["audit-ci"]'
 
 # Until the host grants the log views (modules/settings autoscaler_log false), the autoscaler is not read, and that is noted.

@@ -1,0 +1,38 @@
+{
+ "quotaPreferences": [
+  {
+   "name": "projects/123/locations/global/quotaPreferences/c4a-east",
+   "service": "compute.googleapis.com",
+   "quotaId": "CPUS-PER-VM-FAMILY-per-project-region",
+   "dimensions": {
+    "region": "us-east1",
+    "vm_family": "C4A"
+   },
+   "quotaConfig": {
+    "preferredValue": "128",
+    "grantedValue": "64",
+    "requestOrigin": "ORIGIN_UNSPECIFIED"
+   },
+   "reconciling": false,
+   "etag": "e"
+  },
+  {
+   "name": "projects/123/locations/global/quotaPreferences/c4a",
+   "service": "compute.googleapis.com",
+   "quotaId": "CPUS-PER-VM-FAMILY-per-project-region",
+   "dimensions": {
+    "region": "us-central1",
+    "vm_family": "C4A"
+   },
+   "quotaConfig": {
+    "preferredValue": "96",
+    "grantedValue": "48",
+    "requestOrigin": "ORIGIN_UNSPECIFIED",
+    "stateDetail": "Pending review"
+   },
+   "reconciling": true,
+   "etag": "e"
+  }
+ ],
+ "nextPageToken": "p2"
+}

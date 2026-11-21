@@ -47,7 +47,7 @@ CONDITION="assertion.project_path == '$GITLAB_PROJECT' && assertion.ref_type == 
 MAPPING=google.subject=assertion.sub,attribute.project_path=assertion.project_path,attribute.ref=assertion.ref,attribute.ref_type=assertion.ref_type,attribute.ref_protected=assertion.ref_protected
 # The APIs the bootstrap calls, and those the stacks call that count against the caller's project, tacplus-bootstrap,
 # rather than the project they change (#16: Cloud KMS; tests/apis_test.sh audits every API the stacks call).
-SERVICES=(artifactregistry.googleapis.com cloudbilling.googleapis.com cloudkms.googleapis.com cloudresourcemanager.googleapis.com
+SERVICES=(artifactregistry.googleapis.com cloudbilling.googleapis.com cloudkms.googleapis.com cloudquotas.googleapis.com cloudresourcemanager.googleapis.com
   iam.googleapis.com iamcredentials.googleapis.com secretmanager.googleapis.com serviceusage.googleapis.com
   storage.googleapis.com sts.googleapis.com)
 SECRETS=(gitlab-token tacplus-reader-app-id tacplus-reader-installation-id)
@@ -72,6 +72,7 @@ HOST_ROLES=(
   roles/storage.admin                         # the buckets, their objects and IAM
   roles/artifactregistry.admin                # the registries and their IAM
   roles/logging.configWriter                  # the log views: hub-audit-autoscaler (#85), once modules/settings' autoscaler_log is true
+  roles/cloudquotas.admin                     # the dev pools' quota preferences: C4A CPUs and Hyperdisk Balanced GB (#88)
 )
 TOO_MUCH=(roles/owner roles/editor)
 

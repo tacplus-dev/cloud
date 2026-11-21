@@ -14,7 +14,7 @@
 # any other change, and the jobs refuse an empty CLOUD_COMMIT; ci/lib.sh gives the stacks the parent folder from
 # GCP_PARENT_FOLDER, and refuses a job without a valid one, and the dev stack the runners' token adders from
 # GCP_RUNNER_TOKEN_ADDERS (#18) and the Google sign-in secrets' adders from GCP_GOOGLE_SIGNIN_ADDERS (#37), and the
-# ci stack the Admiral's secret's adders from GCP_ADMIRAL_SECRET_ADDERS (#84), refusing one that is not a member. The anthropic stack (#34): its jobs only once the bootstrap rule's IDs are set, beside the
+# ci stack the Admiral's secret's adders from GCP_ADMIRAL_SECRET_ADDERS (#84), refusing one that is not a member, and the dev stack the quota contact from GCP_QUOTA_CONTACT (#88), refusing one that is not an email. The anthropic stack (#34): its jobs only once the bootstrap rule's IDs are set, beside the
 # other stacks, with ID tokens for Anthropic; ci_anthropic gives its provider and the stack the rule, refusing IDs of
 # the wrong form. Needs bash and yq.
 #
@@ -255,6 +255,27 @@ adders() { # adders [GCP_RUNNER_TOKEN_ADDERS]: ci_gcp's TF_VAR_runner_token_adde
 [ "$(adders)" = '[]' ] && [ "$(adders '')" = '[]' ] && ok "ci_gcp gives no adder without GCP_RUNNER_TOKEN_ADDERS" || fail "ci_gcp without GCP_RUNNER_TOKEN_ADDERS: [$(adders)]"
 [ -z "$(adders a@example.com)" ] && grep -q GCP_RUNNER_TOKEN_ADDERS "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
   [ -z "$(adders 'user:a@example.com"]')" ] && ok "ci_gcp refuses a GCP_RUNNER_TOKEN_ADDERS entry that is not a member" || fail "ci_gcp with a bad adder: $(cat "$work/gcp-err")"
+
+# ci_gcp gives the dev stack the pools' quota contact (#88) from the protected variable GCP_QUOTA_CONTACT, an email:
+# who Google asks about a quota increase; unset when the variable is (the policy then refuses the dev plan's
+# preferences); and refuses one that is not an email before any gcloud runs.
+quota_contact() { # quota_contact [GCP_QUOTA_CONTACT]: ci_gcp's TF_VAR_quota_contact, or its refusal
+  (
+    unset GCP_QUOTA_CONTACT TF_VAR_quota_contact
+    [ $# = 0 ] || export GCP_QUOTA_CONTACT=$1
+    export GCP_ID_TOKEN=x GCP_WIF_PROVIDER=y GCP_DEPLOY_SA=z GCP_PARENT_FOLDER=111111111111 ci_tmp=$work/lib
+    mkdir -p "$ci_tmp"
+    # shellcheck source=ci/lib.sh
+    source "$here/ci/lib.sh"
+    gcloud() { echo "gcloud ran" >&2; }
+    ci_gcp >/dev/null 2>"$work/gcp-err" && echo "${TF_VAR_quota_contact-unset}"
+  )
+}
+[ "$(quota_contact a@example.com)" = a@example.com ] && [ "$(quota_contact ' a@example.com ')" = a@example.com ] &&
+  ok "ci_gcp gives the dev stack GCP_QUOTA_CONTACT as quota_contact" || fail "ci_gcp's quota_contact: [$(quota_contact a@example.com)] $(cat "$work/gcp-err")"
+[ "$(quota_contact)" = unset ] && [ "$(quota_contact '')" = unset ] && ok "ci_gcp gives no quota contact without GCP_QUOTA_CONTACT" || fail "ci_gcp without GCP_QUOTA_CONTACT: [$(quota_contact)]"
+[ -z "$(quota_contact user:a@example.com)" ] && grep -q GCP_QUOTA_CONTACT "$work/gcp-err" && ! grep -q 'gcloud ran' "$work/gcp-err" &&
+  [ -z "$(quota_contact 'a@example.com"')" ] && ok "ci_gcp refuses a GCP_QUOTA_CONTACT that is not an email" || fail "ci_gcp with a bad quota contact: $(cat "$work/gcp-err")"
 
 # ci_gcp gives the dev stack the Google sign-in secrets' adders (#37) from the protected variable
 # GCP_GOOGLE_SIGNIN_ADDERS alone, as the runners' token adders: an HCL list, none when it is unset or empty, a refusal

@@ -9,7 +9,11 @@
 #     addresses and what uses each, the load balancers (forwarding rules);
 #   - inventory: every VM (its machine type, provisioning model, status, creation), every node pool (machine type,
 #     spot, its autoscaling's min and max, its nodes now: the VMs GKE labels with its cluster and pool), the disks by type;
-#   - quotas: CPUS_ALL_REGIONS, and REGION's CPUS, SSD_TOTAL_GB, PREEMPTIBLE_CPUS, T2A_CPUS and C4A_CPUS, with usage;
+#   - quotas: CPUS_ALL_REGIONS, and REGION's CPUS, SSD_TOTAL_GB, PREEMPTIBLE_CPUS and T2A_CPUS, with usage (Compute);
+#     and REGION's CPUS_PER_VM_FAMILY of C4A and HDB_TOTAL_GB (#88), their limits from Cloud Quotas (cloudquotas.viewer),
+#     with the project's quota preference for each (requested, granted, pending: an increase Google may review), their
+#     usage the inventory's (Cloud Quotas gives none): the vCPUs of REGION's C4A VMs not stopped, by machine type, and
+#     the GB of REGION's Hyperdisk Balanced disks, zonal and regional;
 #   - utilization, over the last hour, the maximum of 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
 #     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace ci;
 #   - secrets: their names and their versions' states, never a value;
@@ -26,12 +30,12 @@
 #     pool, zone and reason (a pool rejected or skipped, or none), with its count, first and last times and the pods it
 #     left, and each scale-up error, joined to the pools its decision tried. False, until the host grants what the
 #     views need, its log is noted as not read.
-# It only reads: lists and describes, Monitoring's timeSeries.list, Logging's entries.list of that view, and the
-# cluster's nodes, pods and autoscaler events. An API not enabled in a project is noted, its list empty (none can
-# exist there). It fails, both files written, on an exposure finding (an ingress rule open to 0.0.0.0/0 or ::/0, a VM
-# with an external IP) or a read it could not make, so the job shows red. AUDIT_NOW (epoch seconds, default now) ends
-# the hour and the autoscaler's hours, and MONITORING_API and LOGGING_API are Monitoring's and Logging's endpoints, for
-# tests/hub_audit_test.sh.
+# It only reads: lists and describes, Monitoring's timeSeries.list, Logging's entries.list of that view, Cloud Quotas'
+# quotaInfos and quotaPreferences, and the cluster's nodes, pods and autoscaler events. An API not enabled in a project
+# is noted, its list empty (none can exist there). It fails, both files written, on an exposure finding (an ingress rule
+# open to 0.0.0.0/0 or ::/0, a VM with an external IP) or a read it could not make, so the job shows red. AUDIT_NOW
+# (epoch seconds, default now) ends the hour and the autoscaler's hours, and MONITORING_API, LOGGING_API and
+# CLOUDQUOTAS_API are Monitoring's, Logging's and Cloud Quotas' endpoints, for tests/hub_audit_test.sh.
 #
 #   AUDIT_AUTOSCALER_LOG=true|false ci/hub-audit.sh DIR REGION PROJECT...
 #                                     # needs gcloud (signed in: ci/lib.sh ci_audit), curl, jq, base64 and date
@@ -52,6 +56,7 @@ end=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ) && start=$(date -u -d "@$((now - 3
   log_start=$(date -u -d "@$((now - 6 * 3600))" +%Y-%m-%dT%H:%M:%SZ) || exit 2
 api=${MONITORING_API:-https://monitoring.googleapis.com}
 logging=${LOGGING_API:-https://logging.googleapis.com}
+cloudquotas=${CLOUDQUOTAS_API:-https://cloudquotas.googleapis.com}
 : > "$tmp/errors"
 : > "$tmp/unavailable"
 
@@ -132,6 +137,28 @@ entries() {
     [ -n "$page" ] && [ "$n" -lt 100 ] || break
   done
 }
+# quotas PROJECT FILE WHAT PATH [KEY]: Cloud Quotas' GET of PATH under PROJECT's global location, into FILE: the object,
+# or with KEY its KEY's items of every page as one array ({} or [] and the failure if refused).
+quotas() {
+  local p=$1 f=$2 what=$3 path=$4 key=${5:-} page='' code n=0
+  if [ -n "$key" ]; then echo '[]' > "$f"; else echo '{}' > "$f"; fi
+  [ -f "$tmp/auth" ] || return 1
+  while :; do
+    n=$((n + 1))
+    code=$(curl -sS -G -o "$f.page" -w '%{http_code}' -H @"$tmp/auth" "$cloudquotas/v1/projects/$p/locations/global/$path" \
+      ${page:+--data-urlencode "pageToken=$page"} 2> "$f.err")
+    if [ "$code" != 200 ] || ! jq -e 'type == "object"' "$f.page" > /dev/null 2>&1; then
+      { echo "HTTP ${code:-none}"; cat "$f.page" 2>/dev/null; } >> "$f.err"
+      failed "$p" "$f" "$what"
+      if [ -n "$key" ]; then echo '[]' > "$f"; else echo '{}' > "$f"; fi
+      return 1
+    fi
+    [ -n "$key" ] || { mv "$f.page" "$f"; return; }
+    jq -s --arg k "$key" '.[0] + (.[1][$k] // [])' "$f" "$f.page" > "$f.next" && mv "$f.next" "$f"
+    page=$(jq -r '.nextPageToken // empty' "$f.page")
+    [ -n "$page" ] && [ "$n" -lt 100 ] || break
+  done
+}
 # kube PROJECT FILE WHAT ENDPOINT CA PATH [CURL-ARGS...]: a GET of PATH on the cluster's API at ENDPOINT (its CA the
 # file CA), as hub-audit, into FILE (the failure if refused, FILE removed).
 kube() {
@@ -198,6 +225,11 @@ for p in "$@"; do
   done
   read_json "$p" "$d/project-info.json" '{}' "the project's quotas" compute project-info describe
   read_json "$p" "$d/region.json" '{}' "the quotas of $region" compute regions describe "$region"
+  # Cloud Quotas (#88): C4A's CPUs and Hyperdisk Balanced's GB, and the project's preferences; after one refusal, no more.
+  echo '{}' > "$d/cq-c4a.json"; echo '{}' > "$d/cq-hdb.json"; echo '[]' > "$d/cq-prefs.json"
+  quotas "$p" "$d/cq-c4a.json" "the C4A CPU quota" services/compute.googleapis.com/quotaInfos/CPUS-PER-VM-FAMILY-per-project-region &&
+    quotas "$p" "$d/cq-hdb.json" "the Hyperdisk Balanced quota" services/compute.googleapis.com/quotaInfos/HDB-TOTAL-GB-per-project-region &&
+    quotas "$p" "$d/cq-prefs.json" "the quota preferences" quotaPreferences quotaPreferences
   : > "$d/secrets.jsonl"
   if read_json "$p" "$d/secrets.json" '[]' "secrets" secrets list; then
     jq -r '.[].name | split("/") | last' "$d/secrets.json" | while read -r s; do
@@ -278,11 +310,33 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
         | {project: $p, type: (.[0].type | base), count: length, gb: (map(.sizeGb | tonumber) | add)}]
     },
     quotas: [$ps[] | .project as $p
-      | (.project_info.quotas // []) as $g | (.region.quotas // []) as $r
-      | ({scope: "global", metric: "CPUS_ALL_REGIONS", q: $g},
-         ("CPUS", "SSD_TOTAL_GB", "PREEMPTIBLE_CPUS", "T2A_CPUS", "C4A_CPUS" | {scope: $region, metric: ., q: $r}))
-      | .metric as $m | ([.q[] | select(.metric == $m)][0] // {}) as $found
-      | {project: $p, scope, metric, limit: $found.limit, usage: $found.usage}],
+      | (.project_info.quotas // []) as $g | (.region.quotas // []) as $r | (.cq_prefs // []) as $prefs
+      # In REGION: a zone of it, or it.
+      | def inregion: . != null and (base | . == $region or startswith($region + "-"));
+      # The inventory'"'"'s usage (#88): the vCPUs of the C4A VMs not stopped (c4a-highmem-8-lssd: 8), the Hyperdisk
+      # Balanced GB, zonal and regional (a disk'"'"'s zone or region, else its type'"'"'s).
+        ([.instances[] | select((.zone | inregion) and (.machineType | base | startswith("c4a-"))
+            and (.status | IN("TERMINATED", "STOPPED", "SUSPENDED") | not))
+          | .machineType | base | capture("^c4a-[a-z]+-(?<n>[0-9]+)").n | tonumber] | add // 0) as $c4a
+      | ([.disks[] | select((.type | base) == "hyperdisk-balanced"
+            and ((.zone // .region // (.type | capture("/(zones|regions)/(?<l>[^/]+)/").l)) | inregion))
+          | .sizeGb | tonumber] | add // 0) as $hdb
+      | (({scope: "global", metric: "CPUS_ALL_REGIONS", q: $g},
+          ("CPUS", "SSD_TOTAL_GB", "PREEMPTIBLE_CPUS", "T2A_CPUS" | {scope: $region, metric: ., q: $r}))
+         | .metric as $m | ([.q[] | select(.metric == $m)][0] // {}) as $found
+         | {project: $p, scope, metric, limit: $found.limit, usage: $found.usage, requested: null, granted: null, pending: null}),
+        # Cloud Quotas: the limit of the most specific dimensions that apply (REGION'"'"'s, else the default), and the
+        # preference for exactly them, if any.
+        ({metric: "CPUS_PER_VM_FAMILY (C4A)", id: "CPUS-PER-VM-FAMILY-per-project-region", want: {region: $region, vm_family: "C4A"}, info: .cq_c4a, usage: $c4a},
+         {metric: "HDB_TOTAL_GB", id: "HDB-TOTAL-GB-per-project-region", want: {region: $region}, info: .cq_hdb, usage: $hdb}
+         | .id as $id | .want as $w
+         | ([.info.dimensionsInfos[]? | select((.dimensions // {}) | to_entries | all(.value == $w[.key]))]
+            | sort_by(.dimensions // {} | length) | last) as $limit
+         | ([$prefs[] | select(.quotaId == $id and (.dimensions // {}) == $w)][0]) as $pref
+         | {project: $p, scope: $region, metric, limit: ($limit.details.value | if . == null then null else tonumber end), usage,
+            requested: ($pref.quotaConfig.preferredValue | if . == null then null else tonumber end),
+            granted: ($pref.quotaConfig.grantedValue | if . == null then null else tonumber end),
+            pending: (if $pref then $pref.reconciling // false else null end)})],
     utilization: {
       window: {start: $start, end: $end, alignment_seconds: 600, aggregation: "max"},
       vms: [$ps[] | .project as $p | .m_vm_cpu[]
@@ -365,7 +419,8 @@ jq -r '
   "### Node pools", "", table(["project", "cluster", "pool", "machine", "spot", "min", "max", "nodes"];
     [.inventory.node_pools[] | [.project, .cluster, .name, .machine_type, .spot, (if .autoscaling then .min else "fixed" end), (if .autoscaling then .max else "fixed" end), .nodes]]),
   "### Disks by type", "", table(["project", "type", "disks", "GB"]; [.inventory.disks[] | [.project, .type, .count, .gb]]),
-  "## Quotas", "", table(["project", "scope", "metric", "usage", "limit"]; [.quotas[] | [.project, .scope, .metric, .usage, .limit]]),
+  "## Quotas", "", table(["project", "scope", "metric", "usage", "limit", "requested", "granted", "pending"];
+    [.quotas[] | [.project, .scope, .metric, .usage, .limit, .requested, .granted, .pending]]),
   "## Utilization, \(.utilization.window.start) to \(.utilization.window.end) (the maximum of 10-minute windows)", "",
   "### CPU per VM", "", table(["project", "VM", "zone", "CPU max"]; [.utilization.vms[] | [.project, .vm, .zone, (.cpu_max | pct)]]),
   "### CPU per node (of its allocatable)", "", table(["project", "cluster", "node", "CPU max"]; [.utilization.nodes[] | [.project, .cluster, .node, (.cpu_max | pct)]]),

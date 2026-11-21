@@ -30,10 +30,10 @@
 #     roles/container.admin to a service account but the pipeline (#18), in a member, a member list or a policy
 #     document, or to a member known only after apply: any of them could delete the cluster, and cluster-admin inside
 #     it is a ClusterRoleBinding, not IAM;
-#   - in a plan, any role to the audit job's account hub-audit (#77) but its read roles (compute, container, monitoring
-#     and secretmanager viewer, serviceusage.serviceUsageConsumer), in a member, a member list or a policy document: it
-#     never writes, and never reads a secret's value; the one exception the cluster autoscaler's log (#85, Jody's
-#     option A): roles/logging.viewAccessor in a google_project_iam_member whose condition is exactly that the
+#   - in a plan, any role to the audit job's account hub-audit (#77) but its read roles (compute, container, monitoring,
+#     secretmanager and cloudquotas viewer, serviceusage.serviceUsageConsumer), in a member, a member list or a policy
+#     document: it never writes, and never reads a secret's value; the one exception the cluster autoscaler's log (#85,
+#     Jody's option A): roles/logging.viewAccessor in a google_project_iam_member whose condition is exactly that the
 #     resource is the view hub-audit-autoscaler of the member's own project's _Default bucket (in a member list or a
 #     policy document, or unconditioned, or on another view, it is refused), and that view, wherever it is planned,
 #     filters exactly the autoscaler's visibility log: never logging.viewer nor any other log, as a job's output may
@@ -50,6 +50,11 @@
 #     <memory limit>", tacplus-dev/looper#202) requesting more than 3 CPU or 10Gi, or whose request cannot be read: the
 #     build pool's c4a-standard-4 spot node allocates ~3920m and ~13.3Gi, before its DaemonSets take theirs, so a larger
 #     request schedules on no node, and no new node either; only the limits may be the runner's ceilings (3500m 12Gi);
+#   - in a plan, a pool the quotas do not cover (#88): its C4A node pools need, in their project and region, their nodes'
+#     vCPUs at their maximum plus one node of the largest (being replaced), and their Hyperdisk Balanced disks those
+#     nodes' disks plus one, and the plan's Cloud Quotas preferences (CPUS-PER-VM-FAMILY-per-project-region with
+#     vm_family C4A, HDB-TOTAL-GB-per-project-region) must ask that or more; and a preference without a contact_email,
+#     which Google refuses for an increase;
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -65,9 +70,11 @@ refuse() { echo "policy: refused: $*" >&2; refused=1; }
 # owner and editor it never holds (#78).
 pipeline_sa=cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com
 # The audit job's account (#77, modules/projects/ci/hub-audit.tf), and the only roles it may hold: it reads, never
-# writes, and reads no secret's value (secretmanager.viewer: names and versions' metadata, never accessor).
+# writes, and reads no secret's value (secretmanager.viewer: names and versions' metadata, never accessor);
+# cloudquotas.viewer reads the quotas' limits and preferences (#88).
 audit_sa=hub-audit@tacplus-ci.iam.gserviceaccount.com
-audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer roles/serviceusage.serviceUsageConsumer roles/secretmanager.viewer)
+audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer roles/serviceusage.serviceUsageConsumer roles/secretmanager.viewer
+  roles/cloudquotas.viewer)
 # And the cluster autoscaler's log alone (#85): the view hub-audit-autoscaler of each project's _Default bucket, its
 # filter exactly this, which hub-audit reads by roles/logging.viewAccessor conditioned on that view alone.
 audit_view=hub-audit-autoscaler
@@ -282,6 +289,44 @@ plan_check() {
       --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" \
       --argjson gates_cpu "$gates_request_cpu" --argjson gates_memory "$gates_request_memory" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
+    while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
+    # The node pools' quotas (#88), over the whole plan: what its C4A pools need at their maximum, with one node of the
+    # largest being replaced, is what the project's quota preferences in their region ask, or more.
+    out=$(jq -r '
+      def region: sub("-[a-z]$"; "");
+      def vcpus: (capture("^[a-z0-9]+-[a-z]+-(?<n>[0-9]+)") | .n | tonumber) // null;
+      [.resource_changes[] | select(.change.after != null)] as $rcs
+      | [$rcs[] | select(.type == "google_cloud_quotas_quota_preference") | .address as $a | .change.after | . + {address: $a}] as $prefs
+      | ($prefs[] | select((.contact_email // "") == "")
+         | "\(.address) has no contact_email: Google refuses an increase without one (the protected variable GCP_QUOTA_CONTACT, README, The node pools'"'"' quotas)"),
+        ([$rcs[] | select(.type == "google_container_node_pool") | .address as $a | .change.after
+          | (.node_config[0] // {}) as $n
+          | {address: $a, project, region: ((.location // "") | region), machine_type: ($n.machine_type // ""), disk_type: ($n.disk_type // ""),
+             disk_gb: $n.disk_size_gb,
+             nodes: (if (.autoscaling // []) | length > 0 then .autoscaling[0] | (.total_max_node_count // null) // (if .max_node_count then .max_node_count * ([1, (.node_locations // [] | length)] | max) else null end)
+                     else .node_count end)}
+          | select(.machine_type | startswith("c4a-"))]
+         | group_by([.project, .region])[]
+         | .[0].project as $project | .[0].region as $region
+         | (.[] | select(.nodes == null or (.machine_type | vcpus) == null or (.disk_type == "hyperdisk-balanced" and .disk_gb == null))
+            | "\(.address): its machine type, maximum or disk cannot be read: the quotas it needs are unknown (#88)"),
+           ([.[] | select(.nodes != null and (.machine_type | vcpus) != null)] as $pools
+            | ([$pools[] | {need: (.nodes * (.machine_type | vcpus)), node: (.machine_type | vcpus)}]
+               | {what: "C4A CPUs", quota_id: "CPUS-PER-VM-FAMILY-per-project-region", vm_family: "C4A", need: ((map(.need) | add) + (map(.node) | max))}),
+              ([$pools[] | select(.disk_type == "hyperdisk-balanced" and .disk_gb != null) | {need: (.nodes * .disk_gb), node: .disk_gb}]
+               | select(length > 0)
+               | {what: "GB of Hyperdisk Balanced", quota_id: "HDB-TOTAL-GB-per-project-region", vm_family: null, need: ((map(.need) | add) + (map(.node) | max))})
+            | . as $q
+            | [$prefs[] | select(.service == "compute.googleapis.com" and .parent == "projects/\($project)" and .quota_id == $q.quota_id
+                and (.dimensions // {}).region == $region and (.dimensions // {}).vm_family == $q.vm_family)] as $match
+            | if ($match | length) == 0 then
+                "the node pools of \($project) in \($region) need \($q.need) \($q.what) at their maximum, with one node being replaced, and no quota preference asks for them (\($q.quota_id)\(if $q.vm_family then ", vm_family \($q.vm_family)" else "" end)): a pool over its quota cannot grow (#88)"
+              else
+                $match[] | (.quota_config[0].preferred_value // "" | tostring | tonumber? // null) as $v
+                | select($v == null or $v < $q.need)
+                | "\(.address) asks \($v // "an unknown number of") \($q.what), fewer than the \($q.need) the node pools of \($project) in \($region) need at their maximum, with one node being replaced: a pool over its quota cannot grow (#88)"
+              end))' "$p") ||
+      { refuse "$p: cannot read its node pools and quotas"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done
 }

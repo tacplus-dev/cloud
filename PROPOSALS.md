@@ -599,9 +599,21 @@ the looper then marks it `promoted` or `declined` here with the date.
   view, which no test here can prove). Why: #85 landed the view, the grant and the audit's reading gated off, so that
   no `apply:ci` fails before the grant (Jody's decision, option A: never `roles/logging.viewer`, as a job's output may
   hold a secret).
-- **The audit's C4A CPU quota, from Cloud Quotas** (looper, #85, 2026-11-21). What: `ci/hub-audit.sh` reports
+- **The audit's C4A CPU quota, from Cloud Quotas** (looper, #85, 2026-11-21): done by #88 (the audit's Quotas table reads
+  `CPUS_PER_VM_FAMILY` C4A and `HDB_TOTAL_GB` from Cloud Quotas, as hub-audit with `roles/cloudquotas.viewer`). What: `ci/hub-audit.sh` reports
   `C4A_CPUS` as `-` because the region's Compute Engine quotas (`regions.get`'s `quotas`) list no such metric; read the
   per-series CPU limit and usage for the region from the Cloud Quotas API (`cloudquotas.googleapis.com`, the
   `compute.googleapis.com` service's quota infos) instead, if hub-audit's roles reach it, or say in `audit.md` that
   the region lists none. Why: on 2026-11-21 the spot pool stayed at 2 of 5 nodes with a gates pod Pending across every
   C4A zone, and the hub could not rule out a C4A quota from the artifact (#85).
+- **tacplus-ci's quotas as preferences too** (looper, #88, 2026-11-21). What: ask `CPUS_ALL_REGIONS` and
+  `SSD_TOTAL_GB` in us-central1 of `tacplus-ci` as Cloud Quotas preferences computed from the runner pools (as the dev
+  stack does for its node pools, README, The node pools' quotas), in place of `modules/settings`' typed `ci_cpus.quota`
+  (32) and `ci_disks.ssd_quota_gb` (500), which the ci stack's test keeps the pools under. Why: today a pool that needs
+  more is a request to Google by hand and then a commit; a preference makes the raise the same commit as the pool's,
+  and the build pool's pd-balanced (PROPOSALS above) waits only on that.
+- **The quota preferences' IDs confirmed by their first apply** (looper, #88, 2026-11-21). What: once `apply:dev` has
+  made them, check that `HDB-TOTAL-GB-per-project-region` is the Cloud Quotas ID of `HDB_TOTAL_GB` (Compute's IDs
+  follow `<METRIC>-per-project-region`; `CPUS-PER-VM-FAMILY-per-project-region` with `vm_family` `C4A` is Google's
+  documented one) and that the audit's Quotas table reads both, with the granted value. Why: no credentials here could
+  list the service's quota infos before landing; a wrong ID fails `apply:dev` on that preference alone.

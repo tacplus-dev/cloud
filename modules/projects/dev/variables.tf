@@ -164,6 +164,16 @@ variable "runner_token_adders" {
   }
 }
 
+variable "quota_contact" {
+  description = "Who Google asks about an increase of the pools' quotas (#88): an email of the host's directory with quota update permission on the project. Null: none, and ci/policy.sh refuses the plan, as Google refuses an increase without one."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.quota_contact == null || can(regex("^[^@:\\s]+@[^@\\s]+$", var.quota_contact))
+    error_message = "The quota contact is an email."
+  }
+}
+
 variable "google_signin_adders" {
   description = "Who adds the versions of the deployments' Google sign-in client secrets (google-signin.tf), in the Console: secretVersionAdder on each google-signin-<deployment>, which adds versions and reads none, and roles/oauthconfig.editor on the project, which makes the web client in Google Auth Platform (#56). Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
   type        = list(string)

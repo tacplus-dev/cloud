@@ -1,0 +1,44 @@
+{
+ "name": "projects/audit-ci/locations/global/services/compute.googleapis.com/quotaInfos/CPUS-PER-VM-FAMILY-per-project-region",
+ "quotaId": "CPUS-PER-VM-FAMILY-per-project-region",
+ "service": "compute.googleapis.com",
+ "isPrecise": true,
+ "dimensions": [
+  "region",
+  "vm_family"
+ ],
+ "dimensionsInfos": [
+  {
+   "dimensions": {
+    "region": "us-east1",
+    "vm_family": "C4A"
+   },
+   "details": {
+    "value": "64"
+   },
+   "applicableLocations": [
+    "us-central1"
+   ]
+  },
+  {
+   "dimensions": {
+    "vm_family": "C4A"
+   },
+   "details": {
+    "value": "24"
+   },
+   "applicableLocations": [
+    "us-central1"
+   ]
+  },
+  {
+   "dimensions": {},
+   "details": {
+    "value": "8"
+   },
+   "applicableLocations": [
+    "us-central1"
+   ]
+  }
+ ]
+}

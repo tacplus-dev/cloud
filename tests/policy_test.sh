@@ -24,7 +24,9 @@
 # in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
 # deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself); and hub-audit
 # (#77), the audit job's account, granted any role but its read roles; and a gates job's request (#87), a
-# BUILD_GATES_REQUESTS_<repo> requesting more than 3 CPU or 10Gi, or one it cannot read.
+# BUILD_GATES_REQUESTS_<repo> requesting more than 3 CPU or 10Gi, or one it cannot read; and the node pools' quotas
+# (#88), a plan whose C4A pools its Cloud Quotas preferences do not cover (none, another region's, or fewer CPUs or
+# Hyperdisk Balanced GB than the pools need at their maximum with a node being replaced), or one without a contact.
 # Needs bash and jq.
 #
 #   tests/policy_test.sh
@@ -162,6 +164,15 @@ refuses "a plan requesting 3500m for a gates job (#87)" "BUILD_GATES_REQUESTS_ta
 refuses "a plan requesting 12Gi for a gates job (#87)" "BUILD_GATES_REQUESTS_tacplus requests 12Gi of memory, more than 10Gi" plan "$fx/plans/gates-requests-memory.json"
 refuses "a plan with a gates job's request it cannot read (#87)" "BUILD_GATES_REQUESTS_tacplus: its request (\"three 10Gi\") cannot be read" plan "$fx/plans/gates-requests-unreadable.json"
 passes "a plan with gates jobs requesting 3 CPU 10Gi and 2500m 10240Mi, limits 3500m 12Gi, and a larger one deleted (#87)" plan "$fx/plans/gates-requests-clean.json"
+# The node pools' quotas (#88): 3 normal c4a-standard-2 and spot c4a-standard-4 to 5, 100 GB of Hyperdisk Balanced each,
+# need 6 + 20 + 4 (a node being replaced) = 30 C4A CPUs and (3 + 5 + 1) x 100 = 900 GB in us-central1.
+passes "a plan whose quota preferences ask 32 C4A CPUs and 1000 GB of Hyperdisk Balanced for its pools (#88)" plan "$fx/plans/quotas-clean.json"
+passes "a plan whose quota preferences ask exactly what its pools need (#88)" plan "$fx/plans/quotas-exact.json"
+refuses "a plan whose C4A CPU preference is short of its pools (#88)" "asks 24 C4A CPUs, fewer than the 30 the node pools of tacplus-dev in us-central1 need" plan "$fx/plans/quotas-cpus-short.json"
+refuses "a plan whose Hyperdisk Balanced preference is short of its pools (#88)" "asks 500 GB of Hyperdisk Balanced, fewer than the 900" plan "$fx/plans/quotas-hdb-short.json"
+refuses "a plan with C4A pools and no C4A CPU preference (#88)" "need 30 C4A CPUs at their maximum, with one node being replaced, and no quota preference asks for them" plan "$fx/plans/quotas-missing.json"
+refuses "a plan whose C4A CPU preference is of another region (#88)" "need 30 C4A CPUs at their maximum, with one node being replaced, and no quota preference asks for them" plan "$fx/plans/quotas-other-region.json"
+refuses "a plan with a quota preference without a contact (#88)" "has no contact_email: Google refuses an increase without one" plan "$fx/plans/quotas-no-contact.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

@@ -1,0 +1,31 @@
+{
+ "name": "projects/audit-dev/locations/global/services/compute.googleapis.com/quotaInfos/HDB-TOTAL-GB-per-project-region",
+ "quotaId": "HDB-TOTAL-GB-per-project-region",
+ "service": "compute.googleapis.com",
+ "isPrecise": true,
+ "dimensions": [
+  "region"
+ ],
+ "dimensionsInfos": [
+  {
+   "dimensions": {},
+   "details": {
+    "value": "4000"
+   },
+   "applicableLocations": [
+    "us-central1"
+   ]
+  },
+  {
+   "dimensions": {
+    "region": "us-central1"
+   },
+   "details": {
+    "value": "2000"
+   },
+   "applicableLocations": [
+    "us-central1"
+   ]
+  }
+ ]
+}

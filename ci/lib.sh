@@ -22,7 +22,9 @@ ci_here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # for the one run that imports them (README, The GitHub Apps' keys); and the dev stack its google_signin_adders (#37),
 # from the protected variable GCP_GOOGLE_SIGNIN_ADDERS, alike: who adds the Google sign-in clients' secrets, in the
 # Console (README, The Google sign-in client); and the ci stack its admiral_secret_adders (#84), from the protected
-# variable GCP_ADMIRAL_SECRET_ADDERS, alike: who adds the Admiral's secret's versions (README, The Admiral's credentials).
+# variable GCP_ADMIRAL_SECRET_ADDERS, alike: who adds the Admiral's secret's versions (README, The Admiral's credentials);
+# and the dev stack its quota_contact (#88), from the protected variable GCP_QUOTA_CONTACT, an email of the host's
+# directory: who Google asks about an increase of the node pools' quotas; unset, none (README, The network rules, The node pools' quotas).
 ci_gcp() {
   : "${GCP_ID_TOKEN:?the job has no id_tokens GCP_ID_TOKEN}"
   : "${GCP_WIF_PROVIDER:?the GitLab project variable GCP_WIF_PROVIDER is not set (README, Before the first pipeline)}"
@@ -36,6 +38,14 @@ ci_gcp() {
   TF_VAR_google_signin_adders=$(ci_members GCP_GOOGLE_SIGNIN_ADDERS "The Google sign-in client") || return 1
   TF_VAR_admiral_secret_adders=$(ci_members GCP_ADMIRAL_SECRET_ADDERS "The Admiral's credentials") || return 1
   export TF_VAR_runner_token_adders TF_VAR_kms_key_importers TF_VAR_google_signin_adders TF_VAR_admiral_secret_adders
+  local contact=${GCP_QUOTA_CONTACT:-}
+  contact=${contact//[[:space:]]/}
+  if [ -n "$contact" ]; then
+    [[ $contact =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$ ]] ||
+      { echo "gcp: the GitLab project variable GCP_QUOTA_CONTACT holds [$contact], not an email (README, The network rules, The node pools' quotas)" >&2
+        return 1; }
+    export TF_VAR_quota_contact=$contact
+  fi
   ci_federate gcp "$GCP_DEPLOY_SA"
 }
 

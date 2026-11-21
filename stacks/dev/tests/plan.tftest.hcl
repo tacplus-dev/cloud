@@ -22,7 +22,8 @@
 # init-secrets job's account adds (only its project's jobs in the environment init-secrets become it) and only its
 # identity reads, and (#37) its Google sign-in client's secret google-signin-<deployment>, made with no version, whose
 # versions only the listed people add (Jody, in the Console: Google has no API for a web client) and only its identity
-# reads, and (#84) the Admiral's provider, for its fleet kernel's issuer and its SPIFFE ID alone.
+# reads, and (#84) the Admiral's provider, for its fleet kernel's issuer and its SPIFFE ID alone, and (#88) the Cloud
+# Quotas preferences of the C4A CPUs and the Hyperdisk Balanced GB its pools need, computed from them.
 # (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -66,6 +67,8 @@ variables {
   runner_token_adders = ["user:jody@example.com"]
   # As GCP_GOOGLE_SIGNIN_ADDERS gives it, alike.
   google_signin_adders = ["user:jody@example.com"]
+  # As GCP_QUOTA_CONTACT gives it (#88): the account Google asks about a quota increase.
+  quota_contact = "jody@example.com"
 }
 
 run "stack" {
@@ -134,6 +137,13 @@ run "stack" {
     condition     = output.admiral.wif_provider == "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" && output.admiral.audience == "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
     error_message = "The stack does not give the Admiral's provider seatrials of the pool fleet-kernels."
   }
+  # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs) and the build pool's 5
+  # c4a-standard-4 (20) and one more for a node being replaced (4): 30 C4A CPUs, asked 32; and 9 nodes of 100 GB of
+  # Hyperdisk Balanced, 900 GB, asked 1000.
+  assert {
+    condition     = output.quotas.c4a_cpus.need == 30 && output.quotas.c4a_cpus.preferred == 32 && output.quotas.hdb_gb.need == 900 && output.quotas.hdb_gb.preferred == 1000
+    error_message = "The stack does not ask 32 C4A CPUs (30 needed) and 1000 GB of Hyperdisk Balanced (900 needed) for its pools."
+  }
   override_resource {
     target = module.dev.google_iam_workload_identity_pool_provider.admiral
     values = { name = "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" }
@@ -200,6 +210,29 @@ run "dev" {
       test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
     }
     admiral = { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral" }
+    # As the stack gives GCP_QUOTA_CONTACT (#88).
+    quota_contact = "jody@example.com"
+  }
+
+  # The quotas the pools need (#88), as Cloud Quotas preferences of tacplus-dev in the region, computed from the pools:
+  # C4A CPUs for the normal pool (3 x 2) and the build pool at its maximum plus one node being replaced (4 x 4), 22,
+  # asked 24 (a multiple of 8); Hyperdisk Balanced for each of those nodes' disks (7 x 100 GB), 700, asked 1000 (of 500).
+  assert {
+    condition     = google_cloud_quotas_quota_preference.pools["c4a_cpus"].parent == "projects/tacplus-dev" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].service == "compute.googleapis.com" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_id == "CPUS-PER-VM-FAMILY-per-project-region" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].dimensions == tomap({ region = "us-central1", vm_family = "C4A" }) && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_config[0].preferred_value == "24"
+    error_message = "The C4A CPU quota preference is not 24 in us-central1 (the pools' 22 rounded up to 8)."
+  }
+  assert {
+    condition     = google_cloud_quotas_quota_preference.pools["hdb_gb"].parent == "projects/tacplus-dev" && google_cloud_quotas_quota_preference.pools["hdb_gb"].service == "compute.googleapis.com" && google_cloud_quotas_quota_preference.pools["hdb_gb"].quota_id == "HDB-TOTAL-GB-per-project-region" && google_cloud_quotas_quota_preference.pools["hdb_gb"].dimensions == tomap({ region = "us-central1" }) && google_cloud_quotas_quota_preference.pools["hdb_gb"].quota_config[0].preferred_value == "1000"
+    error_message = "The Hyperdisk Balanced quota preference is not 1000 GB in us-central1 (the pools' 700 rounded up to 500)."
+  }
+  assert {
+    condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 22, preferred = 24 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 700, preferred = 1000 } }
+    error_message = "The quota preferences do not name the contact, or the module does not give them."
+  }
+  # The Cloud Quotas API, in the project the preferences are of.
+  assert {
+    condition     = contains(keys(google_project_service.service), "cloudquotas.googleapis.com") && contains(terraform_data.iam_ready.input.permissions, "cloudquotas.quotas.update")
+    error_message = "The project does not enable the Cloud Quotas API, or the IAM gate does not wait for cloudquotas.quotas.update."
   }
 
   # The Admiral's federation (#84): a pool of its own, not the GitLab jobs', whose one provider trusts the seatrials
