@@ -1,0 +1,1 @@
+{"format_version":"1.2","resource_changes":[{"address":"module.gitlab.gitlab_project_variable.build[\"BUILD_GATES_REQUESTS_tacplus\"]","type":"gitlab_project_variable","change":{"actions":["create"],"after":{"project":"4003","key":"BUILD_GATES_REQUESTS_tacplus","value":"3500m 10Gi 3500m 12Gi","protected":false,"masked":false,"raw":true,"environment_scope":"*"}}}]}

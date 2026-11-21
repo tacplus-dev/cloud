@@ -46,6 +46,10 @@
 #     in a plan, a VM tagged runner-manager destroyed, first or after its replacement: destroyed first, the fleet would
 #     have no manager and every runner would go offline; destroyed at all, its running jobs would die with it (an
 #     old manager retires by itself, its jobs finished: modules/projects/ci/files/manager-startup.sh);
+#   - in a plan, a gates job's request (#87): a BUILD_GATES_REQUESTS_<repo> variable ("<cpu> <memory> <cpu limit>
+#     <memory limit>", tacplus-dev/looper#202) requesting more than 3 CPU or 10Gi, or whose request cannot be read: the
+#     build pool's c4a-standard-4 spot node allocates ~3920m and ~13.3Gi, before its DaemonSets take theirs, so a larger
+#     request schedules on no node, and no new node either; only the limits may be the runner's ceilings (3500m 12Gi);
 #   - in the source only, what a commit does not fix, so that the same commit gives the same plan
 #     (tacplus-dev/roadmap decisions/deterministic-deployments-2026-11-02.md): timestamp(), plantimestamp(),
 #     uuid(), bcrypt(), an image at :latest, and a VM image's family (its newest image at each VM's creation).
@@ -68,6 +72,10 @@ audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer
 # filter exactly this, which hub-audit reads by roles/logging.viewAccessor conditioned on that view alone.
 audit_view=hub-audit-autoscaler
 audit_view_filter='LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")'
+# The most a gates job may request (#87), in millicores and bytes: what a c4a-standard-4 spot node (stacks/dev) has
+# left after GKE's DaemonSets (metadata server, logging, Dataplane V2, CSI, metrics) and the build's helper (50m 64Mi).
+gates_request_cpu=3000
+gates_request_memory=$((10 * 1024 * 1024 * 1024))
 
 source_check() {
   local dir f n line
@@ -126,6 +134,12 @@ plan_check() {
         | {ip: ((.a | tonumber) * 16777216 + (.b | tonumber) * 65536 + (.c | tonumber) * 256 + (.d | tonumber)), n: ((.n // "32") | tonumber)};
       def within($net): (ip4 // null) as $r | ($net | ip4) as $m
         | $r != null and $r.n >= $m.n and (($r.ip / pow(2; 32 - $m.n)) | floor) == (($m.ip / pow(2; 32 - $m.n)) | floor);
+      # A Kubernetes quantity: CPU in millicores ("3", "3500m", "2.5"), memory in bytes ("10Gi", "10240Mi", "10G"); null
+      # when it is not one.
+      def millicpu: if test("^[0-9]+(\\.[0-9]+)?m$") then .[:-1] | tonumber elif test("^[0-9]+(\\.[0-9]+)?$") then tonumber * 1000 else null end;
+      def bytes: [capture("^(?<n>[0-9]+(\\.[0-9]+)?)(?<u>|k|M|G|T|Ki|Mi|Gi|Ti)$")][0]
+        | if . == null then null
+          else (.n | tonumber) * {"": 1, k: 1e3, M: 1e6, G: 1e9, T: 1e12, Ki: 1024, Mi: 1048576, Gi: 1073741824, Ti: 1099511627776}[.u] end;
       def public: . as $s | all("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "35.191.0.0/16", "130.211.0.0/22"; . as $net | $s | within($net) | not);
       . as $plan
       # What an attribute known only after apply refers to, in the configuration of the resource'"'"'s module.
@@ -219,6 +233,18 @@ plan_check() {
         # The view hub-audit reads (#85) holds the cluster autoscaler'"'"'s visibility log alone.
         (select(.type == "google_logging_log_view" and $after.name == $audit_view and $after.filter != $audit_view_filter)
          | "\($a): the view \($audit_view) filters \($after.filter // "a value known only after apply" | tojson), not exactly \($audit_view_filter): hub-audit reads the cluster autoscaler'"'"'s log alone, never a job'"'"'s output (#85)"),
+        # A gates job'"'"'s request (#87) fits a c4a-standard-4 spot node after its DaemonSets: only its limits are the ceilings.
+        (select(.type == "gitlab_project_variable" and ($after.key // "" | startswith("BUILD_GATES_REQUESTS_")))
+         | ($after.value // "" | split(" ") | map(select(. != ""))) as $f
+         | ($f[0] // "" | millicpu) as $cpu | ($f[1] // "" | bytes) as $mem
+         | if $cpu == null or $mem == null then
+             "\($a): \($after.key): its request (\($f[:2] | join(" ") | tojson)) cannot be read: \"<cpu> <memory> <cpu limit> <memory limit>\" (tacplus-dev/looper#202)"
+           else
+             (select($cpu > $gates_cpu)
+              | "\($a): \($after.key) requests \($f[0]) CPU, more than \($gates_cpu / 1000) CPU: a c4a-standard-4 spot node has no more after its DaemonSets, so the gates job never schedules (#87); only its limit may be the runner'"'"'s 3500m"),
+             (select($mem > $gates_memory)
+              | "\($a): \($after.key) requests \($f[1]) of memory, more than \($gates_memory / 1073741824)Gi: a c4a-standard-4 spot node has no more after its DaemonSets, so the gates job never schedules (#87); only its limit may be the runner'"'"'s 12Gi")
+           end),
         (select(.type == "google_container_cluster")
          | (select($after.private_cluster_config[0].enable_private_nodes != true)
             | "\($a) has no private nodes (private_cluster_config.enable_private_nodes): nodes have no external address"),
@@ -253,7 +279,8 @@ plan_check() {
          | (select($after.network_config[0].enable_private_nodes == false) | "\($a) has public nodes (network_config.enable_private_nodes)"),
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
             | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" \
-      --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
+      --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" \
+      --argjson gates_cpu "$gates_request_cpu" --argjson gates_memory "$gates_request_memory" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
   done

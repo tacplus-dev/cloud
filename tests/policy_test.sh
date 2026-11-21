@@ -23,7 +23,8 @@
 # and the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false, and
 # in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
 # deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself); and hub-audit
-# (#77), the audit job's account, granted any role but its read roles.
+# (#77), the audit job's account, granted any role but its read roles; and a gates job's request (#87), a
+# BUILD_GATES_REQUESTS_<repo> requesting more than 3 CPU or 10Gi, or one it cannot read.
 # Needs bash and jq.
 #
 #   tests/policy_test.sh
@@ -155,6 +156,12 @@ refuses "a plan granting hub-audit viewAccessor on another project's view (#85)"
 refuses "a plan with hub-audit in a viewAccessor binding, conditioned or not (#85)" "google_project_iam_binding.view_accessors grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-accessor-binding.json"
 refuses "a plan granting hub-audit logging.viewer (#85)" "grants roles/logging.viewer to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/hub-audit-logging-viewer.json"
 refuses "a plan widening the view hub-audit-autoscaler's filter (#85)" "the view hub-audit-autoscaler filters" plan "$fx/plans/hub-audit-autoscaler-wide.json"
+# A gates job's requests (#87): BUILD_GATES_REQUESTS_<repo>'s request fits a c4a-standard-4 spot node after its
+# DaemonSets, at most 3 CPU and 10Gi; only its limits may be the runner's ceilings (3500m 12Gi).
+refuses "a plan requesting 3500m for a gates job (#87)" "BUILD_GATES_REQUESTS_tacplus requests 3500m CPU, more than 3 CPU" plan "$fx/plans/gates-requests-cpu.json"
+refuses "a plan requesting 12Gi for a gates job (#87)" "BUILD_GATES_REQUESTS_tacplus requests 12Gi of memory, more than 10Gi" plan "$fx/plans/gates-requests-memory.json"
+refuses "a plan with a gates job's request it cannot read (#87)" "BUILD_GATES_REQUESTS_tacplus: its request (\"three 10Gi\") cannot be read" plan "$fx/plans/gates-requests-unreadable.json"
+passes "a plan with gates jobs requesting 3 CPU 10Gi and 2500m 10240Mi, limits 3500m 12Gi, and a larger one deleted (#87)" plan "$fx/plans/gates-requests-clean.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

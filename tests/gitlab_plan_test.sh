@@ -100,13 +100,13 @@ if plan; then
     fail "the build trigger: $trigger; its variable: $(jq -c 'del(.before)' <<< "$variable")"
   # tacplus's gates job's size (#82, tacplus-dev/looper#202): its plan reads the build project's variable, a setting
   # and no secret, on every ref the build runs; no other variable of the build project, so every other repository's
-  # gates job keeps the runner's defaults. Its CPU request is the runner's ceiling, 3500m (#83: 2 CPU slowed the
-  # timing-bound gates).
+  # gates job keeps the runner's defaults. Its limits are the runner's ceilings, 3500m 12Gi (#83: 2 CPU slowed the
+  # timing-bound gates), and its requests 3 CPU 10Gi, what a c4a-standard-4 spot node has after its DaemonSets (#87).
   variable=$(change 'module.gitlab.gitlab_project_variable.build["BUILD_GATES_REQUESTS_tacplus"]')
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.key == "BUILD_GATES_REQUESTS_tacplus" and
-    .after.value == "3500m 12Gi 3500m 12Gi" and (.after.protected | not) and (.after.masked | not) and .after.raw and .after.environment_scope == "*"' <<< "$variable" > /dev/null &&
+    .after.value == "3 10Gi 3500m 12Gi" and (.after.protected | not) and (.after.masked | not) and .after.raw and .after.environment_scope == "*"' <<< "$variable" > /dev/null &&
     [ "$(jq -c '[.resource_changes[] | select(.type == "gitlab_project_variable" and .change.after.project == "4003") | .change.after.key]' "$work/plan.json")" = '["BUILD_GATES_REQUESTS_tacplus"]' ] &&
-    ok "tacplus-dev/build's BUILD_GATES_REQUESTS_tacplus: tacplus's gates job 3500m 12Gi, no other repository's (#82, #83)" ||
+    ok "tacplus-dev/build's BUILD_GATES_REQUESTS_tacplus: tacplus's gates job requests 3 CPU 10Gi, limits 3500m 12Gi, no other repository's (#82, #83, #87)" ||
     fail "BUILD_GATES_REQUESTS_tacplus: $variable"
   schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.build["nightly"]')
   jq -e '.actions == ["create"] and .after.project == "4003" and .after.ref == "refs/heads/main" and .after.active and
