@@ -18,6 +18,7 @@ resource "google_project_service" "service" {
   for_each = toset([
     "artifactregistry.googleapis.com",
     "cloudkms.googleapis.com",
+    "cloudquotas.googleapis.com", # hub-audit's reads of the quotas (#88), its calls' quota project
     "compute.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",

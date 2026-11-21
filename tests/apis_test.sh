@@ -33,6 +33,7 @@ declare -A api_of=(
   [google_dns]=dns
   [google_kms]=cloudkms
   [google_logging]=logging
+  [google_cloud_quotas]=cloudquotas
 )
 # google_project, the resource and the data source: the project (Resource Manager) and its billing (Cloud Billing).
 project_apis="cloudresourcemanager cloudbilling"
@@ -63,6 +64,8 @@ declare -A counts=(
   # module enables it in its own project; the ci module's views on tacplus-dev's bucket count against tacplus-dev, whose
   # module enables it too.
   [logging]=resource
+  # Cloud Quotas (the pools' quota preferences, #88): neither documented nor shown by an apply yet: both.
+  [cloudquotas]="caller resource"
 )
 
 api() { # api TYPE: the API(s) of a type, or nothing when the type is not audited

@@ -88,7 +88,7 @@ host_roles="roles/resourcemanager.folderAdmin roles/resourcemanager.projectCreat
   roles/resourcemanager.projectIamAdmin roles/serviceusage.serviceUsageAdmin roles/iam.serviceAccountAdmin
   roles/iam.serviceAccountUser roles/iam.workloadIdentityPoolAdmin roles/iam.roleAdmin roles/compute.admin
   roles/container.admin roles/dns.admin roles/secretmanager.admin roles/cloudkms.admin roles/storage.admin
-  roles/artifactregistry.admin roles/logging.configWriter"
+  roles/artifactregistry.admin roles/logging.configWriter roles/cloudquotas.admin"
 host_roles=$(echo $host_roles)
 grep -qF "the host organization grants cloud-admin-pipeline@tacplus-bootstrap.iam.gserviceaccount.com $host_roles on folders/$PARENT" "$work/out" &&
   ok "it says what the host still grants, on the parent folder" || fail "the host's grants are not reported: $(cat "$work/out")"

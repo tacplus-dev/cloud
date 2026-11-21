@@ -223,8 +223,8 @@ variable "hub_audit" {
     autoscaler_log = optional(bool, false)
   })
   validation {
-    condition     = alltrue([for r in var.hub_audit.roles : contains(["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], r)])
-    error_message = "hub-audit reads only: its roles are compute, container, monitoring and secretmanager viewer and serviceusage.serviceUsageConsumer (ci/policy.sh refuses any other in a plan too)."
+    condition     = alltrue([for r in var.hub_audit.roles : contains(["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], r)])
+    error_message = "hub-audit reads only: its roles are compute, container, monitoring, secretmanager and cloudquotas viewer and serviceusage.serviceUsageConsumer (ci/policy.sh refuses any other in a plan too)."
   }
   validation {
     condition     = can(regex("^projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+$", var.hub_audit.pool)) && can(regex("^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)+$", var.hub_audit.gitlab_project))

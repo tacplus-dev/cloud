@@ -74,5 +74,50 @@
     "networkIP": "10.20.0.5"
    }
   ]
+ },
+ {
+  "name": "hand-c4a-lssd",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-b",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-b/machineTypes/c4a-highmem-8-lssd",
+  "scheduling": {
+   "provisioningModel": "STANDARD"
+  },
+  "status": "RUNNING",
+  "creationTimestamp": "2026-11-18T01:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.20.0.9"
+   }
+  ]
+ },
+ {
+  "name": "hand-c4a-stopped",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-b",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-b/machineTypes/c4a-standard-16",
+  "scheduling": {
+   "provisioningModel": "STANDARD"
+  },
+  "status": "TERMINATED",
+  "creationTimestamp": "2026-11-18T01:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.20.0.9"
+   }
+  ]
+ },
+ {
+  "name": "hand-c4a-east",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-east1-b",
+  "machineType": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-east1-b/machineTypes/c4a-standard-4",
+  "scheduling": {
+   "provisioningModel": "STANDARD"
+  },
+  "status": "RUNNING",
+  "creationTimestamp": "2026-11-18T01:00:00.000-08:00",
+  "networkInterfaces": [
+   {
+    "networkIP": "10.20.0.9"
+   }
+  ]
  }
 ]

@@ -4,7 +4,7 @@
 # The dev project: the dev cluster, DNS for dev hostnames, the cluster pipeline's identity, the deployments'
 # certificate secrets and challenge zones, the gateway's address and tacplus.dev's zone, the runners' token secrets and
 # the cluster pipeline's cluster-admin in the cluster (#18), and the TCP proxy load balancer on the gateway's address
-# (#21), and the Admiral's workload identity provider (#84). Its folder is the folder stack's; its billing account is the bootstrap
+# (#21), and the Admiral's workload identity provider (#84), and the quotas its node pools need (#88). Its folder is the folder stack's; its billing account is the bootstrap
 # project's.
 
 variable "parent_folder" {
@@ -22,6 +22,12 @@ variable "google_signin_adders" {
   description = "Who makes the deployments' Google sign-in clients and adds their secrets' versions, in the Console (#37, #56): the protected GitLab variable GCP_GOOGLE_SIGNIN_ADDERS (ci/lib.sh), accounts of the host's directory, never written here. Jody's account today."
   type        = list(string)
   default     = []
+}
+
+variable "quota_contact" {
+  description = "Who Google asks about an increase of the pools' quotas (#88): the protected GitLab variable GCP_QUOTA_CONTACT (ci/lib.sh), an email of the host's directory, never written here. Jody's today."
+  type        = string
+  default     = null
 }
 
 module "settings" {
@@ -93,6 +99,8 @@ module "dev" {
   google_signin_adders = var.google_signin_adders
   # The TCP proxy on the address gateway, to the NEGs the settings name (#21).
   load_balancer = module.settings.load_balancer
+  # The C4A CPUs and Hyperdisk Balanced GB its pools need, asked of Google (#88): who it asks about an increase.
+  quota_contact = var.quota_contact
   # The Admiral's federation (#84): its fleet kernel's issuer, for its SPIFFE ID alone; its account, key and secret
   # are the ci stack's.
   admiral = { for a, v in module.settings.admiral : a => v if contains(["pool", "provider", "issuer", "subject"], a) }
@@ -104,6 +112,10 @@ output "project_id" {
 
 output "cluster" {
   value = module.dev.cluster
+}
+
+output "quotas" {
+  value = module.dev.quotas
 }
 
 output "dns_name_servers" {

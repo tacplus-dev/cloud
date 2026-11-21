@@ -239,7 +239,7 @@ run "ci" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = {
       key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }
       pools    = { bootstrap = "projects/111/locations/global/workloadIdentityPools/gitlab-com", dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }
@@ -595,7 +595,7 @@ run "ci" {
     error_message = "A runner-token secret is replicated outside us-central1."
   }
   # hub-audit (#77): the audit job's account, which only tacplus-dev/cloud's jobs become through the bootstrap pool, and
-  # its five read roles on each project, granted to its member as written out (so the plan's policy check sees it).
+  # its six read roles on each project, granted to its member as written out (so the plan's policy check sees it).
   assert {
     condition     = google_service_account.hub_audit.account_id == "hub-audit" && google_service_account.hub_audit.project == "tacplus-ci"
     error_message = "The audit's account is not hub-audit in tacplus-ci."
@@ -605,8 +605,8 @@ run "ci" {
     error_message = "Something other than tacplus-dev/cloud's jobs, through the bootstrap pool, may become hub-audit."
   }
   assert {
-    condition     = { for k, m in google_project_iam_member.hub_audit : k => [m.project, m.role, m.member] } == { for g in setproduct(["tacplus-ci", "tacplus-dev"], ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"]) : "${g[0]}:${g[1]}" => [g[0], g[1], "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com"] }
-    error_message = "hub-audit does not hold exactly its five read roles on tacplus-ci and tacplus-dev."
+    condition     = { for k, m in google_project_iam_member.hub_audit : k => [m.project, m.role, m.member] } == { for g in setproduct(["tacplus-ci", "tacplus-dev"], ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"]) : "${g[0]}:${g[1]}" => [g[0], g[1], "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com"] }
+    error_message = "hub-audit does not hold exactly its six read roles on tacplus-ci and tacplus-dev."
   }
   # The cluster autoscaler's log (#85): no view and no grant on one until autoscaler_log is true, which waits for the
   # host's roles/logging.configWriter (the stack's input, modules/settings' autoscaler_log, is false).
@@ -619,7 +619,7 @@ run "ci" {
 # With autoscaler_log true (#85, Jody's option A), hub-audit reads the cluster autoscaler's log alone: on each project's
 # _Default bucket the view hub-audit-autoscaler holds that log, and nothing else; and hub-audit holds
 # roles/logging.viewAccessor on each project conditioned on that project's view alone, never logging.viewer (a job's
-# output may hold a secret). Its five read roles are unchanged.
+# output may hold a secret). Its six read roles are unchanged.
 run "hub_audit_autoscaler_log" {
   command = plan
   module {
@@ -650,7 +650,7 @@ run "hub_audit_autoscaler_log" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud", autoscaler_log = true }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud", autoscaler_log = true }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -698,7 +698,7 @@ run "one_job_per_vm_refused" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.pools]
@@ -735,7 +735,7 @@ run "hub_audit_write_refused" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.admin", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.admin", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.hub_audit]
@@ -773,7 +773,7 @@ run "zone_outside_region_refused" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.pools]
@@ -810,7 +810,7 @@ run "one_zone_refused" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.pools]
@@ -841,7 +841,7 @@ run "unpinned_runner_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.runner]
@@ -873,7 +873,7 @@ run "unpinned_build_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [google_storage_bucket_object.runner_bin]
@@ -907,7 +907,7 @@ run "family_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.pool_image]
@@ -941,7 +941,7 @@ run "no_importers" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -981,7 +981,7 @@ run "manager_signs_for_report_refused" {
     runner_bin        = "../../bin/manager"
     pools             = {}
     build_cache       = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit         = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit         = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps       = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-report"] } } }
     kms_key_importers = ["jody@example.com"]
   }
@@ -1014,7 +1014,7 @@ run "unknown_pool_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, pools = { dev = "projects/444/locations/global/workloadIdentityPools/gitlab-com" }, keys = { tacplus-reader = { import = true, namespace = true, environments = [], accounts = { fleet-seatrials-reader = { pool = "elsewhere", gitlab_project = "tacplus-dev/fleet-seatrials" } } }, tacplus-looper = { import = true, namespace = false, environments = [], accounts = { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } } } } }
   }
   expect_failures = [var.github_apps]
@@ -1055,7 +1055,7 @@ run "manager_build" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -1094,7 +1094,7 @@ run "manager_build_policy_pushed" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -1137,7 +1137,7 @@ run "manager_build_autoscaler_replaces" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -1176,7 +1176,7 @@ run "manager_build_ready_check_replaces" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -1217,7 +1217,7 @@ run "manager_build_replaced" {
       }
     }
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   assert {
@@ -1254,7 +1254,7 @@ run "admiral" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] }, tacplus-admiral = { import = true, namespace = false, environments = [] } } }
     # As GCP_KMS_KEY_IMPORTERS and GCP_ADMIRAL_SECRET_ADDERS give them: accounts of the host's directory.
     kms_key_importers     = ["user:jody@example.com"]
@@ -1332,7 +1332,7 @@ run "admiral_without_adders" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = [] } } }
     admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
@@ -1368,7 +1368,7 @@ run "admiral_other_signer_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = ["looper-report"] } } }
     admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
@@ -1400,7 +1400,7 @@ run "admiral_unknown_key_refused" {
     runner_bin  = "../../bin/manager"
     pools       = {}
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
-    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] } } }
     admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }

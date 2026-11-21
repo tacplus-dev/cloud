@@ -7,10 +7,13 @@
 #     _Default bucket, filtered to the autoscaler's log from STUB_LOG_START to STUB_END, from
 #     STUB_AUDIT/<project>/autoscaler.json (autoscaler.<pageToken>.json for a later page); with no such file, none;
 #   - a cluster's API (GET -G, its CA the cluster's, STUB_CA): its nodes, its pods not finished, and the cluster
-#     autoscaler's events, from STUB_AUDIT/kube/<endpoint>/nodes.json, pods.json and events.json.
+#     autoscaler's events, from STUB_AUDIT/kube/<endpoint>/nodes.json, pods.json and events.json;
+#   - Cloud Quotas (GET, at STUB_CLOUDQUOTAS_API, #88): a compute quotaInfo, from STUB_AUDIT/<project>/quotainfo-<ID>.json
+#     (with none, 404), and the project's quotaPreferences, from quotapreferences.json (quotapreferences.<pageToken>.json
+#     for a later page; with none, none); a project with cloudquotas.err is refused with it (its API not enabled).
 # A project with no directory is refused (403). Every call is logged (STUB_LOG: curl, then the project, the metric,
-# the aligner and the page; the project, autoscaler and the page; or kube, the endpoint and what); any other call fails
-# loudly.
+# the aligner and the page; the project, autoscaler and the page; the project, quotaInfos and the ID, or
+# quotaPreferences and the page; or kube, the endpoint and what); any other call fails loudly.
 set -euo pipefail
 out='' fmt='' auth='' url='' method=GET body='' cacert='' type=''
 declare -A q=()
@@ -70,6 +73,27 @@ if [[ $url =~ ^https://([0-9.]+)/api/v1/(nodes|pods|events)$ ]]; then
   echo "curl kube $endpoint $what" >> "$STUB_LOG"
   f=$STUB_AUDIT/kube/$endpoint/$what.json
   if [ -f "$f" ]; then cp "$f" "$out"; printf 200; else echo '{"kind":"Status","message":"forbidden (stub)"}' > "$out"; printf 403; fi
+  exit 0
+fi
+
+if [[ $url =~ ^$STUB_CLOUDQUOTAS_API/v1/projects/([a-z0-9-]+)/locations/global/(services/compute.googleapis.com/quotaInfos/([A-Za-z0-9-]+)|quotaPreferences)$ ]]; then
+  project=${BASH_REMATCH[1]} id=${BASH_REMATCH[3]}
+  [ -z "$cacert" ] || { echo "stub curl: Cloud Quotas with a CA" >&2; exit 99; }
+  if [ -n "$id" ]; then
+    [ "${#q[@]}" = 0 ] || { echo "stub curl: a quotaInfo with a query: $(declare -p q)" >&2; exit 99; }
+    echo "curl $project quotaInfos $id" >> "$STUB_LOG"
+    f=$STUB_AUDIT/$project/quotainfo-$id.json
+  else
+    [ "${#q[@]}" = 0 ] || { [ "${#q[@]}" = 1 ] && [ -n "${q[pageToken]:-}" ]; } || { echo "stub curl: quotaPreferences with a query: $(declare -p q)" >&2; exit 99; }
+    page=${q[pageToken]:-}
+    echo "curl $project quotaPreferences ${page:-first}" >> "$STUB_LOG"
+    f=$STUB_AUDIT/$project/quotapreferences${page:+.$page}.json
+  fi
+  refused "$project" cloudquotas.quotas.get && exit 0
+  if [ -f "$STUB_AUDIT/$project/cloudquotas.err" ]; then cp "$STUB_AUDIT/$project/cloudquotas.err" "$out"; printf 403
+  elif [ -f "$f" ]; then cp "$f" "$out"; printf 200
+  elif [ -n "$id" ]; then echo '{"error":{"code":404,"message":"no such quotaInfo (stub)","status":"NOT_FOUND"}}' > "$out"; printf 404
+  else echo '{}' > "$out"; printf 200; fi
   exit 0
 fi
 

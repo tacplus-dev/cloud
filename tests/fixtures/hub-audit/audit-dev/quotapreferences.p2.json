@@ -1,0 +1,19 @@
+{
+ "quotaPreferences": [
+  {
+   "name": "projects/123/locations/global/quotaPreferences/hdb",
+   "service": "compute.googleapis.com",
+   "quotaId": "HDB-TOTAL-GB-per-project-region",
+   "dimensions": {
+    "region": "us-central1"
+   },
+   "quotaConfig": {
+    "preferredValue": "2000",
+    "grantedValue": "2000",
+    "requestOrigin": "ORIGIN_UNSPECIFIED"
+   },
+   "reconciling": false,
+   "etag": "e"
+  }
+ ]
+}

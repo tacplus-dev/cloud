@@ -16,6 +16,11 @@ output "cluster" {
   }
 }
 
+output "quotas" {
+  description = "The quotas the pools need (#88), each its Cloud Quotas ID and dimensions, what the pools need and what the project asks."
+  value       = local.quotas
+}
+
 output "dns_name_servers" {
   description = "The dev zone's name servers: the NS records its delegation in tacplus.dev's zone needs."
   value       = google_dns_managed_zone.dev.name_servers

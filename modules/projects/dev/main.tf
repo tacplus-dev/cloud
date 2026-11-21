@@ -23,6 +23,7 @@ resource "google_project_service" "service" {
   for_each = toset([
     "artifactregistry.googleapis.com",
     "cloudbuild.googleapis.com",
+    "cloudquotas.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
     "dns.googleapis.com",
@@ -56,6 +57,7 @@ locals {
   # the workload identity pool and the cluster among them.
   iam_ready_permissions = [
     "artifactregistry.repositories.create",
+    "cloudquotas.quotas.update",
     "compute.networks.create",
     "container.clusters.create",
     "dns.managedZones.create",
@@ -285,6 +287,52 @@ resource "google_container_node_pool" "pool" {
       enable_integrity_monitoring = true
     }
   }
+}
+
+# The quotas the pools need (#88), as Cloud Quotas preferences of the project in the region, computed from the pools,
+# never typed: on 2026-11-21 the build pool stopped at 2 nodes of 5, its scale-ups refused QUOTA_EXCEEDED, C4A CPUs
+# (CPUS_PER_VM_FAMILY, 24) and Hyperdisk Balanced (HDB_TOTAL_GB, 500 GB, all used). C4A CPUs: the normal pool's, the
+# build pool's at its maximum, and one node's of the larger machine type for a node being replaced (a surge upgrade, a
+# repair), rounded up to a multiple of 8.
+# Hyperdisk Balanced: a disk of disk_gb for each of those nodes, rounded up to a multiple of 500. An increase may wait
+# on Google's review (reconciling, until granted); ci/policy.sh refuses a plan whose pools these do not cover. The
+# contact is who Google asks about an increase: GCP_QUOTA_CONTACT (README, The network rules, The node pools' quotas).
+locals {
+  # A machine type's vCPUs, from its name (c4a-standard-4: 4).
+  pool_cpus = { for k, p in local.pools : k => tonumber(regex("^[a-z0-9]+-[a-z]+-([0-9]+)", p.machine_type)[0]) }
+  quota_need = {
+    c4a_cpus = var.cluster.normal.nodes * local.pool_cpus.normal + var.cluster.spot.max_nodes * local.pool_cpus.spot + max(values(local.pool_cpus)...)
+    hdb_gb   = (var.cluster.normal.nodes + var.cluster.spot.max_nodes + 1) * var.cluster.disk_gb
+  }
+  quotas = {
+    c4a_cpus = {
+      quota_id   = "CPUS-PER-VM-FAMILY-per-project-region"
+      dimensions = { region = var.region, vm_family = "C4A" }
+      need       = local.quota_need.c4a_cpus
+      preferred  = ceil(local.quota_need.c4a_cpus / 8) * 8
+    }
+    hdb_gb = {
+      quota_id   = "HDB-TOTAL-GB-per-project-region"
+      dimensions = { region = var.region }
+      need       = local.quota_need.hdb_gb
+      preferred  = ceil(local.quota_need.hdb_gb / 500) * 500
+    }
+  }
+}
+
+resource "google_cloud_quotas_quota_preference" "pools" {
+  for_each      = local.quotas
+  parent        = "projects/${google_project.dev.project_id}"
+  name          = "dev-pools-${replace(each.key, "_", "-")}-${var.region}"
+  service       = "compute.googleapis.com"
+  quota_id      = each.value.quota_id
+  dimensions    = each.value.dimensions
+  contact_email = var.quota_contact
+  justification = "The dev cluster's node pools (tacplus-dev/cloud #88): ${each.value.need} needed at their maximum, with one node being replaced."
+  quota_config {
+    preferred_value = tostring(each.value.preferred)
+  }
+  depends_on = [terraform_data.iam_ready]
 }
 
 # The zone for dev hostnames. Its delegation is an NS record of the domain's zone (dns.tf); in the zone it replaces,

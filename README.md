@@ -25,7 +25,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     Admiral's credentials);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 5 over the region's zones
-    with c4a, for build pods only: below, The network rules), the DNS zone
+    with c4a, for build pods only, and the quotas they need: below, The network rules), the DNS zone
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
     cluster-admin in the cluster, the runners' token secrets it reads and its registry `ci-images` (below, The cluster
     pipeline), each deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below,
@@ -165,6 +165,20 @@ is applied:
   read at plan): on 2026-11-20 spot c4a ran out in us-central1-a, then its only zone, and gates pods waited Pending at
   2 nodes of 5. Its 5 are the pool's in all zones (`total_max_node_count`), and GKE makes each node in whichever zone
   has the capacity (location policy `ANY`).
+- **The node pools' quotas (#88):** on 2026-11-21 `spot` still stopped at 2 nodes of 5, every scale-up refused
+  `QUOTA_EXCEEDED`: Hyperdisk Balanced (`HDB_TOTAL_GB`, 500 GB in us-central1, all used by 5 nodes of 100 GB) and C4A
+  CPUs (`CPUS_PER_VM_FAMILY`, 24). The dev stack asks Google for what its pools need, as Cloud Quotas preferences of
+  `tacplus-dev` in the region, computed from the pools, never typed (its output `quotas`): C4A CPUs, the normal pool's,
+  the build pool's at its maximum and one node's of the larger machine type for a node being replaced, rounded up to
+  a multiple of 8 (6 + 20 + 4 = 30: 32); Hyperdisk Balanced, a disk of `disk_gb` for each of those nodes, rounded up
+  to a multiple of 500 (9 x 100 = 900: 1000). A plan whose C4A pools its preferences do not cover (none, another
+  region's, or fewer) is refused (`ci/policy.sh`), as is a preference without a contact. Google asks the contact
+  about an increase: the protected GitLab variable `GCP_QUOTA_CONTACT`, an email of the host's directory with quota
+  update permission on `tacplus-dev` (`ci/lib.sh` gives it to the dev stack as `quota_contact`). An increase may wait
+  on Google's review: the preference is reconciling until granted, and the hub's audit shows each quota's limit, usage
+  and request (below, The hub's audit). The pipeline makes them with the host's `roles/cloudquotas.admin` (below, What
+  the host organization provides). Raising a pool raises them in the same commit; a raise Google has not granted yet
+  leaves the pool short until it does.
 
 A drift plan sees only what a stack has in its state, so a rule, a VM or a node pool made by hand is in none. The nightly
 **live audit** (`ci/audit.sh`, in the drift job) lists every firewall rule, instance, instance template, address, cluster and node
@@ -326,6 +340,10 @@ The host organization's admin (its own pipeline, outside this repository) provid
   - `roles/logging.configWriter`: the log views, `hub-audit-autoscaler` on each project's `_Default` bucket (#85; below,
     The hub's audit). Granted before `modules/settings`' `autoscaler_log` is set `true`, in a commit of its own: until
     then the ci stack makes no log view.
+  - `roles/cloudquotas.admin`: the dev node pools' quota preferences, C4A CPUs and Hyperdisk Balanced GB (#88; above,
+    The network rules, The node pools' quotas). Granted before the first `apply:dev` that makes them, with `GCP_QUOTA_CONTACT` set and
+    the bootstrap run again (it enables the Cloud Quotas API in `tacplus-bootstrap`): until then that apply fails on
+    them.
 
   A role here is one a stack's resource needs (`tests/apis_test.sh` names the API of each); a new kind of resource
   is a new line here, and the host's grant, before its first apply. Nothing beyond these, and nothing at the
@@ -356,7 +374,7 @@ pipeline) are `user:jody@seabeam.net` today (#18), and so are the apps' key impo
 The GitHub Apps' keys), for the one run that imports them (#19), and the Google sign-in client's adders
 (`GCP_GOOGLE_SIGNIN_ADDERS`, below, The Google sign-in client, #37), and the Admiral's secret's adders
 (`GCP_ADMIRAL_SECRET_ADDERS`, below, The Admiral's credentials, #84), whose token is the triage project
-seabeam/triage's.
+seabeam/triage's. The node pools' quota contact (`GCP_QUOTA_CONTACT`, #88) is `jody@seabeam.net` too.
 <!-- /hosting note -->
 
 ### What Jody runs, in order
@@ -403,7 +421,8 @@ Then the hub's steps below, then the first pipeline. The first real apply is tha
    `GCP_RUNNER_TOKEN_ADDERS` (protected): the account that adds the runners' token versions (below, The cluster pipeline);
    `GCP_KMS_KEY_IMPORTERS` (protected), only while the apps' keys are imported (below, The GitHub Apps' keys);
    `GCP_GOOGLE_SIGNIN_ADDERS` (protected): the account that adds the Google sign-in client's secret versions, in the
-   Console (below, The Google sign-in client). The gitlab stack adopts it and `main`'s
+   Console (below, The Google sign-in client); `GCP_QUOTA_CONTACT` (protected): the email Google asks about an
+   increase of the dev node pools' quotas (above, The network rules, The node pools' quotas). The gitlab stack adopts it and `main`'s
    protection (its import blocks), and sets the reader's two variables from Secret Manager.
 4. **The drift issue:** the tacplus-reader app installed on `tacplus-dev/cloud` with Issues read and write. This
    project's jobs sign with the KMS key `tacplus-reader` in `tacplus-ci` (the ci stack's binding, #30) once its version
@@ -424,8 +443,9 @@ variables"). There is no key anywhere: the `audit` job federates its ID token, a
 project's protected `main` becomes, through the pipeline's own provider.
 
 - **Its rights:** on `tacplus-ci` and `tacplus-dev`, `roles/compute.viewer`, `roles/container.viewer`,
-  `roles/monitoring.viewer`, `roles/serviceusage.serviceUsageConsumer` and `roles/secretmanager.viewer` (names and
-  versions' metadata, never their values: no accessor). No write role: `ci/policy.sh` refuses any other role to it in a
+  `roles/monitoring.viewer`, `roles/serviceusage.serviceUsageConsumer`, `roles/secretmanager.viewer` (names and
+  versions' metadata, never their values: no accessor) and `roles/cloudquotas.viewer` (the quotas' limits and
+  preferences, #88). No write role: `ci/policy.sh` refuses any other role to it in a
   plan, and the module refuses one in its input. And the cluster autoscaler's log alone (#85), once `modules/settings`'
   `autoscaler_log` is `true` (after the host's `roles/logging.configWriter`, above): `roles/logging.viewAccessor` on
   each project, conditioned on `resource.name` being that project's view `hub-audit-autoscaler`, on its `_Default`
@@ -445,8 +465,11 @@ project's protected `main` becomes, through the pipeline's own provider.
     the VMs with an external IP, the external addresses and what uses each, the load balancers (forwarding rules);
   - **inventory:** every VM (name, machine type, provisioning model, status, created), every node pool (machine, spot,
     its autoscaling's min and max, its nodes now), the disks by type (count and GB);
-  - **quotas:** `CPUS_ALL_REGIONS`, and the region's `CPUS`, `SSD_TOTAL_GB`, `PREEMPTIBLE_CPUS`, `T2A_CPUS` and
-    `C4A_CPUS`, with usage (null where the region lists none);
+  - **quotas:** `CPUS_ALL_REGIONS`, and the region's `CPUS`, `SSD_TOTAL_GB`, `PREEMPTIBLE_CPUS` and `T2A_CPUS`, with
+    usage (null where the region lists none); and the region's `CPUS_PER_VM_FAMILY` of C4A and `HDB_TOTAL_GB` (#88),
+    their limits from Cloud Quotas (Compute lists neither), with the project's quota preference for each (requested,
+    granted, and pending while Google reviews it), their usage the inventory's (Cloud Quotas gives none): the vCPUs of
+    the region's C4A VMs not stopped, and the GB of its Hyperdisk Balanced disks;
   - **utilization** over the last hour, the maximum of its 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace `ci`;
   - **secrets:** their names and their versions' states only;

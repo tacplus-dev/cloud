@@ -8,5 +8,17 @@
   "name": "gke-dev-spot-1",
   "type": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-a/diskTypes/hyperdisk-balanced",
   "sizeGb": "100"
+ },
+ {
+  "name": "hand-regional",
+  "region": "https://www.googleapis.com/compute/v1/projects/audit-dev/regions/us-central1",
+  "type": "https://www.googleapis.com/compute/v1/projects/audit-dev/regions/us-central1/diskTypes/hyperdisk-balanced",
+  "sizeGb": "50"
+ },
+ {
+  "name": "hand-east",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-east1-b",
+  "type": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-east1-b/diskTypes/hyperdisk-balanced",
+  "sizeGb": "500"
  }
 ]
