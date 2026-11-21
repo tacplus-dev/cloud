@@ -452,11 +452,14 @@ project's protected `main` becomes, through the pipeline's own provider.
     requests, and each pod on it with its phase, creation, owner (its owner references, or the GitLab job of a runner's
     pod, by URL) and CPU and memory requests; and the pods not scheduled, with the scheduler's reason. What fills a
     spot node is read, not inferred. A pod's spec, its env with it, never leaves the job's temporary directory;
-  - **the cluster autoscaler** (#85) over the last 6 hours, from its visibility log through the view
+  - **the cluster autoscaler** (#85): its events on the cluster's objects, through the cluster's API (`roles/container.viewer`,
+    as above; Kubernetes keeps them about an hour): a pod's `NotTriggerScaleUp` with the autoscaler's reason, or its
+    `TriggeredScaleUp` with the group and size it asked for, each with its count, first and last times. And over the
+    last 6 hours, from its visibility log through the view
     `hub-audit-autoscaler` alone: each no-scale-up by pool, zone and reason (a pool rejected or skipped, or the
     autoscaler's own reason, a backoff say), its count, first and last times and the pods it left; and each scale-up
-    error, joined to the pools its decision tried. Only once `modules/settings`' `autoscaler_log` is `true` (above, Its
-    rights); until then `autoscaler.read` is `false` and `unavailable` says why.
+    error, joined to the pools its decision tried. The log only once `modules/settings`' `autoscaler_log` is `true`
+    (above, Its rights); until then `autoscaler.read` is `false` and `unavailable` says why.
 
   An API not enabled in a project (GKE's in `tacplus-ci`) is noted in `unavailable`, its list empty. `findings` are
   the exposure findings, `errors` the reads it could not make.

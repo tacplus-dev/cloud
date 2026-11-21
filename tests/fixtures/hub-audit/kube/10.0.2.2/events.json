@@ -1,0 +1,37 @@
+{
+  "kind": "EventList",
+  "apiVersion": "v1",
+  "items": [
+    {
+      "metadata": {"name": "runner-pending-1.18a1", "namespace": "ci"},
+      "involvedObject": {"kind": "Pod", "namespace": "ci", "name": "runner-pending-1"},
+      "reason": "NotTriggerScaleUp",
+      "message": "pod didn't trigger scale-up (it wouldn't fit if a new node is added): 1 in backoff after failed scale-up, 1 node(s) didn't match Pod's node affinity/selector",
+      "source": {"component": "cluster-autoscaler"},
+      "firstTimestamp": "2026-11-23T11:50:30Z",
+      "lastTimestamp": "2026-11-23T11:59:30Z",
+      "count": 19,
+      "type": "Normal"
+    },
+    {
+      "metadata": {"name": "runner-abc-project-1-concurrent-0.18a0", "namespace": "ci"},
+      "involvedObject": {"kind": "Pod", "namespace": "ci", "name": "runner-abc-project-1-concurrent-0"},
+      "reason": "TriggeredScaleUp",
+      "message": "pod triggered scale-up: [{https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-b/instanceGroups/gke-dev-spot-b-grp 1->2 (max: 5)}]",
+      "source": {"component": "cluster-autoscaler"},
+      "eventTime": "2026-11-23T11:40:10.000000Z",
+      "series": {"count": 2, "lastObservedTime": "2026-11-23T11:41:10.000000Z"},
+      "type": "Normal"
+    },
+    {
+      "metadata": {"name": "cluster-autoscaler-status.18a2", "namespace": "kube-system"},
+      "involvedObject": {"kind": "ConfigMap", "namespace": "kube-system", "name": "cluster-autoscaler-status"},
+      "reason": "ScaleDownEmpty",
+      "message": "Scale-down: removing empty node gke-dev-spot-3",
+      "source": {"component": "cluster-autoscaler"},
+      "firstTimestamp": "2026-11-23T11:20:00Z",
+      "lastTimestamp": "2026-11-23T11:20:00Z",
+      "type": "Normal"
+    }
+  ]
+}

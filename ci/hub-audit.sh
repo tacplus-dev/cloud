@@ -18,17 +18,19 @@
 #     the pods on it, each with its phase, creation, owner (its owner references, or the GitLab job of a runner's pod)
 #     and requests (its containers', or an init container's if more, and its overhead), summed; and the pods not
 #     scheduled, with why. A pod's spec, its env with it, is read into the temporary directory and never written out;
-#   - the cluster autoscaler (#85), when AUDIT_AUTOSCALER_LOG is true (ci/lib.sh ci_autoscaler_log): its events of the
-#     last 6 hours (container.googleapis.com/cluster-autoscaler-visibility), through the log view hub-audit-autoscaler
-#     of each project's _Default bucket, the one log hub-audit may read (modules/projects/ci/hub-audit.tf): each
-#     no-scale-up by pool, zone and reason (a pool rejected or skipped, or none), with its count, first and last times
-#     and the pods it left, and each scale-up error, joined to the pools its decision tried. False, until the host
-#     grants what the views need, it is noted as not read.
+#   - the cluster autoscaler (#85): its events on each cluster's objects (a pod's NotTriggerScaleUp or
+#     TriggeredScaleUp, with why), as the cluster's API keeps them (about an hour; container.viewer); and, when
+#     AUDIT_AUTOSCALER_LOG is true (ci/lib.sh ci_autoscaler_log), its log of the last 6 hours
+#     (container.googleapis.com/cluster-autoscaler-visibility), through the log view hub-audit-autoscaler of each
+#     project's _Default bucket, the one log hub-audit may read (modules/projects/ci/hub-audit.tf): each no-scale-up by
+#     pool, zone and reason (a pool rejected or skipped, or none), with its count, first and last times and the pods it
+#     left, and each scale-up error, joined to the pools its decision tried. False, until the host grants what the
+#     views need, its log is noted as not read.
 # It only reads: lists and describes, Monitoring's timeSeries.list, Logging's entries.list of that view, and the
-# cluster's nodes and pods. An API not enabled in a project is noted, its list empty (none can exist there). It fails,
-# both files written, on an exposure finding (an ingress rule open to 0.0.0.0/0 or ::/0, a VM with an external IP) or
-# a read it could not make, so the job shows red. AUDIT_NOW (epoch seconds, default now) ends the hour and the
-# autoscaler's hours, and MONITORING_API and LOGGING_API are Monitoring's and Logging's endpoints, for
+# cluster's nodes, pods and autoscaler events. An API not enabled in a project is noted, its list empty (none can
+# exist there). It fails, both files written, on an exposure finding (an ingress rule open to 0.0.0.0/0 or ::/0, a VM
+# with an external IP) or a read it could not make, so the job shows red. AUDIT_NOW (epoch seconds, default now) ends
+# the hour and the autoscaler's hours, and MONITORING_API and LOGGING_API are Monitoring's and Logging's endpoints, for
 # tests/hub_audit_test.sh.
 #
 #   AUDIT_AUTOSCALER_LOG=true|false ci/hub-audit.sh DIR REGION PROJECT...
@@ -169,7 +171,9 @@ for p in "$@"; do
     kube "$p" "$d/nodes.raw" "the cluster $name's nodes" "$ep" "$d/ca-$name.pem" /api/v1/nodes &&
       kube "$p" "$d/pods.raw" "the cluster $name's pods" "$ep" "$d/ca-$name.pem" /api/v1/pods \
         --data-urlencode 'fieldSelector=status.phase!=Succeeded,status.phase!=Failed' &&
-      jq -nc --arg cluster "$name" --slurpfile nodes "$d/nodes.raw" --slurpfile pods "$d/pods.raw" "$qty"'
+      { kube "$p" "$d/events.raw" "the cluster $name's autoscaler events" "$ep" "$d/ca-$name.pem" /api/v1/events \
+          --data-urlencode 'fieldSelector=source=cluster-autoscaler' || echo '{}' > "$d/events.raw"; } &&
+      jq -nc --arg cluster "$name" --slurpfile nodes "$d/nodes.raw" --slurpfile pods "$d/pods.raw" --slurpfile events "$d/events.raw" "$qty"'
         def cpu: . * 1000 | round / 1000;
         def requests($r): ([(.spec.containers // [])[] | .resources.requests[$r]? | qty] | add // 0) as $run
           | ([(.spec.initContainers // [])[] | .resources.requests[$r]? | qty] | max // 0) as $init
@@ -184,9 +188,13 @@ for p in "$@"; do
               created: .metadata.creationTimestamp,
               owner: (if ($o | length) > 0 then $o | map("\(.kind)/\(.name)") | join(", ") elif $job then "GitLab job \($job)" else null end),
               cpu: (requests("cpu") | cpu), memory: (requests("memory") | round),
-              why: ([.status.conditions[]? | select(.type == "PodScheduled" and .status == "False") | .message // .reason][0])}]}' >> "$d/kube.jsonl" ||
+              why: ([.status.conditions[]? | select(.type == "PodScheduled" and .status == "False") | .message // .reason][0])}],
+         events: [$events[0].items[]? | .involvedObject as $o
+           | {object: "\($o.kind) \(if $o.namespace then "\($o.namespace)/" else "" end)\($o.name)", reason, message,
+              count: (.count // .series.count // 1), first: (.firstTimestamp // .eventTime),
+              last: (.lastTimestamp // .series.lastObservedTime // .eventTime)}] | sort_by(.last)}' >> "$d/kube.jsonl" ||
       jq -nc --arg p "$p" --arg w "the cluster $name's nodes and pods" '{project: $p, what: $w, error: "cannot read them"}' >> "$tmp/errors"
-    rm -f "$d/nodes.raw" "$d/pods.raw"
+    rm -f "$d/nodes.raw" "$d/pods.raw" "$d/events.raw"
   done
   read_json "$p" "$d/project-info.json" '{}' "the project's quotas" compute project-info describe
   read_json "$p" "$d/region.json" '{}' "the quotas of $region" compute regions describe "$region"
@@ -205,10 +213,10 @@ for p in "$@"; do
   series "$p" "$d/m-ctr-mem.json" "the containers' memory" ALIGN_MAX "metric.type = \"kubernetes.io/container/memory/used_bytes\" AND metric.labels.memory_type = \"non-evictable\" AND $ns"
   series "$p" "$d/m-ctr-mem-req.json" "the containers' memory requests" ALIGN_MAX "metric.type = \"kubernetes.io/container/memory/request_bytes\" AND $ns"
   if [ "$autoscaler_log" = true ]; then
-    entries "$p" "$d/autoscaler.json" "the cluster autoscaler's events"
+    entries "$p" "$d/autoscaler.json" "the cluster autoscaler's log"
   else
     echo '[]' > "$d/autoscaler.json"
-    jq -nc --arg p "$p" '{project: $p, what: "the cluster autoscaler'"'"'s events", why: "its log view waits on the host'"'"'s grant (modules/settings autoscaler_log)"}' >> "$tmp/unavailable"
+    jq -nc --arg p "$p" '{project: $p, what: "the cluster autoscaler'"'"'s log", why: "its log view waits on the host'"'"'s grant (modules/settings autoscaler_log)"}' >> "$tmp/unavailable"
   fi
   args=(--arg project "$p")
   for f in "$d"/*.json; do
@@ -304,6 +312,7 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
         | {project: $p, cluster: $c, namespace, name, created, owner, cpu_requested: .cpu, memory_requested: .memory, why}]
     },
     autoscaler: {
+      events: [$ps[] | .project as $p | .kube[] | .cluster as $c | .events[] | {project: $p, cluster: $c} + .],
       read: ($autoscaler_log == "true"),
       window: {start: $log_start, end: $end},
       # Each event once per pool, zone and reason, then counted across the hours.
@@ -371,7 +380,9 @@ jq -r '
   "### Pods not scheduled", "", table(["project", "cluster", "pod", "created", "owner", "CPU requested", "memory requested", "why"];
     [.scheduling.pending_pods[] | [.project, .cluster, "\(.namespace)/\(.name)", .created, .owner, (.cpu_requested | cores), (.memory_requested | mib), .why]]),
   "## Cluster autoscaler, \(.autoscaler.window.start) to \(.autoscaler.window.end)", "",
-  (if .autoscaler.read | not then "Not read: its log view waits on the host'"'"'s grant of roles/logging.configWriter to the pipeline (modules/settings autoscaler_log; README, What the host organization provides).", "" else empty end),
+  "### Its events on the cluster'"'"'s objects (as Kubernetes keeps them, about an hour)", "", table(["project", "cluster", "object", "reason", "times", "first", "last", "message"];
+    [.autoscaler.events[] | [.project, .cluster, .object, .reason, .count, .first, .last, .message]]),
+  (if .autoscaler.read | not then "Its log not read: its log view waits on the host'"'"'s grant of roles/logging.configWriter to the pipeline (modules/settings autoscaler_log; README, What the host organization provides).", "" else empty end),
   "### No scale-up, by pool, zone and reason", "", table(["project", "pool", "zone", "reason", "times", "first", "last", "pods left"];
     [.autoscaler.no_scale_up[] | [.project, .pool, .zone, .reason, .count, .first, .last, .pods]]),
   "### Scale-up errors", "", table(["project", "time", "event", "error", "pools tried"];

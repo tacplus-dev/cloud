@@ -6,8 +6,8 @@
 #   - Cloud Logging's entries:list (POST, its JSON body a file): only the view hub-audit-autoscaler of the project's
 #     _Default bucket, filtered to the autoscaler's log from STUB_LOG_START to STUB_END, from
 #     STUB_AUDIT/<project>/autoscaler.json (autoscaler.<pageToken>.json for a later page); with no such file, none;
-#   - a cluster's API (GET -G, its CA the cluster's, STUB_CA): its nodes, and its pods not finished, from
-#     STUB_AUDIT/kube/<endpoint>/nodes.json and pods.json.
+#   - a cluster's API (GET -G, its CA the cluster's, STUB_CA): its nodes, its pods not finished, and the cluster
+#     autoscaler's events, from STUB_AUDIT/kube/<endpoint>/nodes.json, pods.json and events.json.
 # A project with no directory is refused (403). Every call is logged (STUB_LOG: curl, then the project, the metric,
 # the aligner and the page; the project, autoscaler and the page; or kube, the endpoint and what); any other call fails
 # loudly.
@@ -57,13 +57,15 @@ if [[ $url =~ ^$STUB_LOGGING_API/v2/entries:list$ ]]; then
 fi
 
 [ "$method" = GET ] && [ -z "$body" ] || { echo "stub curl: not a GET: $method $url" >&2; exit 99; }
-if [[ $url =~ ^https://([0-9.]+)/api/v1/(nodes|pods)$ ]]; then
+if [[ $url =~ ^https://([0-9.]+)/api/v1/(nodes|pods|events)$ ]]; then
   endpoint=${BASH_REMATCH[1]} what=${BASH_REMATCH[2]}
   [ -n "$cacert" ] && [ "$(cat "$cacert")" = "$STUB_CA" ] || { echo "stub curl: not the cluster's CA" >&2; exit 99; }
   case $what in
     nodes) [ "${#q[@]}" = 0 ] || { echo "stub curl: nodes with a query: $(declare -p q)" >&2; exit 99; } ;;
     pods) [ "${#q[@]}" = 1 ] && [ "${q[fieldSelector]:-}" = 'status.phase!=Succeeded,status.phase!=Failed' ] ||
       { echo "stub curl: not the pods not finished: $(declare -p q)" >&2; exit 99; } ;;
+    events) [ "${#q[@]}" = 1 ] && [ "${q[fieldSelector]:-}" = 'source=cluster-autoscaler' ] ||
+      { echo "stub curl: not the autoscaler's events: $(declare -p q)" >&2; exit 99; } ;;
   esac
   echo "curl kube $endpoint $what" >> "$STUB_LOG"
   f=$STUB_AUDIT/kube/$endpoint/$what.json
