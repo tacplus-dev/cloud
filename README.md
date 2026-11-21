@@ -335,7 +335,10 @@ The host organization's admin (its own pipeline, outside this repository) provid
   included, and checks them for drift; this repository relies on them and sets none (`roles/orgpolicy.policyAdmin` can be
   granted only at an organization's level). The set it relies on:
   - `iam.disableServiceAccountKeyCreation` and `iam.disableServiceAccountKeyUpload`, enforced: no service-account key;
-  - `iam.workloadIdentityPoolProviders`: `https://gitlab.com` only;
+  - `iam.workloadIdentityPoolProviders`: `https://gitlab.com`, and each fleet kernel's issuer a provider here trusts:
+    in dev `https://seatrials.tacplus.dev`, the Admiral's (#84; below, The Admiral's credentials). A new kernel issuer
+    is a host step before its provider's first apply: a provider for an issuer the host does not allow fails `apply:dev`
+    (#86), and every apply after it;
   - `gcp.resourceLocations`: `in:us-central1-locations` (the region `modules/settings` names);
   - `storage.uniformBucketLevelAccess` and `storage.publicAccessPrevention`, enforced: no object ACL, no public bucket;
   - `compute.skipDefaultNetworkCreation`, enforced: no default network;
