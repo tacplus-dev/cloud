@@ -444,9 +444,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-20 by th
   trigger on tacplus-dev/build, its token tacplus-dev/looper's (88136765) protected, masked `BUILD_TRIGGER_TOKEN`,
   rotated by a commit of its `rotate_by` (2027-02-05, every 90 days; the drift's expiry check reports it from 30 days
   before; the new trigger before the old one goes); its settings (#82, `build.variables`, unprotected, unmasked):
-  `BUILD_GATES_REQUESTS_tacplus` = `3500m 12Gi 3500m 12Gi`, tacplus's gates job's size (looper#202), read since the
-  bump to e877150, its CPU request the runner's ceiling since #83 (2 CPU slowed the timing-bound gates; its peak, the
-  gates job's `pod use at the end` line, not yet confirmed); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
+  `BUILD_GATES_REQUESTS_tacplus` = `3 10Gi 3500m 12Gi`, tacplus's gates job's size (looper#202), read since the
+  bump to e877150, its limits the runner's ceilings (#83: 2 CPU slowed the timing-bound gates) and its requests 3 CPU
+  10Gi since #87 (at 3500m 12Gi it fit no c4a-standard-4 spot node after its DaemonSets and never scheduled; the hub
+  set 3 10Gi by hand on 2026-11-21, which the stack now keeps; `ci/policy.sh` refuses a larger request in a plan; a
+  tacplus gates pod running on the spot pool, and its peak, the `pod use at the end` line, not yet confirmed); and **one nightly schedule** (#67), `nightly` at 03:00 UTC, the
   input `nightly: true` and no `repo`: its pipeline lists the repositories whose main pins a build image and runs each
   one's nightly in a child pipeline (looper#164), so every pinned repository has a nightly again and no list is kept
   here (`ci/nightly-builds.sh`, `pinned-repositories.yaml` and the drift's `nightly-builds` check are gone). It
