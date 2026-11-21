@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#86).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#88).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -235,6 +235,19 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by th
   pool is under 5. Gap: a dev project not yet made cannot plan (its zones are read in it). The audit now shows what
   fills each spot node, the pods not scheduled, and the cluster autoscaler's events on the cluster's objects (a pod's
   `NotTriggerScaleUp` and its reason); its log, switched off until the host's grant (below, The hub's audit).
+- **The node pools' quotas (#88):** the #85 spread did not let `spot` grow: its scale-ups were refused
+  `QUOTA_EXCEEDED`, `HDB_TOTAL_GB` (500 GB in us-central1, all used by 5 nodes of 100 GB) and `CPUS_PER_VM_FAMILY` C4A
+  (24). The dev stack now asks them of Google as Cloud Quotas preferences of `tacplus-dev`, computed from the pools
+  (output `quotas`): 32 C4A CPUs (6 + 20 + one c4a-standard-4 being replaced, 30) and 1000 GB of Hyperdisk Balanced
+  (9 x 100, 900); `ci/policy.sh` refuses a plan whose C4A pools they do not cover, or a preference without a contact.
+  The contact Google asks about an increase is the protected variable `GCP_QUOTA_CONTACT` (`quota_contact`). The
+  pipeline needs the host's `roles/cloudquotas.admin` (a new `HOST_ROLES` line), and the bootstrap enables the Cloud
+  Quotas API in `tacplus-bootstrap`. **Blocker:** until `GCP_QUOTA_CONTACT` is set, `plan:dev` is refused by the policy
+  (no contact), and until the grant and the bootstrap rerun, `apply:dev` may fail on the preferences. Tested with the
+  dev plan test (mock providers), the policy and ci tests; not yet seen live: `apply:dev` making them, Google granting
+  (an increase may wait on review: the audit's Quotas table shows requested, granted and pending), then the pool at 5
+  with no `QUOTA_EXCEEDED`. The Cloud Quotas ID `HDB-TOTAL-GB-per-project-region` is inferred from Compute's naming
+  (PROPOSALS.md).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
@@ -495,14 +508,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by th
 - **The hub's audit (#77; Jody, 2026-11-17):** the hub's read-only gcloud checks run in this pipeline instead of on the
   Mac, with no key anywhere (README, The hub's audit). The ci stack makes `hub-audit@tacplus-ci`
   (`modules/projects/ci/hub-audit.tf`), which only this project's protected main becomes through the pipeline's own
-  provider, with `compute`, `container`, `monitoring` and `secretmanager` viewer and `serviceusage.serviceUsageConsumer`
+  provider, with `compute`, `container`, `monitoring`, `secretmanager` and (#88) `cloudquotas` viewer and `serviceusage.serviceUsageConsumer`
   on `tacplus-ci` and `tacplus-dev`; `ci/policy.sh` refuses any other role to it in a plan, the module in its input. The
   `audit` job (`ci_audit`, `ci/hub-audit.sh`) is alone in its pipeline: the hourly schedule `audit` (minute 7) the gitlab
   stack makes on this project, known by its description (it sets no variable: pipeline variables are the Owner role's
   here), or a web or API run with `CLOUD_AUDIT` `true`. It writes `audit.json` and `audit.md` (exposure, inventory,
   quotas with usage, the hour's 10-minute CPU maxima per VM and node and the `ci` namespace's containers' use against
   their requests, the secrets' names and version states), the artifact `src/audit/` for 30 days (members only), and is
-  red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Since #85 it also
+  red on an ingress rule open to `0.0.0.0/0`/`::/0`, a VM's external IP or a read it cannot make. Since #88 its quotas
+  include C4A CPUs and Hyperdisk Balanced GB in the region, their limits and the project's preferences (requested,
+  granted, pending) from Cloud Quotas (hub-audit's `roles/cloudquotas.viewer`), their usage the inventory's. Since #85 it also
   reads the cluster's API: each spot node's allocatable against its pods' requests, each pod on it with its owner (a
   runner pod's GitLab job), and the pods not scheduled, with why; no pod's spec is written out; and the cluster
   autoscaler's events on the cluster's objects (`NotTriggerScaleUp` with its reason, `TriggeredScaleUp`; the hour
