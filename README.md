@@ -237,7 +237,7 @@ moves to the first upstream release with the fix (#3):
   pinned, trusted inputs; each pin moves when its upstream ships the fix.
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
   klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
-- **The CI image is build:2.6.12 by digest** (#59): its `linux-libc-dev` is 6.12.117-1 (DSA-6628-1: six HIGH kernel
+- **The CI image is build:2.6.13 by digest** (#91; 2.6.12, #59): its `linux-libc-dev` is 6.12.117-1 (DSA-6628-1: six HIGH kernel
   CVEs in 6.12.116-1 turned the security job red on 2026-11-14; tacplus-dev/tacplus#711 rebuilt the image, as #554
   did), its `gh` has x/net >= v0.62.0 (CVE-2026-78661, #27) and its zlib the fix (CVE-2026-85091), so their exceptions
   are gone, and it has no OpenEXR since 2.6.10 (#43; tacplus-dev/tacplus#554: 16 CVEs in Debian 13's, from
