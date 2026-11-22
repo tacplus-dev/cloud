@@ -343,7 +343,7 @@ run "dev" {
   # cluster's zone, labelled and tainted looper=true so that only the control runner's job pods land there and it
   # empties back to 0 (tacplus-dev/cluster#47).
   assert {
-    condition     = google_container_node_pool.pool["looper"].node_config[0].machine_type == "c4a-standard-2" && !google_container_node_pool.pool["looper"].node_config[0].spot && google_container_node_pool.pool["looper"].node_count == null && google_container_node_pool.pool["looper"].autoscaling[0].total_min_node_count == 0 && google_container_node_pool.pool["looper"].autoscaling[0].total_max_node_count == 2 && google_container_node_pool.pool["looper"].autoscaling[0].min_node_count == null && google_container_node_pool.pool["looper"].autoscaling[0].max_node_count == null
+    condition     = google_container_node_pool.pool["looper"].node_config[0].machine_type == "c4a-standard-2" && !google_container_node_pool.pool["looper"].node_config[0].spot && google_container_node_pool.pool["looper"].autoscaling[0].total_min_node_count == 0 && google_container_node_pool.pool["looper"].autoscaling[0].total_max_node_count == 2 && google_container_node_pool.pool["looper"].autoscaling[0].min_node_count == null && google_container_node_pool.pool["looper"].autoscaling[0].max_node_count == null
     error_message = "The looper pool is not c4a-standard-2 on demand, from 0 to 2."
   }
   assert {
