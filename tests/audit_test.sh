@@ -55,7 +55,7 @@ reports "ingress from a public address" "live dirty-dev: firewall rule gke-dev-1
 grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates|addresses)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
   fail "the audit runs more than the lists" || ok "the audit only lists"
 
-audit clean && [ ! -s "$work/out" ] && ok "projects that keep the rules: nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
+audit clean && [ ! -s "$work/out" ] && ok "projects that keep the rules (the dev cluster's normal, spot and looper pools, #95): nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
 audit missing && reports "a list it cannot read is reported" "live missing: cannot list firewall-rules: " "live missing: cannot list clusters: " "live missing: cannot list addresses: "
 "$here/ci/audit.sh" > /dev/null 2>&1 && fail "no project: passed" || ok "no project: usage"
 

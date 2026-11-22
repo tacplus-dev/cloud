@@ -173,6 +173,12 @@ refuses "a plan whose Hyperdisk Balanced preference is short of its pools (#88)"
 refuses "a plan with C4A pools and no C4A CPU preference (#88)" "need 30 C4A CPUs at their maximum, with one node being replaced, and no quota preference asks for them" plan "$fx/plans/quotas-missing.json"
 refuses "a plan whose C4A CPU preference is of another region (#88)" "need 30 C4A CPUs at their maximum, with one node being replaced, and no quota preference asks for them" plan "$fx/plans/quotas-other-region.json"
 refuses "a plan with a quota preference without a contact (#88)" "has no contact_email: Google refuses an increase without one" plan "$fx/plans/quotas-no-contact.json"
+# And the looper pool from 0 to 2 c4a-standard-2 (#95): 34 C4A CPUs and (3 + 5 + 2 + 1) x 100 = 1100 GB; the pools'
+# checks are the same for all three.
+passes "a plan with the looper pool whose quota preferences ask 40 C4A CPUs and 1500 GB of Hyperdisk Balanced (#95)" plan "$fx/plans/quotas-looper.json"
+refuses "a plan adding the looper pool without its C4A CPUs (#95)" "asks 32 C4A CPUs, fewer than the 34 the node pools of tacplus-dev in us-central1 need" plan "$fx/plans/quotas-looper-short.json"
+refuses "a plan adding the looper pool without its Hyperdisk Balanced (#95)" "asks 1000 GB of Hyperdisk Balanced, fewer than the 1100" plan "$fx/plans/quotas-looper-short.json"
+refuses "a plan with the looper pool on public nodes (#95)" "module.dev.google_container_node_pool.pool[\"looper\"] has public nodes" plan "$fx/plans/quotas-looper-public.json"
 echo '{' > "${tmp:=$(mktemp)}"
 refuses "a plan that is not JSON" "not a plan" plan "$tmp"
 rm -f "$tmp"

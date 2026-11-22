@@ -21,6 +21,17 @@
      "minNodeCount": 0,
      "maxNodeCount": 3
     }
+   },
+   {
+    "name": "looper",
+    "config": {
+     "machineType": "c4a-standard-2"
+    },
+    "autoscaling": {
+     "enabled": true,
+     "totalMaxNodeCount": 2,
+     "locationPolicy": "BALANCED"
+    }
    }
   ],
   "endpoint": "10.0.2.2",

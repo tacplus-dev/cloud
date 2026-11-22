@@ -79,8 +79,9 @@ is "the load balancers" '.exposure.load_balancers' \
 is "every VM: name, type, provisioning, created" '[.inventory.vms[] | [.project, .name, .zone, .machine_type, .provisioning, .status, .created]] | .[0:2]' \
   '[["audit-ci","runner-manager-9c4d2d4d","us-central1-b","e2-small","STANDARD","RUNNING","2026-11-15T10:00:00.000-08:00"],["audit-ci","runner-shared-abcd","us-central1-a","t2a-standard-8","SPOT","RUNNING","2026-11-16T01:00:00.000-08:00"]]'
 is "every VM, the cluster's nodes too" '.inventory.vms | length' 9
+# The looper pool (#95) as GKE gives it: its total maximum, and no minimum (0, which the API leaves out).
 is "the node pools: machine, spot, min and max (none when fixed), the nodes now" '.inventory.node_pools' \
-  '[{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"normal","machine_type":"c4a-standard-2","spot":false,"autoscaling":false,"min":null,"max":null,"nodes":3},{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"spot","machine_type":"c4a-standard-4","spot":true,"autoscaling":true,"min":0,"max":3,"nodes":1}]'
+  '[{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"normal","machine_type":"c4a-standard-2","spot":false,"autoscaling":false,"min":null,"max":null,"nodes":3},{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"spot","machine_type":"c4a-standard-4","spot":true,"autoscaling":true,"min":0,"max":3,"nodes":1},{"project":"audit-dev","cluster":"dev","location":"us-central1-a","name":"looper","machine_type":"c4a-standard-2","spot":false,"autoscaling":true,"min":0,"max":2,"nodes":0}]'
 is "the disks by type, counted and summed" '.inventory.disks' \
   '[{"project":"audit-ci","type":"pd-balanced","count":2,"gb":174},{"project":"audit-ci","type":"pd-standard","count":1,"gb":350},{"project":"audit-dev","type":"hyperdisk-balanced","count":3,"gb":650},{"project":"audit-dev","type":"pd-balanced","count":1,"gb":100}]'
 

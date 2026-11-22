@@ -3,8 +3,9 @@
 #
 # The dev stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no
 # cloud): the stack plans, and its module, with the stack's inputs, gives the arm64 cluster (private COS nodes: a normal
-# pool of 3 x c4a-standard-2 on demand, and a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
-# spot=true, #7, over the region's zones with c4a, #85), the dev zone and the
+# pool of 3 x c4a-standard-2 on demand, a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
+# spot=true, #7, over the region's zones with c4a, #85, and a looper pool of c4a-standard-2 on demand from 0 to 2 in the
+# cluster's zone, labelled and tainted looper=true, #95), the dev zone and the
 # cluster pipeline's identity, federated from tacplus-dev/cluster's protected main alone, and each deployment's
 # certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6), and the
 # gateway's one global address, kept from destruction (ci/policy.sh checks prevent_destroy and that no other external
@@ -142,12 +143,17 @@ run "stack" {
     condition     = output.admiral.wif_provider == "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" && output.admiral.audience == "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
     error_message = "The stack does not give the Admiral's provider seatrials of the pool fleet-kernels."
   }
-  # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs) and the build pool's 5
-  # c4a-standard-4 (20) and one more for a node being replaced (4): 30 C4A CPUs, asked 32; and 9 nodes of 100 GB of
-  # Hyperdisk Balanced, 900 GB, asked 1000.
+  # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs), the build pool's 5
+  # c4a-standard-4 (20), the looper pool's 2 c4a-standard-2 (4, #95) and one more for a node being replaced (4): 34 C4A
+  # CPUs, asked 40; and 11 nodes of 100 GB of Hyperdisk Balanced, 1100 GB, asked 1500.
   assert {
-    condition     = output.quotas.c4a_cpus.need == 30 && output.quotas.c4a_cpus.preferred == 32 && output.quotas.hdb_gb.need == 900 && output.quotas.hdb_gb.preferred == 1000
-    error_message = "The stack does not ask 32 C4A CPUs (30 needed) and 1000 GB of Hyperdisk Balanced (900 needed) for its pools."
+    condition     = output.quotas.c4a_cpus.need == 34 && output.quotas.c4a_cpus.preferred == 40 && output.quotas.hdb_gb.need == 1100 && output.quotas.hdb_gb.preferred == 1500
+    error_message = "The stack does not ask 40 C4A CPUs (34 needed) and 1500 GB of Hyperdisk Balanced (1100 needed) for its pools."
+  }
+  # The looper pool (#95): c4a-standard-2 on demand, from 0 to 2; its label and taint for the cluster pipeline.
+  assert {
+    condition     = output.cluster.looper_label == { looper = "true" } && output.cluster.looper_taint == { key = "looper", value = "true", effect = "NO_SCHEDULE" }
+    error_message = "The stack does not give the looper pool's label and taint."
   }
   override_resource {
     target = module.dev.google_iam_workload_identity_pool_provider.admiral
@@ -173,6 +179,7 @@ run "dev" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -220,18 +227,19 @@ run "dev" {
   }
 
   # The quotas the pools need (#88), as Cloud Quotas preferences of tacplus-dev in the region, computed from the pools:
-  # C4A CPUs for the normal pool (3 x 2) and the build pool at its maximum plus one node being replaced (4 x 4), 22,
-  # asked 24 (a multiple of 8); Hyperdisk Balanced for each of those nodes' disks (7 x 100 GB), 700, asked 1000 (of 500).
+  # C4A CPUs for the normal pool (3 x 2), the build pool at its maximum plus one node being replaced (4 x 4) and the
+  # looper pool at its maximum (2 x 2, #95), 26, asked 32 (a multiple of 8); Hyperdisk Balanced for each of those
+  # nodes' disks (9 x 100 GB), 900, asked 1000 (of 500).
   assert {
-    condition     = google_cloud_quotas_quota_preference.pools["c4a_cpus"].parent == "projects/tacplus-dev" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].service == "compute.googleapis.com" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_id == "CPUS-PER-VM-FAMILY-per-project-region" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].dimensions == tomap({ region = "us-central1", vm_family = "C4A" }) && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_config[0].preferred_value == "24"
-    error_message = "The C4A CPU quota preference is not 24 in us-central1 (the pools' 22 rounded up to 8)."
+    condition     = google_cloud_quotas_quota_preference.pools["c4a_cpus"].parent == "projects/tacplus-dev" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].service == "compute.googleapis.com" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_id == "CPUS-PER-VM-FAMILY-per-project-region" && google_cloud_quotas_quota_preference.pools["c4a_cpus"].dimensions == tomap({ region = "us-central1", vm_family = "C4A" }) && google_cloud_quotas_quota_preference.pools["c4a_cpus"].quota_config[0].preferred_value == "32"
+    error_message = "The C4A CPU quota preference is not 32 in us-central1 (the pools' 26 rounded up to 8)."
   }
   assert {
     condition     = google_cloud_quotas_quota_preference.pools["hdb_gb"].parent == "projects/tacplus-dev" && google_cloud_quotas_quota_preference.pools["hdb_gb"].service == "compute.googleapis.com" && google_cloud_quotas_quota_preference.pools["hdb_gb"].quota_id == "HDB-TOTAL-GB-per-project-region" && google_cloud_quotas_quota_preference.pools["hdb_gb"].dimensions == tomap({ region = "us-central1" }) && google_cloud_quotas_quota_preference.pools["hdb_gb"].quota_config[0].preferred_value == "1000"
-    error_message = "The Hyperdisk Balanced quota preference is not 1000 GB in us-central1 (the pools' 700 rounded up to 500)."
+    error_message = "The Hyperdisk Balanced quota preference is not 1000 GB in us-central1 (the pools' 900 rounded up to 500)."
   }
   assert {
-    condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 22, preferred = 24 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 700, preferred = 1000 } }
+    condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 26, preferred = 32 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 900, preferred = 1000 } }
     error_message = "The quota preferences do not name the contact, or the module does not give them."
   }
   # The Cloud Quotas API, in the project the preferences are of, which their calls count against (#90: tests/quotas_plan_test.sh).
@@ -300,8 +308,8 @@ run "dev" {
     error_message = "The IAM gate does not wait for the pipeline's permissions in tacplus-dev."
   }
   assert {
-    condition     = toset(keys(google_container_node_pool.pool)) == toset(["normal", "spot"]) && google_container_cluster.dev.deletion_protection
-    error_message = "The cluster's pools are not normal and spot, or the cluster is not deletion-protected."
+    condition     = toset(keys(google_container_node_pool.pool)) == toset(["normal", "spot", "looper"]) && google_container_cluster.dev.deletion_protection
+    error_message = "The cluster's pools are not normal, spot and looper, or the cluster is not deletion-protected."
   }
   assert {
     condition     = google_container_node_pool.pool["normal"].node_config[0].machine_type == "c4a-standard-2" && google_container_node_pool.pool["normal"].node_count == 3 && length(google_container_node_pool.pool["normal"].autoscaling) == 0 && !google_container_node_pool.pool["normal"].node_config[0].spot && length(google_container_node_pool.pool["normal"].node_config[0].taint) == 0
@@ -330,6 +338,25 @@ run "dev" {
   assert {
     condition     = output.cluster.spot_label == { spot = "true" } && output.cluster.spot_taint == { key = "spot", value = "true", effect = "NO_SCHEDULE" }
     error_message = "The module does not give the build pool's label and taint."
+  }
+  # The looper runs' overflow (#95): on demand (a looper run lasts hours; spot would preempt it), from 0 to 2 in the
+  # cluster's zone, labelled and tainted looper=true so that only the control runner's job pods land there and it
+  # empties back to 0 (tacplus-dev/cluster#47).
+  assert {
+    condition     = google_container_node_pool.pool["looper"].node_config[0].machine_type == "c4a-standard-2" && !google_container_node_pool.pool["looper"].node_config[0].spot && google_container_node_pool.pool["looper"].node_count == null && google_container_node_pool.pool["looper"].autoscaling[0].total_min_node_count == 0 && google_container_node_pool.pool["looper"].autoscaling[0].total_max_node_count == 2 && google_container_node_pool.pool["looper"].autoscaling[0].min_node_count == null && google_container_node_pool.pool["looper"].autoscaling[0].max_node_count == null
+    error_message = "The looper pool is not c4a-standard-2 on demand, from 0 to 2."
+  }
+  assert {
+    condition     = google_container_node_pool.pool["looper"].location == "us-central1-a" && length(google_container_node_pool.pool["looper"].node_locations) == 0 && google_container_node_pool.pool["looper"].node_config[0].disk_type == "hyperdisk-balanced" && google_container_node_pool.pool["looper"].node_config[0].disk_size_gb == 100
+    error_message = "The looper pool is not in us-central1-a alone, on a 100 GB Hyperdisk Balanced disk a node."
+  }
+  assert {
+    condition     = google_container_node_pool.pool["looper"].node_config[0].labels["looper"] == "true" && length(google_container_node_pool.pool["looper"].node_config[0].taint) == 1 && google_container_node_pool.pool["looper"].node_config[0].taint[0].key == "looper" && google_container_node_pool.pool["looper"].node_config[0].taint[0].value == "true" && google_container_node_pool.pool["looper"].node_config[0].taint[0].effect == "NO_SCHEDULE" && !contains(keys(google_container_node_pool.pool["normal"].node_config[0].labels), "looper") && !contains(keys(google_container_node_pool.pool["spot"].node_config[0].labels), "looper")
+    error_message = "The looper pool is not labelled looper=true and tainted looper=true:NoSchedule, or another pool is labelled looper."
+  }
+  assert {
+    condition     = output.cluster.looper_label == { looper = "true" } && output.cluster.looper_taint == { key = "looper", value = "true", effect = "NO_SCHEDULE" }
+    error_message = "The module does not give the looper pool's label and taint."
   }
   assert {
     condition     = google_container_cluster.dev.private_cluster_config[0].enable_private_nodes && alltrue([for p in google_container_node_pool.pool : p.network_config[0].enable_private_nodes && p.node_config[0].image_type == "COS_CONTAINERD" && p.node_config[0].workload_metadata_config[0].mode == "GKE_METADATA"])
@@ -676,6 +703,7 @@ run "shared_port_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -724,6 +752,7 @@ run "x86_nodes_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "e2-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -772,6 +801,107 @@ run "empty_normal_pool_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 0 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [var.cluster]
+}
+
+# The looper pool is Axion too (#95).
+run "x86_looper_pool_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "e2-standard-2", max_nodes = 2 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
+    }
+    deployments = {
+      seatrials = { gitlab_project = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev", "idp.test.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials" }
+    }
+  }
+  expect_failures = [var.cluster]
+}
+
+# The looper pool can grow to a node (#95).
+run "empty_looper_pool_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 0 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -820,6 +950,7 @@ run "shared_environment_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -870,6 +1001,7 @@ run "environment_account_as_deploy_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -922,6 +1054,7 @@ run "init_secrets_account_as_deploy_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -974,6 +1107,7 @@ run "init_secrets_environment_shared_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1027,6 +1161,7 @@ run "environment_certificate_without_account_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1079,6 +1214,7 @@ run "environment_certificate_shared_domain_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1132,6 +1268,7 @@ run "environment_secret_taken_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1185,6 +1322,7 @@ run "environment_secret_fleet_taken_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1240,6 +1378,7 @@ run "hostname_outside_zone_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1289,6 +1428,7 @@ run "copied_record_at_hostname_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1338,6 +1478,7 @@ run "copied_apex_ns_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1389,6 +1530,7 @@ run "google_signin_without_adders" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1456,6 +1598,7 @@ run "google_signin_adder_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"
@@ -1503,6 +1646,7 @@ run "runner_token_adder_refused" {
       disk_gb         = 100
       normal          = { machine_type = "c4a-standard-2", nodes = 3 }
       spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
     }
     network = {
       nodes         = "10.20.0.0/20"

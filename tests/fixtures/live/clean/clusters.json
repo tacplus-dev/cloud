@@ -6,7 +6,19 @@
     },
     "nodePools": [
       {
+        "name": "normal",
+        "config": {
+          "imageType": "COS_CONTAINERD"
+        }
+      },
+      {
         "name": "spot",
+        "config": {
+          "imageType": "COS_CONTAINERD"
+        }
+      },
+      {
+        "name": "looper",
         "config": {
           "imageType": "COS_CONTAINERD"
         }

@@ -90,6 +90,9 @@ module "dev" {
     # Jody, 2026-11-20: the spot build pool to 5 (tacplus gates take a whole c4a-standard-4 each; it scales from 0, so idle costs nothing).
     normal = { machine_type = "c4a-standard-2", nodes = 3 }
     spot   = { machine_type = "c4a-standard-4", max_nodes = 5 }
+    # Jody, 2026-11-22 (#95): the looper runs' overflow on a pool from 0 to X, on demand, X = 2 (at most the $130/month
+    # Jody approved; a larger X needs Jody's yes).
+    looper = { machine_type = "c4a-standard-2", max_nodes = 2 }
   }
   network = {
     nodes         = "10.20.0.0/20"
