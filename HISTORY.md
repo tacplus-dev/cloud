@@ -77,3 +77,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-21 looper issue tacplus gates never schedule in-cluster: request 3500m/12Gi doesn't fit a c4a-standard-4 after its DaemonSets; request 3 CPU/10Gi, keep limits 3500m/12Gi (#87)
 - 2026-11-21 looper issue README: the Admiral's triage token can't be a project access token on GitLab.com Free; use a dedicated user's PAT (Reporter on the triage project only) (#89)
 - 2026-11-22 looper issue apply:dev fails: Cloud Quotas API disabled in the caller's project (tacplus-bootstrap); bill the quota preferences to tacplus-dev and enable the API there through the stack (#90)
+- 2026-11-22 looper issue Pinned images behind their lines: relock (build.lock: ghcr.io/tacplus-dev/tacplus/build:2.6.12 → ghcr.io/tacplus-dev/tacplus/build:2.6.13) (#91)
