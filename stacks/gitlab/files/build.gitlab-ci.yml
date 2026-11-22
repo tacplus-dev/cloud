@@ -28,9 +28,11 @@
 # repo-looper passes it once this project's copy declares it): a gates job that starts later than that after the pipeline's
 # creation writes the verdict "abandoned: no verdict wanted after Nh" and runs
 # no gates. A nightly, a release and a verify run pass none: never abandoned.
-# "report": true is a report's --build (looper#195), not a manager's land: its
-# gates job holds one of BUILD_REPORT_SLOTS resource groups, so report builds
-# never take every build slot and a land's build, which moves main, finds one.
+# "report": true is any build but a manager's land (looper#195, looper#209: a
+# report's --build, its pre-land gate, the manager's pre-land gates and red
+# round): its gates job holds one of BUILD_REPORT_SLOTS resource groups, fewer
+# than BUILD_POOL_NODES, and its jobs run on BUILD_REPORT_TAGS, so report
+# builds never take every build node and a land's build, which moves main, finds one.
 # A release runs on this project's protected tag <repo>/vX.Y.Z, with
 # "tag": "vX.Y.Z" and the commit the repository's tag vX.Y.Z names; only there
 # does the publish job get its GCP identity (tacplus-dev/tacplus#223). The
@@ -120,7 +122,7 @@ spec:
       default: ""
       regex: '^([0-9]+)?$'
     report:
-      description: "A report's build, not a land's: its gates take one of BUILD_REPORT_SLOTS slots (looper#195)"
+      description: "Not a land's build (a report's, a pre-land gate's, a red round's): its gates take one of BUILD_REPORT_SLOTS slots (looper#195, looper#209)"
       type: boolean
       default: false
     smoke:
@@ -208,6 +210,19 @@ variables:
   # builds. On 2026-11-19 tacplus's 18-land batch build waited 11 min behind
   # six report builds holding every slot, ~55 min each.
   BUILD_REPORT_SLOTS: "4"
+  # Every build but a land's is a report's (looper#209: a run's pre-land
+  # gate, the manager's red round): their slots stay below the build pool's
+  # nodes, at least one, so a land's build always has a node (on 2026-11-21
+  # tacplus's gates took a whole node each, builds with no report held the
+  # spot pool's 2, and a 24-land batch got no pod for 15 min). The spot pool's
+  # nodes as it runs (tacplus-dev/cloud#85: max 5, 2 running); a project
+  # variable overrides it. Their jobs run on BUILD_REPORT_TAGS: the build
+  # runner's until the cluster's runner file serves a report entry of its own
+  # (arm64, build-report, tacplus-dev/cluster#42) whose pods' PriorityClass
+  # is below the build runner's, so a land's build preempts them rather than
+  # wait.
+  BUILD_POOL_NODES: "2"
+  BUILD_REPORT_TAGS: "arm64, build"
   BUILD_NIGHTLY_TAGS: "arm64, build"
 
 default:
