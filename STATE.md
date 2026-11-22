@@ -452,7 +452,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by th
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (e877150 since #82: the looper image cd7d3689, looper#202's `BUILD_GATES_REQUESTS_<repo>`, looper#185's
+  `build_ci_commit` (cf993b6 since #92: looper#209's report slots below the pool's nodes, `BUILD_POOL_NODES` "2",
+  `BUILD_REPORT_TAGS`; still the looper image cd7d3689, before looper#207's side-by-side scanners, until looper#221
+  pins a newer one and #92 bumps again; before it e877150, #82: the looper image cd7d3689, looper#202's `BUILD_GATES_REQUESTS_<repo>`, looper#185's
   nightly slots and looper#195's report slots; before it c0f7304, #75: the looper image ffd21be6, looper#173's retry of
   `runner_external_dependency_failure` and `api_failure`, an image a cold spot node could not pull in time, and
   the manager's one rebuild of an infra-only red, so the in-cluster build runner can be unpaused; before it f2f5237, #72: looper#172's `BUILD_DOCKER_TAGS: "arm64, build-docker"`, a host-Docker
