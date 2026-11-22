@@ -469,7 +469,9 @@ project's protected `main` becomes, through the pipeline's own provider.
   - **exposure:** the enabled ingress allow rules open to `0.0.0.0/0` or `::/0` (a disabled one listed, not a finding),
     the VMs with an external IP, the external addresses and what uses each, the load balancers (forwarding rules);
   - **inventory:** every VM (name, machine type, provisioning model, status, created), every node pool (machine, spot,
-    its autoscaling's min and max, its nodes now), the disks by type (count and GB);
+    its autoscaling's min and max, its nodes now), the disks by type (count and GB), and the network endpoint groups
+    (#94: name, zone, size, type, and the Service GKE made each for), so the hub sees when `seatrials-gateway` and
+    `seatrials-test-idp` exist, and their endpoints, without gcloud;
   - **quotas:** `CPUS_ALL_REGIONS`, and the region's `CPUS`, `SSD_TOTAL_GB`, `PREEMPTIBLE_CPUS` and `T2A_CPUS`, with
     usage (null where the region lists none); and the region's `CPUS_PER_VM_FAMILY` of C4A and `HDB_TOTAL_GB` (#88),
     their limits from Cloud Quotas (Compute lists neither), with the project's quota preference for each (requested,

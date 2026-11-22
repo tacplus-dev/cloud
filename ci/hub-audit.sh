@@ -8,7 +8,8 @@
 #   - exposure: the enabled ingress allow rules open to 0.0.0.0/0 or ::/0, the VMs with an external IP, the external
 #     addresses and what uses each, the load balancers (forwarding rules);
 #   - inventory: every VM (its machine type, provisioning model, status, creation), every node pool (machine type,
-#     spot, its autoscaling's min and max, its nodes now: the VMs GKE labels with its cluster and pool), the disks by type;
+#     spot, its autoscaling's min and max, its nodes now: the VMs GKE labels with its cluster and pool), the disks by type,
+#     the network endpoint groups (#94: name, zone, size, type, and the Service GKE made it for, from its description);
 #   - quotas: CPUS_ALL_REGIONS, and REGION's CPUS, SSD_TOTAL_GB, PREEMPTIBLE_CPUS and T2A_CPUS, with usage (Compute);
 #     and REGION's CPUS_PER_VM_FAMILY of C4A and HDB_TOTAL_GB (#88), their limits from Cloud Quotas (cloudquotas.viewer),
 #     with the project's quota preference for each (requested, granted, pending: an increase Google may review), their
@@ -184,6 +185,7 @@ for p in "$@"; do
   read_json "$p" "$d/instances.json" '[]' "VMs" compute instances list
   read_json "$p" "$d/addresses.json" '[]' "addresses" compute addresses list
   read_json "$p" "$d/forwarding-rules.json" '[]' "forwarding rules" compute forwarding-rules list
+  read_json "$p" "$d/network-endpoint-groups.json" '[]' "network endpoint groups" compute network-endpoint-groups list
   read_json "$p" "$d/disks.json" '[]' "disks" compute disks list
   read_json "$p" "$d/clusters.json" '[]' "clusters" container clusters list
   # Each cluster's nodes and its pods not finished, read whole into the temporary directory and cut down at once to
@@ -307,7 +309,12 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
            max: (if .autoscaling.enabled then .autoscaling.maxNodeCount // .autoscaling.totalMaxNodeCount else null end),
            nodes: ([$vms[] | select(.labels["goog-k8s-cluster-name"] == $c and .labels["goog-k8s-node-pool-name"] == $n)] | length)}],
       disks: [$ps[] | .project as $p | .disks | group_by(.type | base)[]
-        | {project: $p, type: (.[0].type | base), count: length, gb: (map(.sizeGb | tonumber) | add)}]
+        | {project: $p, type: (.[0].type | base), count: length, gb: (map(.sizeGb | tonumber) | add)}],
+      # A NEG GKE made for a Service names it in its description (JSON: namespace, service-name, port).
+      negs: [$ps[] | .project as $p | .network_endpoint_groups[]
+        | {project: $p, name, zone: scope, size: (.size // 0), type: .networkEndpointType,
+           service: ((.description // "") | (fromjson? // null) | if type == "object" and .["service-name"]
+             then "\(.namespace)/\(.["service-name"])\(if .port then ":\(.port)" else "" end)" else null end)}]
     },
     quotas: [$ps[] | .project as $p
       | (.project_info.quotas // []) as $g | (.region.quotas // []) as $r | (.cq_prefs // []) as $prefs
@@ -419,6 +426,8 @@ jq -r '
   "### Node pools", "", table(["project", "cluster", "pool", "machine", "spot", "min", "max", "nodes"];
     [.inventory.node_pools[] | [.project, .cluster, .name, .machine_type, .spot, (if .autoscaling then .min else "fixed" end), (if .autoscaling then .max else "fixed" end), .nodes]]),
   "### Disks by type", "", table(["project", "type", "disks", "GB"]; [.inventory.disks[] | [.project, .type, .count, .gb]]),
+  "### Network endpoint groups", "", table(["project", "name", "zone", "size", "type", "service"];
+    [.inventory.negs[] | [.project, .name, .zone, .size, .type, .service]]),
   "## Quotas", "", table(["project", "scope", "metric", "usage", "limit", "requested", "granted", "pending"];
     [.quotas[] | [.project, .scope, .metric, .usage, .limit, .requested, .granted, .pending]]),
   "## Utilization, \(.utilization.window.start) to \(.utilization.window.end) (the maximum of 10-minute windows)", "",

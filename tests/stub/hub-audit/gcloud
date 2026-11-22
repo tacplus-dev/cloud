@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# A stub gcloud for tests/hub_audit_test.sh: it answers what ci/hub-audit.sh runs, each from STUB_AUDIT/<project>/:
-# the lists (firewall-rules, instances, addresses, forwarding-rules, disks, clusters, secrets: <what>.json), the
-# project's and the region's quotas (project-info.json, region-<region>.json), a secret's versions
+# A stub gcloud for tests/hub_audit_test.sh: it answers what ci/hub-audit.sh runs, each from STUB_AUDIT/<project>/: the
+# lists (firewall-rules, instances, addresses, forwarding-rules, network-endpoint-groups, disks, clusters, secrets:
+# <what>.json), the project's and the region's quotas (project-info.json, region-<region>.json), a secret's versions
 # (versions-<secret>.json); a read whose <file>.err exists fails with it (an API not enabled, say), and one with no file
 # is refused, as the API refuses one. auth print-access-token gives stub-token. Every call is logged (STUB_LOG, one line
 # each); any other command fails loudly.
@@ -20,7 +20,7 @@ done
 [ "$format" = json ] && [ -n "$project" ] || { echo "stub gcloud: no --project or --format=json: $*" >&2; exit 99; }
 dir=$STUB_AUDIT/$project
 case "${words[*]}" in
-  "compute firewall-rules list" | "compute instances list" | "compute addresses list" | "compute forwarding-rules list" | \
+  "compute firewall-rules list" | "compute instances list" | "compute addresses list" | "compute forwarding-rules list" | "compute network-endpoint-groups list" | \
   "compute disks list" | "container clusters list") f=$dir/${words[1]}.json ;;
   "secrets list") f=$dir/secrets.json ;;
   "secrets versions list "*) [ "${#words[@]}" = 4 ] || exit 99; f=$dir/versions-${words[3]}.json ;;

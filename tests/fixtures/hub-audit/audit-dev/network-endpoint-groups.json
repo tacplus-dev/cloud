@@ -1,0 +1,18 @@
+[
+ {
+  "name": "seatrials-gateway",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-a",
+  "size": 1,
+  "networkEndpointType": "GCE_VM_IP_PORT",
+  "defaultPort": 8443,
+  "network": "https://www.googleapis.com/compute/v1/projects/audit-dev/global/networks/dev",
+  "description": "{\"cluster-uid\":\"0123abcd\",\"namespace\":\"seatrials\",\"service-name\":\"gateway\",\"port\":\"8443\"}"
+ },
+ {
+  "name": "seatrials-test-idp",
+  "zone": "https://www.googleapis.com/compute/v1/projects/audit-dev/zones/us-central1-a",
+  "networkEndpointType": "GCE_VM_IP_PORT",
+  "network": "https://www.googleapis.com/compute/v1/projects/audit-dev/global/networks/dev",
+  "description": "not JSON"
+ }
+]
