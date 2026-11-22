@@ -31,6 +31,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - A scheduled read-only audit job (exposure, inventory, quotas, utilization) through WIF as hub-audit, its report the artifact the hub reads; gcloud on the Mac retired (#77). Jody, 2026-11-17.
 - ci: the Admiral's credentials: a WIF service account, the tacplus-admiral App's import-only KMS key (Jody imports, never the hub) and the `admiral-triage-gitlab` Secret Manager secret (#84; tacplus-dev/admiral#5, option A). Hub, at Jody's request, 2026-11-20 (`tacplus-dev/roadmap:decisions/skipper-and-admiral-2026-11-01.md`).
 - dev: the gateway listener ready once the NEG seatrials-gateway exists, and the audit lists NEGs (#94). Agent, at Jody's request, 2026-11-22 (seatrials' first deploy, tacplus-dev/fleet-seatrials#1).
+- dev: a `looper` node pool, c4a-standard-2 on demand, autoscaling 0 to 2, tainted for looper runs only, in the quota preferences (#95; cluster#47). Hub, at Jody's request, 2026-11-22 (`tacplus-dev/roadmap:decisions/cluster-node-pools-2026-11-03.md`, addendum 2026-11-22).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
