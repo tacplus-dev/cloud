@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by the looper (#91).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by the looper (#95).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.13` by digest (#91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -23,7 +23,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by th
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
-  cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below), `dev.tacplus.dev` zone,
+  cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal, a spot and a looper pool (#7, #95, below), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the pools' runners, and the in-cluster `infra` runner, #64, unpaused at the switch-over, #66, which paused the `cluster` and `deploy` pools, and `kick`, #81, and `build-report`, #93, runners); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
@@ -252,6 +252,19 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by th
   (an increase may wait on review: the audit's Quotas table shows requested, granted and pending), then the pool at 5
   with no `QUOTA_EXCEEDED`. The Cloud Quotas ID `HDB-TOTAL-GB-per-project-region` is inferred from Compute's naming
   (PROPOSALS.md).
+- **The looper pool (#95):** looper runs were capped at 12 by the normal pool's room, all full for 30+ minutes on
+  2026-11-22. A third pool, `looper` (the decision's addendum of 2026-11-22): c4a-standard-2 on demand (a looper run
+  lasts hours; spot would preempt it) in us-central1-a, from 0 to 2 (`total_min_node_count` 0, `total_max_node_count`
+  2: at most the $130/month Jody approved; a larger maximum needs Jody's yes), labelled `looper=true` and tainted
+  `looper=true:NoSchedule`; the output `cluster` gives the label and taint (`looper_label`, `looper_taint`) for
+  tacplus-dev/cluster#47, whose control runner's job pods tolerate it. The quota preferences count it: 40 C4A CPUs
+  (6 + 20 + 4 + one c4a-standard-4 being replaced, 34; the issue's 30 left out that node) and 1500 GB of Hyperdisk
+  Balanced (11 x 100, 1100): the 40 may wait on Google's review, and 30 (every pool at its maximum, no node being
+  replaced) fit the 32 granted. The plan checks and the live audit pass the three pools and still refuse a short
+  preference or a public pool; the hub's audit shows an autoscaled pool's minimum 0 (GKE's JSON leaves it out, so it
+  showed none). Tested with the dev plan test (mock providers), the policy's, audit's and hub audit's fixtures; not yet
+  seen live: `apply:dev` making the pool with 0 nodes, the audit's Node pools table showing it, and a looper run on
+  it once tacplus-dev/cluster#47 lands.
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
