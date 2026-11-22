@@ -124,8 +124,8 @@ run "stack" {
     error_message = "The stack does not print tacplus.dev's zone and its name servers, the registrar's values."
   }
   assert {
-    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra", kick = "projects/tacplus-dev/secrets/gitlab-runner-kick" }
-    error_message = "The stack does not give the four runners' token secrets, tacplus-dev/cluster's tacplus.token (infra's: #64; kick's: #81)."
+    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra", kick = "projects/tacplus-dev/secrets/gitlab-runner-kick", build-report = "projects/tacplus-dev/secrets/gitlab-runner-build-report" }
+    error_message = "The stack does not give the five runners' token secrets, tacplus-dev/cluster's tacplus.token (infra's: #64; kick's: #81; build-report's: #93)."
   }
   # The NEGs' names are a contract with tacplus-dev/operator (the gateway's) and tacplus-dev/fleet-seatrials (the test
   # IdP's): the stack gives them, with the ports, as the settings name them.
@@ -435,11 +435,11 @@ run "dev" {
     error_message = "The module does not give the zone's name servers, the registrar's values, and the gateway's address."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret.runner_token)) == toset(["gitlab-runner-build", "gitlab-runner-control", "gitlab-runner-infra", "gitlab-runner-kick"]) && alltrue([for s in google_secret_manager_secret.runner_token : s.replication[0].user_managed[0].replicas[0].location == "us-central1" && length(s.replication[0].user_managed[0].replicas) == 1])
-    error_message = "The runners' token secrets are not gitlab-runner-build, gitlab-runner-control, gitlab-runner-infra (#64) and gitlab-runner-kick (#81), in us-central1 alone."
+    condition     = toset(keys(google_secret_manager_secret.runner_token)) == toset(["gitlab-runner-build", "gitlab-runner-control", "gitlab-runner-infra", "gitlab-runner-kick", "gitlab-runner-build-report"]) && alltrue([for s in google_secret_manager_secret.runner_token : s.replication[0].user_managed[0].replicas[0].location == "us-central1" && length(s.replication[0].user_managed[0].replicas) == 1])
+    error_message = "The runners' token secrets are not gitlab-runner-build, gitlab-runner-control, gitlab-runner-infra (#64), gitlab-runner-kick (#81) and gitlab-runner-build-report (#93), in us-central1 alone."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret_iam_binding.runner_token)) == toset(["gitlab-runner-build/roles/secretmanager.secretAccessor", "gitlab-runner-build/roles/secretmanager.secretVersionAdder", "gitlab-runner-control/roles/secretmanager.secretAccessor", "gitlab-runner-control/roles/secretmanager.secretVersionAdder", "gitlab-runner-infra/roles/secretmanager.secretAccessor", "gitlab-runner-infra/roles/secretmanager.secretVersionAdder", "gitlab-runner-kick/roles/secretmanager.secretAccessor", "gitlab-runner-kick/roles/secretmanager.secretVersionAdder"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.runner_token : b.secret_id == split("/", k)[0] && b.role == trimprefix(k, "${split("/", k)[0]}/")])
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.runner_token)) == toset(["gitlab-runner-build/roles/secretmanager.secretAccessor", "gitlab-runner-build/roles/secretmanager.secretVersionAdder", "gitlab-runner-control/roles/secretmanager.secretAccessor", "gitlab-runner-control/roles/secretmanager.secretVersionAdder", "gitlab-runner-infra/roles/secretmanager.secretAccessor", "gitlab-runner-infra/roles/secretmanager.secretVersionAdder", "gitlab-runner-kick/roles/secretmanager.secretAccessor", "gitlab-runner-kick/roles/secretmanager.secretVersionAdder", "gitlab-runner-build-report/roles/secretmanager.secretAccessor", "gitlab-runner-build-report/roles/secretmanager.secretVersionAdder"]) && alltrue([for k, b in google_secret_manager_secret_iam_binding.runner_token : b.secret_id == split("/", k)[0] && b.role == trimprefix(k, "${split("/", k)[0]}/")])
     error_message = "Each runner token secret does not have exactly two bindings: reading its versions and adding them."
   }
   assert {
@@ -459,7 +459,7 @@ run "dev" {
     error_message = "A service account in dev holds container.admin, owner or editor in IAM: cluster-admin is the binding's, in the cluster."
   }
   assert {
-    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra", kick = "projects/tacplus-dev/secrets/gitlab-runner-kick" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
+    condition     = output.runner_tokens == { build = "projects/tacplus-dev/secrets/gitlab-runner-build", control = "projects/tacplus-dev/secrets/gitlab-runner-control", infra = "projects/tacplus-dev/secrets/gitlab-runner-infra", kick = "projects/tacplus-dev/secrets/gitlab-runner-kick", build-report = "projects/tacplus-dev/secrets/gitlab-runner-build-report" } && output.cluster_api.host == "https://${google_container_cluster.dev.endpoint}"
     error_message = "The module does not give the runners' token secrets, or the cluster's API for the kubernetes provider."
   }
   # get-credentials on dev (#20): the deployment's identity and its environment accounts view the cluster dev alone. The

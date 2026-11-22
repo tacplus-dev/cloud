@@ -105,7 +105,14 @@ module "gitlab" {
     # plan run on main's schedules, as the looper's other control jobs), unpaused: no job carries kick until
     # tacplus-dev/looper moves them to it, after cluster's pipeline has applied the runner. Its token, as infra's, the
     # first version of the dev stack's gitlab-runner-kick, written by this pipeline; cluster-admin-pipeline alone reads it.
-    { infra = local.infra_runner, kick = local.kick_runner },
+    # The in-cluster build-report runner (#93; tacplus-dev/cluster#42, its gitlab-runner/runners/build-report.yaml): the
+    # report builds alone (every build but a manager's land: tacplus-dev/looper#209, tacplus-dev/build's BUILD_REPORT_TAGS),
+    # whose pods run below a land's build's and are preempted by them. Tags arm64 and build-report, not build: GitLab
+    # gives a runner every job whose tags are a subset of its own, so one holding build would take a land's jobs too, at
+    # the report builds' priority; build, lacking build-report, never takes a report's. Any ref, unpaused: no job carries
+    # build-report until the hub sets BUILD_REPORT_TAGS, after cluster's pipeline has applied the runner. Its token, as
+    # kick's, the first version of the dev stack's gitlab-runner-build-report, written by this pipeline.
+    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner },
   )
 }
 
@@ -129,6 +136,16 @@ locals {
     paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-kick"
     description  = "tacplus-dev kick (tacplus-dev/cloud: the cluster, normal pool; the looper's kicker and plan alone)"
+  }
+  build_report_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["arm64", "build-report"]
+    protected    = false
+    paused       = false
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-build-report"
+    description  = "tacplus-dev build-report (tacplus-dev/cloud: the cluster, spot pool; report builds alone, preempted by a land's)"
   }
 }
 

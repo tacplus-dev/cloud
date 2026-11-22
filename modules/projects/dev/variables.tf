@@ -155,7 +155,7 @@ variable "deployments" {
 }
 
 variable "runner_token_adders" {
-  description = "Who adds the runners' token versions by hand (runner-tokens.tf): secretVersionAdder on gitlab-runner-build, gitlab-runner-control, gitlab-runner-infra and gitlab-runner-kick, which adds versions and reads none (infra's and kick's version 1 are the gitlab stack's, #64, #81). Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
+  description = "Who adds the runners' token versions by hand (runner-tokens.tf): secretVersionAdder on gitlab-runner-build, gitlab-runner-control, gitlab-runner-infra, gitlab-runner-kick and gitlab-runner-build-report, which adds versions and reads none (infra's, kick's and build-report's version 1 are the gitlab stack's, #64, #81, #93). Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
   type        = list(string)
   default     = []
   validation {
