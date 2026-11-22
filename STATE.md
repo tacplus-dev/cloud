@@ -1,9 +1,9 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by the looper (#90).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by the looper (#91).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6.12` by digest (#59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
+  `ghcr.io/tacplus-dev/tacplus/build:2.6.13` by digest (#91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
   6.12.117-1, DSA-6628-1, whose six HIGH kernel CVEs in 6.12.116-1 failed the security job on 2.6.10 on 2026-11-14; no
   OpenEXR since 2.6.10, #43, tacplus-dev/tacplus#554, whose 16 CVEs failed it on 2.6.8 and 2.6.4; go1.27.4 since 2.6.8,
   #39; its `gh`'s x/net and its zlib fixed, so no CI image entry is left in `security-exceptions.yaml` but GO-2026-5932,
@@ -444,7 +444,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-21 by th
   brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
-- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.12's, #59)
+- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.13's, #91)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
