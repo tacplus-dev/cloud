@@ -530,7 +530,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by th
   Kubernetes keeps them), which need no grant. And the cluster
   autoscaler's last 6 hours (no-scale-ups by pool, zone and reason; scale-up errors joined to the pools tried) through
   the log view `hub-audit-autoscaler` and a `roles/logging.viewAccessor` conditioned on it alone (Jody's option A; never
-  `logging.viewer`), which `ci/policy.sh` holds to that view and its one filter. That part is off: `modules/settings`'
+  `logging.viewer`), which `ci/policy.sh` holds to that view and its one filter. Since #94 its inventory lists the
+  network endpoint groups (name, zone, size, type, the Service GKE made each for), so the hub sees `seatrials-gateway`
+  and `seatrials-test-idp` appear; the listener `gateway` stays `ready = false` until the first one exists
+  (tacplus-dev/fleet-seatrials#1, the first deploy). That part is off: `modules/settings`'
   `autoscaler_log` is `false` until the host grants `cloud-admin-pipeline` `roles/logging.configWriter` (a new
   `HOST_ROLES` line), so no `apply:ci` fails before it; then a commit sets it `true` (PROPOSALS.md). Tested with stubs and
   fixtures (`tests/hub_audit_test.sh`), the policy, the pipeline's rules and the ci and gitlab plan tests. Not yet seen
