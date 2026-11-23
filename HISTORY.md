@@ -85,3 +85,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue dev: the spot build pool is stuck at 2 nodes in one zone (max 5): spread it across the region, and audit the autoscaler's no-scale-up reasons (#85)
 - 2026-11-23 looper issue security job fails main's apply: 159 HIGH Debian findings in the CI image build:2.6.13 (krb5 CVE-2026-107364, ...); relock to the rebuilt build:2.6 (#97)
 - 2026-11-23 looper issue security: OpenTofu 1.13.2 (ci/tools.sh) links go-jose v4.1.4: GHSA-mgcc-cww5-fp2q (HIGH) and two more, fixed in v4.1.6, unseen by govulncheck (#98)
+- 2026-11-23 looper issue security: OpenTelemetry Go SDK < v1.47.0 in seven pinned binaries: GHSA-q7gw-24fr-5p69 (MODERATE), unseen by govulncheck (#99)
