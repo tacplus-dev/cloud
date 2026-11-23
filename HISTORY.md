@@ -82,3 +82,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue dev: a looper node pool that scales from 0 to 2 (c4a-standard-2, on demand, tainted) for looper runs, sized into the quota preferences (#95)
 - 2026-11-23 looper issue dev: the spot build pool's maximum 5 → 8 nodes, the quota preferences sized from it (#96)
 - 2026-11-23 looper issue dev: the spot pool can't grow: Hyperdisk Balanced quota (500 GB, full) and C4A CPU quota (24) in us-central1; manage both as quota preferences sized from the pools (#88)
+- 2026-11-23 looper issue dev: the spot build pool is stuck at 2 nodes in one zone (max 5): spread it across the region, and audit the autoscaler's no-scale-up reasons (#85)
