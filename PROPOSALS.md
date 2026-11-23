@@ -68,8 +68,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   `klauspost_compress` and `brotli` requirements of their `gobuild` in `ci/tools.sh` when a gitleaks release past
   v8.30.1 requires klauspost/compress >= v1.20.2 and brotli >= v1.2.7, and an OSV-Scanner release past v2.7.0
   klauspost/compress >= v1.20.2. Meanwhile the same requirement could take gitleaks' xz to v0.5.15 and so drop
-  GO-2025-3922's exception (#10) before it expires on 2026-12-04. Why: a build with other dependencies than the
-  release's is ours to keep current.
+  GO-2025-3922's exception (#10) before it expires on 2026-12-04. Likewise OpenTofu's `go_jose` (`srcbuild`, #98:
+  GHSA-mgcc-cww5-fp2q and two more) when an OpenTofu release requires go-jose >= v4.1.6 (v1.13.9, 2026-11-05, still
+  requires v4.1.4). Why: a build with other dependencies than the release's is ours to keep current.
 - **Drop the gitlab provider's build from source** (looper, #3). What: when gitlabhq/terraform-provider-gitlab
   releases a version built with go >= 1.26.10 and x/net >= v0.62.0, pin it from the registry again: remove
   `ci/gitlab-provider.sh` and `ci/tofurc.sh`, their calls (`ci/tools.sh`, `ci/lock.sh`, the scripts sourcing tofurc) and

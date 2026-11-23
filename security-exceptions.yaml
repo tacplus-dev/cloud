@@ -12,7 +12,8 @@
 # among them, #39), fixed by building them with the latest Go, nor is the google provider, built with x/net v0.62.0
 # (ci/google-provider.sh, #39) and x/crypto v0.59.0 (GO-2026-5932, #76), nor gitleaks' and
 # OSV-Scanner's klauspost/compress and brotli (GO-2026-6865, GO-2026-6888), fixed by building them with the fixed
-# versions (ci/tools.sh, #24), nor the CI image's, fixed by its digest (build:2.6.12, #59: its linux-libc-dev's six
+# versions (ci/tools.sh, #24), nor OpenTofu's go-jose v4.1.4 (GHSA-mgcc-cww5-fp2q, GHSA-4w3g-jfj2-cw2q, GHSA-vvm8-gf78-28g4,
+# no Go vulndb id yet, so unseen by govulncheck), fixed by building it with go-jose v4.1.6 (ci/tools.sh, #98), nor the CI image's, fixed by its digest (build:2.6.12, #59: its linux-libc-dev's six
 # kernel CVEs, DSA-6628-1, tacplus-dev/tacplus#711; build:2.6.10, #43: its gh's x/net, its zlib and, without OpenEXR,
 # tacplus-dev/tacplus#554), but for its gh's x/crypto/openpgp (GO-2026-5932).
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The

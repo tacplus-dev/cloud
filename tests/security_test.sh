@@ -174,6 +174,14 @@ else
       ok "bin/$b is built with klauspost/compress >= v1.20.2 and brotli >= v1.2.7" ||
       fail "bin/$b: $(go version -m "$p" | grep -E 'klauspost/compress|andybalholm/brotli' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
   done
+  # OpenTofu (ci/tools.sh, srcbuild), as built: with the fixed go-jose (GHSA-mgcc-cww5-fp2q, no Go vulndb id yet), not
+  # its release's v4.1.4 (#98).
+  p=$here/bin/tofu
+  if [ ! -f "$p" ]; then fail "no bin/tofu (ci/tools.sh)"
+  else
+    fixed "$p" github.com/go-jose/go-jose/v4 v4.1.6 && ok "bin/tofu is built with go-jose >= v4.1.6" ||
+      fail "bin/tofu: $(go version -m "$p" | grep go-jose | awk '{print $2 "@" $3}' | tr '\n' ' ')"
+  fi
   # The manager's binaries (ci/runner.sh, #40), as built: with the fixed x/net, klauspost/compress and go-jose
   # (CVE-2026-116587, in step with tacplus-dev/cluster's runner build, #44), not their upstreams'.
   for b in gitlab-runner fleeting-plugin-googlecloud; do

@@ -9,7 +9,8 @@
 #   bin/tofu          OpenTofu: fmt, validate, test, plan, apply (the providers are pinned by hash in each stack's
 #                     .terraform.lock.hcl): built from its release's module source as upstream builds it, but with
 #                     the pinned Go (tools_go; upstream's release is built with go1.27.3, without GO-2026-6859's fix,
-#                     #39), refused unless the module's hash is the pinned one and the build's SHA-256 too (srcbuild)
+#                     #39) and with the fixed go-jose its release lacks (#98), refused unless the module's hash is the
+#                     pinned one and the build's SHA-256 too (srcbuild)
 #   bin/tflint        with the google ruleset, installed where .tflint.hcl's pinned version expects it
 #                     (bin/tflint.d, TFLINT_PLUGIN_DIR); `tflint --init` is never run; both built as tofu is
 #   bin/shellcheck    the scripts
@@ -64,6 +65,10 @@ osv_scanner_sum=h1:7aOrJ9vB7qbzxC3R+QCXs03SHQiRuM80RJdqZhUEl2g=
 # release of them requires yet (GO-2026-6865 in both, GO-2026-6888 in gitleaks).
 klauspost_compress=github.com/klauspost/compress@v1.20.2
 brotli=github.com/andybalholm/brotli@v1.2.7
+# What OpenTofu is built with in place of its release's go-jose v4.1.4 (#98): GHSA-mgcc-cww5-fp2q (HIGH),
+# GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4, none with a Go vulndb id yet; v4.1.6, ci/runner.sh's. Drop it for the
+# first OpenTofu release that requires it.
+go_jose=github.com/go-jose/go-jose/v4@v4.1.6
 govulncheck_version=v1.1.4
 govulncheck_sum=h1:Ju8QsuyhX3Hk8ma3CesTbO8vfJD9EvUBgHvkxHBzj0I=
 trivy_version=0.76.2
@@ -72,13 +77,13 @@ trivy_sum=h1:RYBcQklHCFOHg/sfYSfe8v4/W5H2rAZrP5THPWY5F+A=
 # The SHA-256 of each download, and of each of our builds (srcbuild: tofu, tflint, its ruleset, trivy).
 case $(uname -m) in
   aarch64|arm64) arch=arm64 sc_arch=aarch64
-    tofu_sha=9a0b800592049ecf6a46f2bb85c2be5eef40629cf622cbe86fb87a14f0d735e4
+    tofu_sha=bb8783421e145132d1a031cc50952bc2169c32328008566664991a1610f22a40
     tflint_sha=404b5046e9abd961dcacc275c6cf6cce09c38c996d30059879030eb61052861b
     tflint_google_sha=932d8448fc1f3bbdbcd73bd608f499b0971fe8679d6f6ff584506df2575a46c0
     shellcheck_sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
     trivy_sha=aa705a98fc231d77911a927ac4befeb3e8730950975aac55feff4aa821994341 ;;
   x86_64|amd64) arch=amd64 sc_arch=x86_64
-    tofu_sha=11f9f212f0319c691d23be8155cbacfd8711eb70bb41563ba6c03758fe1f343d
+    tofu_sha=4b32eab90a6554b033b0e483503568db9a612249f011cb7ea8b2accdc132355b
     tflint_sha=dbf51dd97b53173ad9100f11f223bea96159e3c3c1656fc6b9cfa247882246ce
     tflint_google_sha=2ab3ff771be9efedaaf7e61fd93a3917440a0ea19a2f24cdd38d2b1806009496
     shellcheck_sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -114,15 +119,21 @@ gobuild() {
     { cat "$tmp/get.log" >&2; die "cannot build $pkg@$v with $*"; }
 }
 
-# srcbuild MODULE VERSION SUM PACKAGE SHA256 LDFLAGS: PACKAGE of MODULE@VERSION built from the module's source (refused
-# unless its hash is SUM) as its release is (CGO_ENABLED=0, -trimpath, LDFLAGS), but with Go tools_go, and with no VCS
-# stamp, so reproducibly (#39): the build's path on stdout, refused unless its SHA-256 is SHA256.
+# srcbuild MODULE VERSION SUM PACKAGE SHA256 LDFLAGS [DEPENDENCY@VERSION...]: PACKAGE of MODULE@VERSION built from the
+# module's source (refused unless its hash is SUM) as its release is (CGO_ENABLED=0, -trimpath, LDFLAGS), but with Go
+# tools_go, and with no VCS stamp, so reproducibly (#39): the build's path on stdout, refused unless its SHA-256 is
+# SHA256. With dependencies, the source requires them first (go get, checked against the Go checksum database), as
+# gobuild's, for fixes its release lacks (#98).
 srcbuild() {
-  local m=$1 v=$2 sum=$3 pkg=$4 sha=$5 ldflags=$6 j src out
+  local m=$1 v=$2 sum=$3 pkg=$4 sha=$5 ldflags=$6 j src out; shift 6
   j=$(cd "$tmp" && GOTOOLCHAIN=$tools_go GOFLAGS=-mod=mod go mod download -json "$m@$v") || die "cannot download $m@$v"
   [ "$(jq -r .Sum <<<"$j")" = "$sum" ] || die "$m@$v: $(jq -r .Sum <<<"$j"), not the pinned $sum"
   src=$tmp/src/$m out=$tmp/build/${pkg##*/}
   mkdir -p "$src" && cp -R "$(jq -r .Dir <<<"$j")/." "$src" && chmod -R u+w "$src"
+  if [ $# -gt 0 ]; then
+    (cd "$src" && GOTOOLCHAIN=$tools_go GOFLAGS=-mod=mod go get "$@" > "$tmp/get.log" 2>&1) ||
+      { cat "$tmp/get.log" >&2; die "cannot require $* in $m@$v"; }
+  fi
   (cd "$src" && GOTOOLCHAIN=$tools_go GOFLAGS=-mod=readonly CGO_ENABLED=0 GOAMD64=v1 GOARM64=v8.0 GOEXPERIMENT='' \
     go build -trimpath -buildvcs=false -ldflags "$ldflags" -o "$out" ".${pkg#"$m"}" >&2) || die "cannot build $pkg@$v"
   echo "$sha  $out" | sha256sum -c --quiet - >/dev/null 2>&1 ||
@@ -150,7 +161,7 @@ security() {
 mkdir -p "$bin"
 if [ "$security" = yes ]; then security; exit 0; fi
 f=$(srcbuild github.com/opentofu/opentofu "v$tofu_version" "$tofu_sum" github.com/opentofu/opentofu/cmd/tofu "$tofu_sha" \
-  "-s -w -X 'github.com/opentofu/opentofu/version.dev=no'")
+  "-s -w -X 'github.com/opentofu/opentofu/version.dev=no'" "$go_jose")
 install -m 0755 "$f" "$bin/tofu"
 f=$(srcbuild github.com/terraform-linters/tflint "v$tflint_version" "$tflint_sum" github.com/terraform-linters/tflint "$tflint_sha" "-s -w")
 install -m 0755 "$f" "$bin/tflint"

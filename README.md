@@ -241,6 +241,10 @@ moves to the first upstream release with the fix (#3):
   streams), checked against the Go checksum database, until their releases require them. **Accepted until
   2026-12-06** (Jody's decision on #24): GO-2026-6865 in the downloaded OpenTofu 1.13.2 and Trivy 0.76.2, which decode only
   pinned, trusted inputs; each pin moves when its upstream ships the fix.
+- **OpenTofu is built with the fixed go-jose** (#98): `ci/tools.sh` builds it from its release's module source
+  (`srcbuild`) requiring go-jose v4.1.6, checked against the Go checksum database, in place of the release's v4.1.4
+  (GHSA-mgcc-cww5-fp2q, HIGH, a DoS parsing JWKs with RSA keys; GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4), whose
+  advisories have no Go vulndb id yet, so govulncheck cannot see them; `tests/security_test.sh` checks `bin/tofu`'s.
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
   klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
 - **The CI image is build:2.6 by digest, rebuilt 2026-11-23** (#97: build:20261123-ef62327, from Debian's fixes of that day,
