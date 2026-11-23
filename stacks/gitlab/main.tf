@@ -112,7 +112,16 @@ module "gitlab" {
     # the report builds' priority; build, lacking build-report, never takes a report's. Any ref, unpaused: no job carries
     # build-report until the hub sets BUILD_REPORT_TAGS, after cluster's pipeline has applied the runner. Its token, as
     # kick's, the first version of the dev stack's gitlab-runner-build-report, written by this pipeline.
-    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner },
+    # The in-cluster build-light runner (#100; tacplus-dev/cluster#51, its gitlab-runner/runners/build-light.yaml): on the
+    # normal pool, tacplus-dev/build's light jobs alone (pending, plan, report-pass and report-fail: looper-build in the
+    # looper image, seconds to a minute; tacplus-dev/looper#224), which on the build runner held its slots (on 2026-11-23
+    # 42 pending and 42 plan jobs waited behind its 6, and a land's candidate 77 minutes at its first job). Tags arm64
+    # and build-light, not build: GitLab gives a runner every job whose tags are a subset of its own, so one holding
+    # build would take the gates and security jobs onto the normal pool; build, lacking build-light, never takes a
+    # light job. Any ref, unpaused: no job carries build-light until files/build.gitlab-ci.yml does, after cluster's
+    # pipeline has applied the runner. Its token, as kick's, the first version of the dev stack's
+    # gitlab-runner-build-light, written by this pipeline.
+    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner },
   )
 }
 
@@ -146,6 +155,16 @@ locals {
     paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-build-report"
     description  = "tacplus-dev build-report (tacplus-dev/cloud: the cluster, spot pool; report builds alone, preempted by a land's)"
+  }
+  build_light_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["arm64", "build-light"]
+    protected    = false
+    paused       = false
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-build-light"
+    description  = "tacplus-dev build-light (tacplus-dev/cloud: the cluster, normal pool; tacplus-dev/build's pending, plan and report jobs alone)"
   }
 }
 

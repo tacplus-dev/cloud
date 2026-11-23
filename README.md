@@ -884,7 +884,7 @@ the hub does, steps 4 and 7, are this pipeline's):
   after apply, and the binding is made once the cluster is; a cluster rebuilt by hand loses it, and the drift plan
   shows it to be made again. The drift job's plan of `dev` reads it from the cluster.
 - **The runners' token secrets:** `gitlab-runner-build`, `gitlab-runner-control`, `gitlab-runner-infra` (#64),
-  `gitlab-runner-kick` (#81) and `gitlab-runner-build-report` (#93),
+  `gitlab-runner-kick` (#81), `gitlab-runner-build-report` (#93) and `gitlab-runner-build-light` (#100),
   us-central1, created empty, one per runner of tacplus-dev/cluster's `gitlab-runner/runners/`, whose `tacplus.token`
   names a version of each. Only `cluster-admin-pipeline` reads them (`secretAccessor`); only the dev stack's
   `runner_token_adders` add versions by hand (`secretVersionAdder`, which reads none): authoritative bindings, so a
@@ -894,7 +894,7 @@ the hub does, steps 4 and 7, are this pipeline's):
   file here names (Jody's today: the hosting note, above). For `build` and `control`, the hub registers the runner
   through GitLab's API and pipes its token into a new version as that account (`gcloud secrets versions add
   gitlab-runner-build --project=tacplus-dev --data-file=-`); a new token is a new version, and a pull request in
-  tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names the five secrets.
+  tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names the six secrets.
 - **The `infra` runner (#64; tacplus-dev/cluster#25, its README, The infra runner):** the in-cluster runner of the
   cloud, cluster and deploy pipelines, so the runner VMs can go (#11). The **gitlab stack registers it** (`stacks/gitlab/main.tf`,
   `infra`), and nothing else does: a tacplus-dev group runner, tags `cloud`, `cluster` and `deploy` and no other, "run
@@ -945,6 +945,20 @@ the hub does, steps 4 and 7, are this pipeline's):
   `BUILD_REPORT_TAGS` to `arm64, build-report`, after cluster's pipeline has applied the runner, whose `apply` needs
   this version to exist (cluster's `ci/runner-tokens.sh` refuses a runner whose version it cannot read). As `kick`'s,
   if `apply:gitlab` reaches the version before `apply:dev` has made the secret, a retry writes it.
+- **The `build-light` runner (#100; tacplus-dev/cluster#51, its `gitlab-runner/runners/build-light.yaml`):** the
+  in-cluster runner, on the normal pool, of tacplus-dev/build's light jobs alone: `pending`, `plan`, `report-pass` and
+  `report-fail`, which run `looper-build` in the looper image for seconds to a minute and need no spot node, no build
+  image and no whole node. On the build runner they held its slots: on 2026-11-23 at 10:3xZ 42 `pending` and 42
+  `plan` jobs waited behind its `concurrent: 6`, held by four `security-tacplus` jobs and two `gates`, and
+  fleet-seatrials' land candidate waited 77 minutes at its first job. The gitlab stack registers it
+  (`stacks/gitlab/main.tf`, `build-light`) and writes its token as `gitlab-runner-build-light`'s **version 1**, as it
+  does `kick`'s: a tacplus-dev group runner, tags `arm64` and `build-light` and no other, "run untagged jobs" off, any
+  ref, unpaused. Not `build` among its tags: GitLab gives a runner every job whose tags are a subset of its own, so a
+  runner holding `build` would take the gates and security jobs onto the normal pool; `build`, lacking `build-light`,
+  never takes a light job. No job carries `build-light` until tacplus-dev/looper's `ci/build.gitlab-ci.yml` tags the
+  light jobs so (tacplus-dev/looper#224) and this repository bumps its copy to that commit, after cluster's pipeline
+  has applied the runner. As `kick`'s, if `apply:gitlab` reaches the version before `apply:dev` has made the secret, a
+  retry writes it.
 - **Its registry (#45; tacplus-dev/cluster#21, the hub's decision (1), 2026-11-12):** the Artifact Registry Docker
   repository `us-central1-docker.pkg.dev/tacplus-dev/ci-images`, for the GitLab Runner and helper images
   tacplus-dev/cluster builds itself (crane, no container runtime) and its `gitlab-runner/pin.yaml` names by digest.

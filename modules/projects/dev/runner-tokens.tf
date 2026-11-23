@@ -9,12 +9,14 @@
 # the adders hold the same role on it as on the other two, and use it on none of the three once every runner is the
 # stack's (PROPOSALS.md). kick (#81; tacplus-dev/cluster#36), the runner of the looper's kicker and plan alone, is
 # infra's way: the gitlab stack registers it and writes its version 1; so is build-report (#93; tacplus-dev/cluster#42),
-# the runner of the report builds alone, whose pods a land's build preempts.
+# the runner of the report builds alone, whose pods a land's build preempts; and so is build-light (#100;
+# tacplus-dev/cluster#51), the normal pool's runner of tacplus-dev/build's light jobs (pending, plan, report-pass and
+# report-fail) alone.
 # cluster-admin-pipeline reads them all. A new token is a new version, and a pull request in tacplus-dev/cluster.
 # Nobody else holds a role on any (authoritative bindings: a grant added by hand is drift).
 
 locals {
-  runner_tokens = { build = "gitlab-runner-build", control = "gitlab-runner-control", infra = "gitlab-runner-infra", kick = "gitlab-runner-kick", build-report = "gitlab-runner-build-report" }
+  runner_tokens = { build = "gitlab-runner-build", control = "gitlab-runner-control", infra = "gitlab-runner-infra", kick = "gitlab-runner-kick", build-report = "gitlab-runner-build-report", build-light = "gitlab-runner-build-light" }
   # With no adder, no binding of the role: nobody adds versions.
   runner_token_members = merge(
     { "roles/secretmanager.secretAccessor" = [google_service_account.cluster_pipeline.member] },

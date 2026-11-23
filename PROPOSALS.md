@@ -525,7 +525,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   `build`'s and `control`'s were typed once, and the adders' role is the one write grant to a person this pipeline makes
   (**The runners' token adders' account**, above). `infra` already shows the pattern.
 - **apply:gitlab after the secrets it writes to** (looper, #81, 2026-11-19). What: `apply:gitlab` writes a version
-  to a secret the dev stack makes (`gitlab-runner-infra`, #64; `gitlab-runner-kick`, #81; `gitlab-runner-build-report`, #93), but `plan:gitlab` needs
+  to a secret the dev stack makes (`gitlab-runner-infra`, #64; `gitlab-runner-kick`, #81; `gitlab-runner-build-report`, #93; `gitlab-runner-build-light`, #100), but `plan:gitlab` needs
   `apply:ci` alone, so on the pipeline that adds a runner and its secret together it may reach the version before
   `apply:dev` has made the secret, and fail after registering the runner (a retry writes it). Either the secrets move
   to a stack `apply:gitlab` already follows, or the gitlab stack makes its own runners' secrets (its rights on dev are
