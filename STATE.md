@@ -247,11 +247,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   #90 the preferences' calls count against `tacplus-dev` (the dev stack's provider alias `google.quotas`,
   `billing_project` and `user_project_override`), whose module enables the API, so no bootstrap rerun is needed
   (bootstrap.sh still enables it there). Tested with the dev plan test (mock providers), `tests/quotas_plan_test.sh`
-  (the real provider against the stub API: both preferences' calls name `tacplus-dev`), the policy and ci tests; not
-  yet seen live: `apply:dev` making them, Google granting
-  (an increase may wait on review: the audit's Quotas table shows requested, granted and pending), then the pool at 5
-  with no `QUOTA_EXCEEDED`. The Cloud Quotas ID `HDB-TOTAL-GB-per-project-region` is inferred from Compute's naming
-  (PROPOSALS.md).
+  (the real provider against the stub API: both preferences' calls name `tacplus-dev`), the policy and ci tests. Seen
+  live: on 2026-11-22 the spot pool sat at its 5-node maximum (#96's commit, 11e0b30), which the old limits could not
+  hold (5 x 4 + 6 = 26 C4A CPUs over 24, 8 x 100 GB over 500), so `apply:dev` made both preferences (the HDB ID
+  `HDB-TOTAL-GB-per-project-region` included) and Google granted at least that much. Not seen from the looper (no
+  GitLab or GCP access): the audit's Quotas rows (requested, granted, pending) at #96's 48 CPUs and 1500 GB.
 - **The looper pool (#95):** looper runs were capped at 12 by the normal pool's room, all full for 30+ minutes on
   2026-11-22. A third pool, `looper` (the decision's addendum of 2026-11-22): c4a-standard-2 on demand (a looper run
   lasts hours; spot would preempt it) in us-central1-a, from 0 to 2 (`total_min_node_count` 0, `total_max_node_count`
