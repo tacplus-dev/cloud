@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#97).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#99).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, the 2026-11-23 rebuild (build:20261123-ef62327, #97: krb5
@@ -21,7 +21,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   `ci/kubernetes-provider.sh`, #18, x/net v0.62.0 and kin-openapi v0.152.0, its `manifest/openapi` ported by
   `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0 and, #76, x/crypto v0.59.0; and `ippontech/anthropic` v1.92.0,
   the `anthropic` stack's, `ci/anthropic-provider.sh`, #34), installed only from
-  `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.5.3 and
+  `bin/providers` (`ci/tofurc.sh`) and locked by their own hashes. GitLab Runner v19.6.0 (#99) and
   the fleeting plugin v1.3.1 are built here with go1.27.4 too (`ci/runner.sh`, #40): GO-2026-6859 has no exception.
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
@@ -71,8 +71,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   it booted, both go; all of a pool's VMs may go at once, their jobs with them. Not yet seen live: the first `apply:ci`
   of it sets the policy on the live groups. Plan tests cover the cache's IAM, the federation, the lifecycles, the
   pools' settings and the groups' update policy, against mock providers only.
-- **The manager's binaries (#40):** GitLab Runner v19.5.3 (#44, the release tacplus-dev/cluster runs, cluster#21) and
-  the fleeting plugin v1.3.1 built here with go1.27.4, x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6,
+- **The manager's binaries (#40):** GitLab Runner v19.6.0 (#99, its OpenTelemetry v1.47.0, GHSA-q7gw-24fr-5p69; since
+  #44 the release tacplus-dev/cluster runs, cluster#21, which moves to v19.6.0 in cluster#52: until then the cluster runs
+  19.5.3) and the fleeting plugin v1.3.1 built here with go1.27.4 and at least x/net v0.62.0, klauspost/compress v1.20.2
+  (the runner's own v1.20.3) and go-jose v4.1.6,
   reproducibly, by commit and SHA-256 (`ci/runner.sh`, in the tools job:
   `bin/manager/`, which `bin/scan/` scans), uploaded by the ci stack to `gs://tacplus-ci-runner-bin`, which only the
   manager's account reads among the VMs' and jobs' (README, The manager's binaries); the manager installs both from
@@ -467,7 +469,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   provider's, none since #76 (x/crypto v0.59.0, GO-2026-5932). OpenTofu, tflint and its ruleset carry x/net, x/crypto/openpgp, x/mod and grpc
   findings with no fixed upstream release: accepted in `security-exceptions.yaml` until **2026-12-03**; bump each pin
   when its fix ships (PROPOSALS.md). x/net html's GO-2026-6860 and GO-2026-6866 name OpenTofu and the ruleset only since
-  tflint 0.66.0 and Trivy 0.76.2 (#62).
+  tflint 0.66.0 and Trivy 0.76.2 (#62). OpenTelemetry Go < v1.47.0 (GHSA-q7gw-24fr-5p69, MODERATE, no Go vulndb id, so
+  the security job does not see it; the nightly scan found it, #99) in OpenTofu, tflint, its ruleset, OSV-Scanner, Trivy
+  and the fleeting plugin, whose latest releases still have it: accepted until **2026-12-23** (Jody, #99); GitLab Runner
+  is past it (v19.6.0, `tests/security_test.sh` checks its build).
 - **Security job (#10):** `security` (`ci/security.sh`), on every push, merge request and nightly, before `plan:folder`:
   OSV-Scanner on the tree, `govulncheck -mode=binary` on every pinned binary (the tools, the scanners, both providers,
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
