@@ -23,7 +23,7 @@
 #   tflint-ruleset-google 0.41.0                          GO-2026-5932 6860 6866
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865
-#   the CI image build:2.6.13 (#91): its gh               GO-2026-5932 (Trivy)
+#   the CI image build:2.6 of 2026-11-23 (#97): its gh    GO-2026-5932 (Trivy)
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the tools come by SHA-256. x/crypto v0.59.0 (2026-11-11) deletes openpgp, but tflint 0.66.0 imports it and no release of these requires v0.59.0 yet (the google provider's build does, #76)."
