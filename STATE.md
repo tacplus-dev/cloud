@@ -1,9 +1,11 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#96).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#97).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6.13` by digest (#91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
+  `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, the 2026-11-23 rebuild (build:20261123-ef62327, #97: krb5
+  1.21.3-5+deb13u2 and Debian's other fixes of that day, whose 159 HIGH advisories in 2.6.13's packages failed the security
+  job that morning; 2.6.13, #91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
   6.12.117-1, DSA-6628-1, whose six HIGH kernel CVEs in 6.12.116-1 failed the security job on 2.6.10 on 2026-11-14; no
   OpenEXR since 2.6.10, #43, tacplus-dev/tacplus#554, whose 16 CVEs failed it on 2.6.8 and 2.6.4; go1.27.4 since 2.6.8,
   #39; its `gh`'s x/net and its zlib fixed, so no CI image entry is left in `security-exceptions.yaml` but GO-2026-5932,
@@ -465,13 +467,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   on that digest the security job passed, 0 failing findings (run here 2026-11-12), until 2026-11-14 03:31Z, when Trivy's
   database gained Debian's fix for six HIGH kernel CVEs in its `linux-libc-dev` 6.12.116-1 (DSA-6628-1) and the job went
   red on main, skipping every plan and apply (#59): build:2.6.12 (tacplus-dev/tacplus#711) carries 6.12.117-1, and on its
-  digest Trivy 0.76.1 reports no HIGH or CRITICAL finding with a fix (run here 2026-11-14, both platforms). Each kernel
+  digest Trivy 0.76.1 reports no HIGH or CRITICAL finding with a fix (run here 2026-11-14, both platforms). On 2026-11-23
+  03:0xZ 159 HIGH Debian advisories (krb5 CVE-2026-107364, CVE-2026-112315, linux-libc-dev CVE-2026-99785, ...) turned it
+  red on build:2.6.13 (#97): the 2026-11-23 rebuild of build:2.6 carries the fixes, and on its digest Trivy reports 164 HIGH
+  or CRITICAL findings, none with a fix (run here 2026-11-23). Each kernel
   advisory batch recurs this way until the image question in PROPOSALS.md is decided; #23's (kin-openapi) are fixed by the kubernetes
   provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
   brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
-- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build 2.6.13's, #91)
+- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build:2.6's 2026-11-23 rebuild, #97)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
