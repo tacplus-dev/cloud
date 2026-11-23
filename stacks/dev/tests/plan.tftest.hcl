@@ -143,12 +143,12 @@ run "stack" {
     condition     = output.admiral.wif_provider == "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials" && output.admiral.audience == "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
     error_message = "The stack does not give the Admiral's provider seatrials of the pool fleet-kernels."
   }
-  # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs), the build pool's 5
-  # c4a-standard-4 (20), the looper pool's 2 c4a-standard-2 (4, #95) and one more for a node being replaced (4): 34 C4A
-  # CPUs, asked 40; and 11 nodes of 100 GB of Hyperdisk Balanced, 1100 GB, asked 1500.
+  # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs), the build pool's 8
+  # (#96) c4a-standard-4 (32), the looper pool's 2 c4a-standard-2 (4, #95) and one more for a node being replaced (4): 46 C4A
+  # CPUs, asked 48; and 14 nodes of 100 GB of Hyperdisk Balanced, 1400 GB, asked 1500.
   assert {
-    condition     = output.quotas.c4a_cpus.need == 34 && output.quotas.c4a_cpus.preferred == 40 && output.quotas.hdb_gb.need == 1100 && output.quotas.hdb_gb.preferred == 1500
-    error_message = "The stack does not ask 40 C4A CPUs (34 needed) and 1500 GB of Hyperdisk Balanced (1100 needed) for its pools."
+    condition     = output.quotas.c4a_cpus.need == 46 && output.quotas.c4a_cpus.preferred == 48 && output.quotas.hdb_gb.need == 1400 && output.quotas.hdb_gb.preferred == 1500
+    error_message = "The stack does not ask 48 C4A CPUs (46 needed) and 1500 GB of Hyperdisk Balanced (1400 needed) for its pools."
   }
   # The looper pool (#95): c4a-standard-2 on demand, from 0 to 2; its label and taint for the cluster pipeline.
   assert {
