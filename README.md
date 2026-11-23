@@ -246,7 +246,8 @@ moves to the first upstream release with the fix (#3):
   (GHSA-mgcc-cww5-fp2q, HIGH, a DoS parsing JWKs with RSA keys; GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4), whose
   advisories have no Go vulndb id yet, so govulncheck cannot see them; `tests/security_test.sh` checks `bin/tofu`'s.
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
-  klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has an entry; the jobs' helper image, upstream's, is not scanned here.
+  klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has a Go vulndb entry; the runner is v19.6.0 (#99), built
+  with OpenTelemetry v1.47.0, the plugin v1.3.1 is under GHSA-q7gw-24fr-5p69's exception (its latest release, otel v1.45.0); the jobs' helper image, upstream's, is not scanned here.
 - **The CI image is build:2.6 by digest, rebuilt 2026-11-23** (#97: build:20261123-ef62327, from Debian's fixes of that day,
   krb5 1.21.3-5+deb13u2 among them, after 159 HIGH advisories in 2.6.13's packages turned the security job red; 2.6.13, #91;
   2.6.12, #59): its `linux-libc-dev` is 6.12.117-1 (DSA-6628-1: six HIGH kernel
@@ -730,11 +731,12 @@ containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-
 ### The manager's binaries
 
 #40 (Jody's rule on #39: nothing the VMs run comes from upstream at boot). GitLab Runner and its googlecloud fleeting
-plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's releases, which are built with go1.26.10
+plugin are **our builds** of upstream's tags (v19.6.0 since #99, its OpenTelemetry v1.47.0, GHSA-q7gw-24fr-5p69;
+v1.3.1), not upstream's releases, which are built with go1.26.10
 (GO-2026-6859):
 
-- **The build.** `ci/runner.sh`, in the tools job (`bin/manager/`): each tag at its pinned commit, with go1.27.4,
-  x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6 (every module checked against the Go checksum database;
+- **The build.** `ci/runner.sh`, in the tools job (`bin/manager/`): each tag at its pinned commit, with go1.27.4 and
+  at least x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6, raised, never lowered (every module checked against the Go checksum database;
   `tests/security_test.sh` checks the builds' modules), as upstream
   builds it (`CGO_ENABLED=0`, its ldflags) with `-trimpath`, no VCS stamp and the commit's date as the build's, for
   linux/arm64; the runner with Go's own crypto, not the frozen FIPS 140 module v1.0.0 its release has (which go1.27
@@ -832,7 +834,7 @@ plugin are **our builds** of upstream's tags (v19.5.3, v1.3.1), not upstream's r
   of the fleet's runners). If the handoff job fails, its log names each job it could not fail back or run again: do
   those by hand (force-cancel, then retry, as on 2026-11-13), then retry the job, which only acts on what is left. If
   it did not run (its `apply:ci` failed, so it was skipped), do what it does by hand, as above.
-- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.5.3, pinned by digest in
+- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.6.0, pinned by digest in
   `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
   image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a
   registry only the workers read, is a follow-up (PROPOSALS.md); `runner.helper_image` moves to the helper

@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # GitLab Runner and its googlecloud fleeting plugin, the runner manager's two binaries, built from their source (#40).
-# Upstream's releases (v19.5.3, v1.3.1) are built with go1.26.10 (GO-2026-6859, net/http), x/net v0.58.0 and v0.59.0,
-# and the runner with klauspost/compress v1.20.0 (GO-2026-6603 to 6617, 6865) and go-jose v4.1.4 (CVE-2026-116587).
-# This builds the same releases, their tags at the pinned commits, with go1.27.4, x/net v0.62.0, klauspost/compress
-# v1.20.2 and go-jose v4.1.6, every module checked against the Go checksum database, as upstream builds them (CGO_ENABLED=0, its ldflags) but with -trimpath, no VCS stamp and
+# Upstream's releases are built with go1.26.10 (GO-2026-6859, net/http); the plugin's (v1.3.1) with x/net v0.59.0, and
+# the runner's until v19.6.0 (#99: its OpenTelemetry v1.47.0, GHSA-q7gw-24fr-5p69) with x/net v0.58.0, klauspost/compress
+# v1.20.0 (GO-2026-6603 to 6617, 6865) and go-jose v4.1.4 (CVE-2026-116587). This builds the same releases, their tags
+# at the pinned commits, with go1.27.4 and at least x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6
+# (v19.6.0 requires klauspost/compress v1.20.3, which stays), every module checked against the Go checksum database, as upstream builds them (CGO_ENABLED=0, its ldflags) but with -trimpath, no VCS stamp and
 # the commit's date as the build's, so the build is reproducible: each one is refused unless its SHA-256 is the pinned
 # one. linux/arm64 only, the manager's; a cross-build, so on any host. The versions, commits and SHA-256s are
 # stacks/ci/main.tf's runner block; the ci stack serves the builds to the manager from a bucket only it reads
@@ -36,7 +37,7 @@ export GOTOOLCHAIN=$go_version GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=linux GOARCH=
 # fixed dependencies the module has; refused unless the build's SHA-256 is SHA256. @BUILT@ in LDFLAGS is the commit's
 # time.
 build() {
-  local name=$1 repo=$2 commit=$3 sha=$4 pkg=$5 ldflags=$6 src=$tmp/$1 d get=() got built
+  local name=$1 repo=$2 commit=$3 sha=$4 pkg=$5 ldflags=$6 src=$tmp/$1 d have get=() got built
   [[ $commit =~ ^[0-9a-f]{40}$ && $sha =~ ^[0-9a-f]{64}$ ]] || die "$main pins no commit or SHA-256 for $name"
   git init -q "$src"
   git -C "$src" fetch -q --depth 1 "$repo" "$commit" || die "cannot fetch $commit from $repo"
@@ -45,16 +46,20 @@ build() {
   built=$(TZ=UTC0 git -C "$src" log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
   rm -rf "$src/.git"
   for d in "${deps[@]}"; do
-    (cd "$src" && go list -m "${d%@*}" >/dev/null 2>&1) && get+=("$d")
+    # Only a module it requires, and only raised: a newer requirement (v19.6.0's klauspost/compress v1.20.3) stays.
+    have=$(cd "$src" && go list -m -f '{{.Version}}' "${d%@*}" 2>/dev/null) || continue
+    [ "$(printf '%s\n' "$have" "${d#*@}" | sort -V | head -1)" = "$have" ] && [ "$have" != "${d#*@}" ] && get+=("$d")
   done
-  (cd "$src" && go get "${get[@]}" > "$tmp/get.log" 2>&1) || { cat "$tmp/get.log" >&2; die "cannot require ${get[*]} in $name"; }
+  if ((${#get[@]})); then
+    (cd "$src" && go get "${get[@]}" > "$tmp/get.log" 2>&1) || { cat "$tmp/get.log" >&2; die "cannot require ${get[*]} in $name"; }
+  fi
   [ "$(cd "$src" && go version | cut -d' ' -f3)" = "$go_version" ] || die "go is $(cd "$src" && go version), not $go_version"
   (cd "$src" && go build -trimpath -buildvcs=false -ldflags "${ldflags//@BUILT@/$built}" -o "$tmp/out/$name" "$pkg") ||
     die "the build of $name failed"
   got=$(sha256sum "$tmp/out/$name" | cut -c1-64)
   [ "$got" = "$sha" ] || die "the build of $name has SHA-256 $got, not the pinned $sha"
   install -m 0755 "$tmp/out/$name" "$out/$name"
-  echo "runner.sh: $name ($go_version, ${get[*]}) for linux/arm64, SHA-256 $got"
+  echo "runner.sh: $name ($go_version, ${get[*]:-its own requirements}) for linux/arm64, SHA-256 $got"
 }
 
 v=$(pin version) c=$(pin commit)

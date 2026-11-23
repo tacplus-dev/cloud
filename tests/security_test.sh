@@ -192,6 +192,14 @@ else
       ok "bin/manager/$b is built with x/net >= v0.62.0, klauspost/compress >= v1.20.2 and go-jose >= v4.1.6" ||
       fail "bin/manager/$b: $(go version -m "$p" | grep -E 'x/net|klauspost/compress|go-jose' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
   done
+  # GitLab Runner v19.6.0, its release built with the fixed OpenTelemetry SDK (GHSA-q7gw-24fr-5p69, no Go vulndb id;
+  # #99). The other pins with it are security-exceptions.yaml's until their releases have it.
+  p=$here/bin/manager/gitlab-runner
+  if [ -f "$p" ]; then
+    fixed "$p" go.opentelemetry.io/otel v1.47.0 && fixed "$p" go.opentelemetry.io/otel/sdk v1.47.0 &&
+      fixed "$p" go.opentelemetry.io/otel/trace v1.47.0 && ok "bin/manager/gitlab-runner is built with otel >= v1.47.0" ||
+      fail "bin/manager/gitlab-runner: $(go version -m "$p" | grep -E 'go.opentelemetry.io/otel(/sdk|/trace)?[[:space:]]' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
+  fi
 fi
 
 [ "$failed" = 0 ] && echo "security: all passed" || { echo "security: FAILED"; exit 1; }

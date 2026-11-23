@@ -19,12 +19,17 @@
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
 # binaries, by pin:
 #
-#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866
-#   tflint 0.66.0 (ci/tools.sh, #62)                      GO-2026-5932
-#   tflint-ruleset-google 0.41.0                          GO-2026-5932 6860 6866
+#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866, GHSA-q7gw-24fr-5p69
+#   tflint 0.66.0 (ci/tools.sh, #62)                      GO-2026-5932, GHSA-q7gw-24fr-5p69
+#   tflint-ruleset-google 0.41.0                          GO-2026-5932 6860 6866, GHSA-q7gw-24fr-5p69
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
-#   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865
+#   OSV-Scanner v2.7.0 (ci/tools.sh)                      GHSA-q7gw-24fr-5p69
+#   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865, GHSA-q7gw-24fr-5p69
+#   the fleeting plugin v1.3.1 (ci/runner.sh)             GHSA-q7gw-24fr-5p69
 #   the CI image build:2.6 of 2026-11-23 (#97): its gh    GO-2026-5932 (Trivy)
+#
+# GHSA-q7gw-24fr-5p69 (otel < v1.47.0, #99) has no Go vulndb id: the nightly's OSV-Scanner of the pins' go.mod found it,
+# not govulncheck. GitLab Runner is past it (v19.6.0, built with otel v1.47.0).
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the tools come by SHA-256. x/crypto v0.59.0 (2026-11-11) deletes openpgp, but tflint 0.66.0 imports it and no release of these requires v0.59.0 yet (the google provider's build does, #76)."
@@ -86,3 +91,7 @@ exceptions:
     reason: "Go stdlib 1.26.10 (net/http MaxBytesReader) in the CI image's docker CLI (from docker:29-cli, build:2.6.12): the CI image runs no HTTP server; it only builds images inside CI jobs. No fixed docker:29-cli yet. Bump and remove when upstream rebuilds (tacplus-dev/tacplus#901)."
     decided_by: "jodydadescott (hub, in chat, 2026-11-20: 14 days, the cloud CI image only)"
     expires: 2026-12-04
+  - id: GHSA-q7gw-24fr-5p69
+    reason: "OpenTelemetry Go SDK < v1.47.0, AttributeValueLengthLimit bypassed by U+FFFD runes (CVE-2026-128085, MODERATE; no Go vulndb id, so unseen by govulncheck), in these pins only: OpenTofu 1.13.2, tflint 0.66.0, tflint-ruleset-google 0.41.0, OSV-Scanner v2.7.0, Trivy 0.76.2 (ci/tools.sh) and the fleeting plugin v1.3.1 (stacks/ci/main.tf): CI-only tools, none exporting telemetry here. GitLab Runner moved to v19.6.0, built with v1.47.0. Waits on a release of each built with otel >= v1.47.0 (OpenTofu 1.13.9, tflint 0.66.0, the ruleset 0.41.0, OSV-Scanner v2.7.1, Trivy 0.76.2 and the plugin v1.3.1, the latest, have v1.45.0 or v1.46.0)."
+    decided_by: "jodydadescott (hub, tacplus-dev/cloud#99, 2026-11-23: 30 days, these pins only)"
+    expires: 2026-12-23

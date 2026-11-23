@@ -41,13 +41,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   upstream release that fixes its `security-exceptions.yaml` entries, and remove them: OpenTofu past 1.13.2 (x/net
   >= v0.62.0, grpc >= v1.83.2, x/mod >= v0.40.0, x/crypto past v0.58.0), tflint past
   0.66.0 with its ruleset past 0.41.0 (x/net >= v0.62.0 for the ruleset, x/crypto; tflint 0.66.0 and Trivy 0.76.2 have
-  the x/net, #62), GitLab Runner past v19.5.3 and
-  fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
+  the x/net, #62), fleeting-plugin-googlecloud past v1.3.1 (x/net >= v0.60.0), gitleaks past v8.30.1 (github.com/ulikunitz/xz >= v0.5.15,
   GO-2025-3922, accepted until 2026-12-04, #10), and OpenTofu, Trivy past 0.76.2 and GitLab Runner to a release with
   klauspost/compress >= v1.20.2 (GO-2026-6865, accepted until 2026-12-06, #24), and the CI image to a build:2.6 digest
   whose `gh` has x/crypto past v0.58.0 (GO-2026-5932; its x/net is fixed in build:2.6.10, #43): `default.image` and
   `build.lock`; `ci/tools.sh` shas and sums, `ci/lock.sh`, `stacks/ci/main.tf`. GO-2026-5932's reason does not name
-  the CI image's `gh` yet (found by #43's scan): add it when the entry is next renewed.
+  the CI image's `gh` yet (found by #43's scan): add it when the entry is next renewed. Since #99 (2026-11-23): each of
+  OpenTofu, tflint, its ruleset, OSV-Scanner, Trivy and the fleeting plugin to a release built with OpenTelemetry Go
+  >= v1.47.0 (`go.opentelemetry.io/otel`, `/sdk`, `/sdk/log`, `/trace`; GHSA-q7gw-24fr-5p69, MODERATE, no Go vulndb id,
+  accepted until 2026-12-23); GitLab Runner is past it (v19.6.0). None of the latest releases had it on 2026-11-23
+  (OpenTofu 1.13.9, tflint 0.66.0, ruleset 0.41.0, OSV-Scanner v2.7.1, Trivy 0.76.2, plugin v1.3.1). Their go.mod at
+  each tag shows it (`proxy.golang.org/<module>/@v/<tag>.mod`). When the entry expires with one still behind, a new
+  decision on #99's option A (build it with otel v1.47.0, as OpenTofu with go-jose, #98) or another 30 days.
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
 - **The fixed dependencies in the tools we now build** (looper, #39, 2026-11-11). What: OpenTofu, tflint, its google
@@ -630,3 +635,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   by the policy (HIGH or CRITICAL with a fix). Why: govulncheck reads only vuln.go.dev. GHSA-mgcc-cww5-fp2q (HIGH,
   go-jose v4.1.4 in OpenTofu 1.13.2, #98) and GHSA-q7gw-24fr-5p69 (otel, seven binaries, #99) were published weeks
   ago with fixes and have no `GO-` id. The job passed with them, and only the nightly agent scan found them.
+- **Exceptions scoped by `where`** (looper, #99, 2026-11-23). What: looper-scan now reads a `where` on an exception
+  and warns on each entry without one ("it accepts <id> in every file"); `ci/security.sh` and `tests/providers_test.sh`
+  still refuse any key but id, reason, decided_by and expires. Accept `where` in both, with the security job matching
+  it against a finding's `where`, and scope each entry to the binaries it names (GHSA-q7gw-24fr-5p69's six pins,
+  `bin/tofu` for OpenTofu's). Why: #99's decision asks for an exception "for that pin only", which today only its
+  reason can say: the entry would accept the same id in any other pin, the runner's included.
