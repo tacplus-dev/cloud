@@ -84,3 +84,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue dev: the spot pool can't grow: Hyperdisk Balanced quota (500 GB, full) and C4A CPU quota (24) in us-central1; manage both as quota preferences sized from the pools (#88)
 - 2026-11-23 looper issue dev: the spot build pool is stuck at 2 nodes in one zone (max 5): spread it across the region, and audit the autoscaler's no-scale-up reasons (#85)
 - 2026-11-23 looper issue security job fails main's apply: 159 HIGH Debian findings in the CI image build:2.6.13 (krb5 CVE-2026-107364, ...); relock to the rebuilt build:2.6 (#97)
+- 2026-11-23 looper issue security: OpenTofu 1.13.2 (ci/tools.sh) links go-jose v4.1.4: GHSA-mgcc-cww5-fp2q (HIGH) and two more, fixed in v4.1.6, unseen by govulncheck (#98)
