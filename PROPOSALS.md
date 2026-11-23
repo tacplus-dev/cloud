@@ -622,3 +622,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   and groups, through the API, as a reader) and reports any but Reporter of the triage project (README, The Admiral's
   credentials, step 2). Why: its membership is a manual invite, not a pipeline (#89), so nothing else would notice the
   user being added somewhere else, where its `api` token would reach too.
+- **The security job sees advisories the Go vulndb lacks** (nightly scan, #98, #99, 2026-11-23). What: besides
+  `govulncheck -mode=binary`, `ci/security.sh` runs OSV-Scanner over every pinned Go binary's module list (each binary's
+  `go version -m` build info, or OSV-Scanner's Go-binary extraction of `bin/`), so the job also reports GHSA-only
+  advisories, those with no `GO-` id yet. They are module-level, with no symbol filter, so they are listed, and fail only
+  by the policy (HIGH or CRITICAL with a fix). Why: govulncheck reads only vuln.go.dev. GHSA-mgcc-cww5-fp2q (HIGH,
+  go-jose v4.1.4 in OpenTofu 1.13.2, #98) and GHSA-q7gw-24fr-5p69 (otel, seven binaries, #99) were published weeks
+  ago with fixes and have no `GO-` id. The job passed with them, and only the nightly agent scan found them.
