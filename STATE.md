@@ -15,7 +15,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   from their modules; gitleaks and OSV-Scanner with klauspost/compress v1.20.2, and gitleaks brotli v1.2.7, #24) and
   Trivy 0.76.2 (tflint 0.66.0 and Trivy 0.76.2 since #62: x/net v0.62.0), all pinned by checksum (`ci/tools.sh`). Since #39 (GO-2026-6859, net/http) everything but shellcheck
   is built here with **go1.27.4**: OpenTofu, tflint, its ruleset and Trivy from their release's module source (pinned
-  by module hash and by the build's SHA-256, `srcbuild`), yq and the scanners from their modules, and the four
+  by module hash and by the build's SHA-256, `srcbuild`; OpenTofu with go-jose v4.1.6 in place of its release's v4.1.4,
+  GHSA-mgcc-cww5-fp2q and two more with no Go vulndb id, #98), yq and the scanners from their modules, and the four
   providers from their tags, reproducibly, each by its pinned SHA-256 (`ci/gitlab-provider.sh`, #3, x/net v0.62.0;
   `ci/kubernetes-provider.sh`, #18, x/net v0.62.0 and kin-openapi v0.152.0, its `manifest/openapi` ported by
   `ci/kubernetes-provider.patch`, #23; `ci/google-provider.sh`, #39, x/net v0.62.0 and, #76, x/crypto v0.59.0; and `ippontech/anthropic` v1.92.0,
