@@ -649,3 +649,10 @@ the looper then marks it `promoted` or `declined` here with the date.
   fleeting plugin, which the manager runs, shipped (recommended) or tooling; dropping the tooling-only exceptions in
   the same land. Why: Jody's decision `decisions/security-gates-ship-only-2026-11-23.md` (tacplus-dev/roadmap):
   advisories against CI-only tools stopped `plan:folder` and every apply until a bump or an exception.
+- **The CI image pinned at a dated build tag, a floating one refused** (looper, #102, 2026-11-23; looper#226). What:
+  `tests/ci_test.sh` requires `default.image` (and `build.lock`, the same ref) at a tacplus line's dated build tag,
+  `build:<YYYYMMDD>-<commit>@sha256:…`, and fails a floating `build:X.Y` one, which its `[0-9.]+` accepts today; in the
+  same commit both pins move off `build:2.6@sha256:8cf5ff08…` to the 2.6 line's newest dated tag at its digest
+  (`20261123-ef62327`'s, the same digest if it still resolves to it). Why: looper#226's nightly re-pin writes a dated tag,
+  which the test refuses, so every such land here would come back red; and `2.6` moves on every rebuild, so the label
+  stops naming what runs (cluster#54).
