@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by the looper (#95).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#96).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6.13` by digest (#91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -265,6 +265,12 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-22 by th
   showed none). Tested with the dev plan test (mock providers), the policy's, audit's and hub audit's fixtures; not yet
   seen live: `apply:dev` making the pool with 0 nodes, the audit's Node pools table showing it, and a looper run on
   it once tacplus-dev/cluster#47 lands.
+- **The build pool to 8 (#96; Jody, 2026-11-23):** on 2026-11-22 `spot` sat at its 5-node maximum with 18 builds
+  queued, a tacplus batch candidate waiting 1h17m. Its maximum is now 8 (c4a-standard-4 spot, still from 0, still over
+  the region's zones), and the quota preferences follow from it: 48 C4A CPUs (6 + 32 + 4 + 4 = 46, with the looper
+  pool's 2 x 2, #95) and 1500 GB of Hyperdisk Balanced (14 x 100 = 1400). Tested with the dev plan test (mock
+  providers); not yet seen live: `apply:dev`, Google granting the increase (the pool grows as it is granted), then more
+  than 5 build nodes at once.
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
