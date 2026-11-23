@@ -83,3 +83,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-23 looper issue dev: the spot build pool's maximum 5 → 8 nodes, the quota preferences sized from it (#96)
 - 2026-11-23 looper issue dev: the spot pool can't grow: Hyperdisk Balanced quota (500 GB, full) and C4A CPU quota (24) in us-central1; manage both as quota preferences sized from the pools (#88)
 - 2026-11-23 looper issue dev: the spot build pool is stuck at 2 nodes in one zone (max 5): spread it across the region, and audit the autoscaler's no-scale-up reasons (#85)
+- 2026-11-23 looper issue security job fails main's apply: 159 HIGH Debian findings in the CI image build:2.6.13 (krb5 CVE-2026-107364, ...); relock to the rebuilt build:2.6 (#97)
