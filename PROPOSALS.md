@@ -641,3 +641,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   it against a finding's `where`, and scope each entry to the binaries it names (GHSA-q7gw-24fr-5p69's six pins,
   `bin/tofu` for OpenTofu's). Why: #99's decision asks for an exception "for that pin only", which today only its
   reason can say: the entry would accept the same id in any other pin, the runner's included.
+- **The security job fails only on what ships** (looper, #101, 2026-11-23; tacplus-dev/looper#225). What: every
+  finding of `ci/security.sh` gets a `scope`, `shipped` (OSV-Scanner on the tree, gitleaks, the pins listed as
+  shipped) or `tooling` (Trivy on the CI image, `govulncheck` on every other pin), and only a shipped one can be
+  `blocking`; tooling findings are listed in `security/report.json` and a "CI tooling (reported, never failing)"
+  section, never failing; problems and expired exceptions still fail. Open (#101's design): GitLab Runner and its
+  fleeting plugin, which the manager runs, shipped (recommended) or tooling; dropping the tooling-only exceptions in
+  the same land. Why: Jody's decision `decisions/security-gates-ship-only-2026-11-23.md` (tacplus-dev/roadmap):
+  advisories against CI-only tools stopped `plan:folder` and every apply until a bump or an exception.
