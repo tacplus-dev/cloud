@@ -359,10 +359,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   (`stacks/gitlab/main.tf`, `build-light`), a tacplus-dev group runner, tags `arm64` and `build-light` and no other (not
   `build`, whose gates and security jobs it would take too), untagged off, any ref, unpaused, and writes its token as
   `gitlab-runner-build-light`'s version 1, which cluster#51's `gitlab-runner/runners/build-light.yaml` names. Tested:
-  the gitlab and dev stacks' plan tests and `tests/gitlab_plan_test.sh`. Not applied yet: `apply:dev` makes the secret,
-  `apply:gitlab` the runner and version; then cluster#51 adds `build-light.yaml`. **Gap:** until then the light jobs
-  still take the build runner's slots; tacplus-dev/looper#224 tags them `arm64, build-light`, and #100 then bumps
-  `files/build.gitlab-ci.yml` to that commit, with a test that no light job carries `build`.
+  the gitlab and dev stacks' plan tests and `tests/gitlab_plan_test.sh`. Applied (cloud dc67c17, 2026-11-24), and
+  online as runner 59984739. `files/build.gitlab-ci.yml` is looper b1dbfe4's (tacplus-dev/looper#224), which tags
+  those four jobs `arm64, build-light`; `tests/build_ci_test.sh` checks they carry it and not `build`.
 - **The switch-over to `infra` (#66; tacplus-dev/cluster#25):** `stacks/gitlab/main.tf` unpauses `infra` and pauses the
   `cluster` and `deploy` pools' runners (`contains(["cluster", "deploy"], k)`); `shared` and `build` take jobs. Tested:
   the gitlab stack's plan test and `tests/gitlab_plan_test.sh` assert which runners are paused. Its `apply:gitlab` on
