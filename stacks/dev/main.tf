@@ -93,7 +93,9 @@ module "dev" {
     spot   = { machine_type = "c4a-standard-4", max_nodes = 8 }
     # Jody, 2026-11-22 (#95): the looper runs' overflow on a pool from 0 to X, on demand, X = 2 (at most the $130/month
     # Jody approved; a larger X needs Jody's yes).
-    looper = { machine_type = "c4a-standard-2", max_nodes = 2 }
+    # Jody, 2026-11-24 (#107): to 4 (at most about $260/month); at 19:59Z the control runner sat at its 17 (cluster#53)
+    # with 18 jobs pending, 5 of them managers, the looper pool at its 2.
+    looper = { machine_type = "c4a-standard-2", max_nodes = 4 }
   }
   network = {
     nodes         = "10.20.0.0/20"

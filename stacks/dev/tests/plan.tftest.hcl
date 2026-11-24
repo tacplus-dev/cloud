@@ -4,7 +4,7 @@
 # The dev stack's plan under a stub parent folder, with an empty project (mock providers: no credentials, no
 # cloud): the stack plans, and its module, with the stack's inputs, gives the arm64 cluster (private COS nodes: a normal
 # pool of 3 x c4a-standard-2 on demand, a spot build pool of c4a-standard-4 from 0 to 3, labelled and tainted
-# spot=true, #7, over the region's zones with c4a, #85, and a looper pool of c4a-standard-2 on demand from 0 to 2 in the
+# spot=true, #7, over the region's zones with c4a, #85, and a looper pool of c4a-standard-2 on demand from 0 to 4 (#107) in the
 # cluster's zone, labelled and tainted looper=true, #95), the dev zone and the
 # cluster pipeline's identity, federated from tacplus-dev/cluster's protected main alone, and each deployment's
 # certificate secrets and _acme-challenge zone, which only its pipeline's identity reads and writes (#6), and the
@@ -144,13 +144,13 @@ run "stack" {
     error_message = "The stack does not give the Admiral's provider seatrials of the pool fleet-kernels."
   }
   # The quotas the pools need (#88), from the stack's pools: 3 normal c4a-standard-2 (6 CPUs), the build pool's 8
-  # (#96) c4a-standard-4 (32), the looper pool's 2 c4a-standard-2 (4, #95) and one more for a node being replaced (4): 46 C4A
-  # CPUs, asked 48; and 14 nodes of 100 GB of Hyperdisk Balanced, 1400 GB, asked 1500.
+  # (#96) c4a-standard-4 (32), the looper pool's 4 (#107) c4a-standard-2 (8, #95) and one more for a node being replaced (4):
+  # 50 C4A CPUs, asked 56; and 16 nodes of 100 GB of Hyperdisk Balanced, 1600 GB, asked 2000.
   assert {
-    condition     = output.quotas.c4a_cpus.need == 46 && output.quotas.c4a_cpus.preferred == 48 && output.quotas.hdb_gb.need == 1400 && output.quotas.hdb_gb.preferred == 1500
-    error_message = "The stack does not ask 48 C4A CPUs (46 needed) and 1500 GB of Hyperdisk Balanced (1400 needed) for its pools."
+    condition     = output.quotas.c4a_cpus.need == 50 && output.quotas.c4a_cpus.preferred == 56 && output.quotas.hdb_gb.need == 1600 && output.quotas.hdb_gb.preferred == 2000
+    error_message = "The stack does not ask 56 C4A CPUs (50 needed) and 2000 GB of Hyperdisk Balanced (1600 needed) for its pools."
   }
-  # The looper pool (#95): c4a-standard-2 on demand, from 0 to 2; its label and taint for the cluster pipeline.
+  # The looper pool (#95): c4a-standard-2 on demand, from 0 to 4 (#107); its label and taint for the cluster pipeline.
   assert {
     condition     = output.cluster.looper_label == { looper = "true" } && output.cluster.looper_taint == { key = "looper", value = "true", effect = "NO_SCHEDULE" }
     error_message = "The stack does not give the looper pool's label and taint."
