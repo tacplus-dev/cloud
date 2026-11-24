@@ -1523,6 +1523,11 @@ run "looper_vms" {
     condition     = google_secret_manager_secret.looper_model_token.secret_id == "looper-model-token" && google_secret_manager_secret.looper_model_token.replication[0].user_managed[0].replicas[0].location == "us-central1" && length(google_secret_manager_secret_iam_binding.looper_model_token) == 1 && google_secret_manager_secret_iam_binding.looper_model_token[0].role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_binding.looper_model_token[0].members == toset(["serviceAccount:looper-vm-small@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"])
     error_message = "looper-model-token is read by someone besides the looper VMs' accounts, or has another binding."
   }
+  # Its one adder (#108): the looper project's job in environment looper-vm-secret, nobody else.
+  assert {
+    condition     = length(google_secret_manager_secret_iam_binding.looper_model_token_adder) == 1 && google_secret_manager_secret_iam_binding.looper_model_token_adder[0].role == "roles/secretmanager.secretVersionAdder" && length(google_secret_manager_secret_iam_binding.looper_model_token_adder[0].members) == 1 && endswith(one(google_secret_manager_secret_iam_binding.looper_model_token_adder[0].members), ":main:true:looper-vm-secret")
+    error_message = "looper-model-token's versions are added by someone besides the looper project's looper-vm-secret job."
+  }
   assert {
     condition     = !anytrue([for b in google_secret_manager_secret_iam_member.manager_reads_token : startswith(b.member, "serviceAccount:looper-vm-")])
     error_message = "A looper VM's account reads a runner token."

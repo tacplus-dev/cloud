@@ -42,9 +42,11 @@ resource "google_project_iam_member" "looper_vm_log" {
   depends_on = [google_service_account.looper_vm]
 }
 
-# The model token the looper VMs read (through llmproxy's path, as today). Made with no version: its value is only
-# ever added out of band (by Jody), never in this repository, a plan or the state. So no secretVersionAdder binding:
-# nobody here adds one.
+# The model token the looper VMs read: a static secret for now (decision point 11; later the cluster issues VMs
+# tokens by their cloud identity). Made with no version: its value is never in this repository, a plan or the state.
+# A version is added by one pipeline job alone (#108): tacplus-dev/looper's manual job looper-vm-secret, in its
+# environment looper-vm-secret, copies the looper project's masked CLAUDE_CODE_OAUTH_TOKEN in, so no person handles
+# it (Jody, 2026-11-24: "Yes pipeline").
 resource "google_secret_manager_secret" "looper_model_token" {
   project   = google_project.ci.project_id
   secret_id = "looper-model-token"
@@ -67,6 +69,17 @@ resource "google_secret_manager_secret_iam_binding" "looper_model_token" {
   role       = "roles/secretmanager.secretAccessor"
   members    = [for k in sort(keys(var.looper_vms)) : local.looper_vm_member[k]]
   depends_on = [google_service_account.looper_vm]
+}
+
+# The one adder (#108): the looper project's protected main, environment looper-vm-secret, federated through the
+# loopers pool (the attribute role, as the app keys' signers). Authoritative: nobody else adds a version.
+resource "google_secret_manager_secret_iam_binding" "looper_model_token_adder" {
+  count      = length(var.looper_vms) > 0 ? 1 : 0
+  project    = google_project.ci.project_id
+  secret_id  = google_secret_manager_secret.looper_model_token.secret_id
+  role       = "roles/secretmanager.secretVersionAdder"
+  members    = ["${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:looper-vm-secret"]
+  depends_on = [terraform_data.iam_ready]
 }
 
 # A resize of a looper VM's group, and nothing else: the get its caller reads the group with, and the update a resize
