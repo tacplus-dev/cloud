@@ -121,7 +121,15 @@ module "gitlab" {
     # light job. Any ref, unpaused: no job carries build-light until files/build.gitlab-ci.yml does, after cluster's
     # pipeline has applied the runner. Its token, as kick's, the first version of the dev stack's
     # gitlab-runner-build-light, written by this pipeline.
-    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner },
+    # The in-cluster manager runner (#106; tacplus-dev/cluster#60, its gitlab-runner/runners/manager.yaml): on the normal
+    # (always-on) pool, the looper's managers alone (tacplus-dev/looper#236's .manager), which on the control runner
+    # waited for its slots behind the reports (on 2026-11-24 at 19:59Z five managers were pending behind 17 slots full),
+    # and while a manager waits nothing merges in its repository. Tags arm64 and manager, not control: GitLab gives a
+    # runner every job whose tags are a subset of its own, so one holding control would take the reports too and fill up
+    # as control does; control, lacking manager, never takes a manager. Any ref, unpaused: no job carries manager until
+    # tacplus-dev/looper tags its managers so, after cluster's pipeline has applied the runner. Its token, as kick's, the
+    # first version of the dev stack's gitlab-runner-manager, written by this pipeline.
+    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner, manager = local.manager_runner },
   )
 }
 
@@ -165,6 +173,16 @@ locals {
     paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-build-light"
     description  = "tacplus-dev build-light (tacplus-dev/cloud: the cluster, normal pool; tacplus-dev/build's pending, plan and report jobs alone)"
+  }
+  manager_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["arm64", "manager"]
+    protected    = false
+    paused       = false
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-manager"
+    description  = "tacplus-dev manager (tacplus-dev/cloud: the cluster, normal pool; the looper's managers alone)"
   }
 }
 
