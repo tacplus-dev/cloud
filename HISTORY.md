@@ -90,3 +90,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue tacplus-dev/build: the light pending/plan/report jobs take build-runner slots (tags arm64,build): 42 builds wait at their first step behind 6 slots (#100)
 - 2026-11-24 looper issue Pinned images behind their lines: relock (build.lock: ghcr.io/tacplus-dev/tacplus/build:2.6 → ghcr.io/tacplus-dev/tacplus/build:2.6) (#104)
 - 2026-11-24 looper issue dev: secret fleet-root-cred-seatrials (seatrials' root credential key), adder seatrials-init-secrets, accessor seatrials-deploy (#105)
+- 2026-11-24 looper issue Register a GitLab runner 'manager' (tags arm64, manager) and its token secret (cluster#60) (#106)
