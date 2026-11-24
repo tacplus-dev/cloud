@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the looper (#106).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the looper (#101).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, its digest of 2026-11-24 (build:20261123-57a6521, #104; before it
@@ -491,7 +491,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   OSV-Scanner on the tree, `govulncheck -mode=binary` on every pinned binary (the tools, the scanners, both providers,
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
   `security-exceptions.yaml` enforced (an expired entry fails; one with a `where` accepts its id only there, #103); its
-  report `security/report.json`, the artifact. Its first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
+  report `security/report.json`, the artifact. Since #101 (tacplus-dev/looper#225) it fails only on what ships
+  (OSV-Scanner's and gitleaks' findings, `scope: "shipped"`): govulncheck's on the pins and Trivy's on the CI image are
+  `tooling`, reported under "CI tooling (reported, never failing)" and never failing; an expired exception still fails,
+  whatever it names. Its first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
   standard library ones by building them with the latest Go (go1.27.4 since #39), gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had one, its `gh`'s x/net
   CVE-2026-78661, accepted (#27) until build:2.6.10 (#43) fixed it with zlib's and dropped OpenEXR (tacplus-dev/tacplus#554):
   on that digest the security job passed, 0 failing findings (run here 2026-11-12), until 2026-11-14 03:31Z, when Trivy's
