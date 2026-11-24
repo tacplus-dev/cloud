@@ -275,13 +275,15 @@ request and nightly schedule:
 - **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
 
 **The policy** is looper-scan's: it fails on any secret, and on any HIGH or CRITICAL finding that has a fixed version,
-unless an unexpired entry of `security-exceptions.yaml` names it (its ID or an alias); an entry that has expired, or
-whose fields are not exactly `id`, `reason`, `decided_by` and `expires` (YYYY-MM-DD), fails it too, and so does a tool
-that cannot run or a pinned binary missing. A failing `security` job stops the pipeline before `plan:folder`. The report:
+unless an unexpired entry of `security-exceptions.yaml` names it (its ID or an alias) and, with a `where` (a path or a
+path glob, looper-scan's: `*` within a path segment, `**` across them), the finding's binary or file (#103); an entry
+that has expired, whose fields are not exactly `id`, `reason`, `decided_by` and `expires` (YYYY-MM-DD) and an optional
+`where`, or whose `where` is empty, fails it too, and so does a tool that cannot run or a pinned binary missing. A
+failing `security` job stops the pipeline before `plan:folder`. The report:
 `security/report.json` (every finding: blocking, accepted or neither; the problems; the verdict), with each tool's own
 report in `security/raw/`; the job's artifact, kept 30 days. The vulnerability databases are the day's, so a commit
 that passed can fail the next night: fix the pin, or accept the finding with a reason and an expiry, at most 30 days.
-`tests/security_test.sh` tests it (a planted secret, an expired exception, a clean tree, the policy) with stubs for
+`tests/security_test.sh` tests it (a planted secret, an expired exception, a clean tree, the policy, a `where`) with stubs for
 the scanners that need a database.
 
 ### How a change flows

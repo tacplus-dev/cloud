@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The known vulnerabilities this repository accepts, each until its expiry, in the form looper-scan reads
-# (tacplus-dev/looper#49: exactly id, reason, decided_by and expires, YYYY-MM-DD; tests/providers_test.sh checks it).
+# (tacplus-dev/looper#49: exactly id, reason, decided_by and expires, YYYY-MM-DD, and an optional where, a path or a path
+# glob the entry accepts its id in, looper#182; tests/providers_test.sh checks it).
 # Found by `govulncheck -mode=binary` (symbols present) in the pinned binaries, each at its latest upstream release,
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
@@ -19,17 +20,22 @@
 # Track and bump: move each pin to the first upstream release with the fix and remove its entries (PROPOSALS.md). The
 # binaries, by pin:
 #
-#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866, GHSA-q7gw-24fr-5p69
-#   tflint 0.66.0 (ci/tools.sh, #62)                      GO-2026-5932, GHSA-q7gw-24fr-5p69
-#   tflint-ruleset-google 0.41.0                          GO-2026-5932 6860 6866, GHSA-q7gw-24fr-5p69
+#   OpenTofu 1.13.2 (ci/tools.sh)                         GO-2026-5932 6179 6180 6443 6603 6610 6611 6612 6617 6860 6865 6866 6975, GHSA-q7gw-24fr-5p69
+#   tflint 0.66.0 (ci/tools.sh, #62)                      GO-2026-5932 6975, GHSA-q7gw-24fr-5p69
+#   tflint-ruleset-google 0.41.0                          GO-2026-5932 6860 6866 6975, GHSA-q7gw-24fr-5p69
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   OSV-Scanner v2.7.0 (ci/tools.sh)                      GHSA-q7gw-24fr-5p69
-#   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865, GHSA-q7gw-24fr-5p69
+#   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865 6975, GHSA-q7gw-24fr-5p69
 #   the fleeting plugin v1.3.1 (ci/runner.sh)             GHSA-q7gw-24fr-5p69
+#   GitLab Runner v19.6.0 (ci/runner.sh, #99)             GO-2026-6984
 #   the CI image build:2.6 of 2026-11-23 (#97): its gh    GO-2026-5932 (Trivy)
 #
 # GHSA-q7gw-24fr-5p69 (otel < v1.47.0, #99) has no Go vulndb id: the nightly's OSV-Scanner of the pins' go.mod found it,
 # not govulncheck. GitLab Runner is past it (v19.6.0, built with otel v1.47.0).
+#
+# GO-2026-6975 (otel < v1.47.0, W3C baggage) and GO-2026-6984 (fastzip < v0.2.1) are scoped by where to the binaries
+# they were found in (#103): CI tooling, excepted 14 days by the decision that its findings never block
+# (tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md) until tacplus-dev/looper#225 reports them only.
 exceptions:
   - id: GO-2026-5932
     reason: "x/crypto/openpgp (OpenTofu, tflint and its ruleset, Trivy): no OpenPGP key or message from outside is handled; the tools come by SHA-256. x/crypto v0.59.0 (2026-11-11) deletes openpgp, but tflint 0.66.0 imports it and no release of these requires v0.59.0 yet (the google provider's build does, #76)."
@@ -95,3 +101,28 @@ exceptions:
     reason: "OpenTelemetry Go SDK < v1.47.0, AttributeValueLengthLimit bypassed by U+FFFD runes (CVE-2026-128085, MODERATE; no Go vulndb id, so unseen by govulncheck), in these pins only: OpenTofu 1.13.2, tflint 0.66.0, tflint-ruleset-google 0.41.0, OSV-Scanner v2.7.0, Trivy 0.76.2 (ci/tools.sh) and the fleeting plugin v1.3.1 (stacks/ci/main.tf): CI-only tools, none exporting telemetry here. GitLab Runner moved to v19.6.0, built with v1.47.0. Waits on a release of each built with otel >= v1.47.0 (OpenTofu 1.13.9, tflint 0.66.0, the ruleset 0.41.0, OSV-Scanner v2.7.1, Trivy 0.76.2 and the plugin v1.3.1, the latest, have v1.45.0 or v1.46.0)."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#99, 2026-11-23: 30 days, these pins only)"
     expires: 2026-12-23
+  - id: GO-2026-6975
+    reason: "OpenTelemetry Go W3C baggage parsing amplifies allocations (baggage.Parse, propagation.Baggage.Extract; otel < v1.47.0; GHSA-rrfc-gjm9-cgrj) in OpenTofu 1.13.2 (ci/tools.sh): a CI-only tool, which takes no request carrying a baggage header from outside (it serves nothing to a network here). Waits on an OpenTofu release built with otel >= v1.47.0 (1.13.10, 2026-11-23, the latest, requires v1.45.0)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
+    expires: 2026-12-08
+    where: bin/tofu
+  - id: GO-2026-6975
+    reason: "OpenTelemetry Go W3C baggage parsing amplifies allocations (baggage.Parse, propagation.Baggage.Extract; otel < v1.47.0; GHSA-rrfc-gjm9-cgrj) in tflint 0.66.0 (ci/tools.sh): a CI-only tool, which takes no request carrying a baggage header from outside (it serves nothing to a network here). Waits on a tflint release built with otel >= v1.47.0 (0.66.0, the latest, requires v1.45.0)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
+    expires: 2026-12-08
+    where: bin/tflint
+  - id: GO-2026-6975
+    reason: "OpenTelemetry Go W3C baggage parsing amplifies allocations (baggage.Parse, propagation.Baggage.Extract; otel < v1.47.0; GHSA-rrfc-gjm9-cgrj) in tflint-ruleset-google 0.41.0 (ci/tools.sh): a CI-only tool, which takes no request carrying a baggage header from outside (it serves nothing to a network here). Waits on a tflint-ruleset-google release built with otel >= v1.47.0 (0.41.0, the latest, requires v1.45.0)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
+    expires: 2026-12-08
+    where: bin/tflint.d/**/tflint-ruleset-google
+  - id: GO-2026-6975
+    reason: "OpenTelemetry Go W3C baggage parsing amplifies allocations (baggage.Parse, propagation.Baggage.Extract; otel < v1.47.0; GHSA-rrfc-gjm9-cgrj) in Trivy 0.76.2 (ci/tools.sh): a CI-only tool, which takes no request carrying a baggage header from outside (it serves nothing to a network here). Waits on a Trivy release built with otel >= v1.47.0 (0.76.2, the latest, requires v1.46.0)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
+    expires: 2026-12-08
+    where: bin/trivy
+  - id: GO-2026-6984
+    reason: "saracen/fastzip v0.2.0 (< v0.2.1; GHSA-8gwq-33fg-g56p): its Extractor writes outside its chroot through an existing symbolic link, in our GitLab Runner v19.6.0 build (ci/runner.sh), the manager's binary. The manager extracts no archive: artifacts and caches are extracted by the helper image in the job VMs, and are this repository's own jobs'. Waits on a GitLab Runner release requiring fastzip >= v0.2.1 (v19.6.0, the latest, requires v0.2.0); raising it in ci/runner.sh alone would change the runner's SHA-256, which tacplus-dev/cluster's runner images must match (PROPOSALS.md)."
+    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
+    expires: 2026-12-08
+    where: bin/scan/gitlab-runner

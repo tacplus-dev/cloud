@@ -52,7 +52,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   accepted until 2026-12-23); GitLab Runner is past it (v19.6.0). None of the latest releases had it on 2026-11-23
   (OpenTofu 1.13.9, tflint 0.66.0, ruleset 0.41.0, OSV-Scanner v2.7.1, Trivy 0.76.2, plugin v1.3.1). Their go.mod at
   each tag shows it (`proxy.golang.org/<module>/@v/<tag>.mod`). When the entry expires with one still behind, a new
-  decision on #99's option A (build it with otel v1.47.0, as OpenTofu with go-jose, #98) or another 30 days.
+  decision on #99's option A (build it with otel v1.47.0, as OpenTofu with go-jose, #98) or another 30 days. Since
+  #103 (2026-11-24): the same releases also fix GO-2026-6975 (otel < v1.47.0, W3C baggage, govulncheck's: OpenTofu,
+  tflint, its ruleset and Trivy, scoped by `where`, accepted until 2026-12-08; OpenTofu 1.13.10 of 2026-11-23 still
+  requires v1.45.0); GitLab Runner to a release requiring saracen/fastzip >= v0.2.1 (GO-2026-6984, scoped to
+  `bin/scan/gitlab-runner`, accepted until 2026-12-08; v19.6.0 requires v0.2.0).
   Why: the exceptions expire on 2026-12-03 (Jody's decision on #3: 30 days); after that each needs a bump, a build
   from source like the gitlab provider's, or a new decision.
 - **The fixed dependencies in the tools we now build** (looper, #39, 2026-11-11). What: OpenTofu, tflint, its google
@@ -636,11 +640,19 @@ the looper then marks it `promoted` or `declined` here with the date.
   go-jose v4.1.4 in OpenTofu 1.13.2, #98) and GHSA-q7gw-24fr-5p69 (otel, seven binaries, #99) were published weeks
   ago with fixes and have no `GO-` id. The job passed with them, and only the nightly agent scan found them.
 - **Exceptions scoped by `where`** (looper, #99, 2026-11-23). What: looper-scan now reads a `where` on an exception
-  and warns on each entry without one ("it accepts <id> in every file"); `ci/security.sh` and `tests/providers_test.sh`
-  still refuse any key but id, reason, decided_by and expires. Accept `where` in both, with the security job matching
-  it against a finding's `where`, and scope each entry to the binaries it names (GHSA-q7gw-24fr-5p69's six pins,
-  `bin/tofu` for OpenTofu's). Why: #99's decision asks for an exception "for that pin only", which today only its
-  reason can say: the entry would accept the same id in any other pin, the runner's included.
+  and warns on each entry without one ("it accepts <id> in every file"). Since #103 `ci/security.sh` and
+  `tests/providers_test.sh` accept it too (looper-scan's path glob, on the finding's binary or file), and #103's
+  GO-2026-6975 and GO-2026-6984 entries use it; left: scope each older entry to the binaries it names (one entry a
+  binary: GHSA-q7gw-24fr-5p69's six pins, `bin/tofu` for OpenTofu's x/mod, grpc and x/net ones, and so on). Why: #99's
+  decision asks for an exception "for that pin only", which today only its reason can say: the entry would accept the
+  same id in any other pin, the runner's included.
+- **GitLab Runner built with saracen/fastzip v0.2.1** (looper, #103, 2026-11-24). What: add
+  `github.com/saracen/fastzip@v0.2.1` to `ci/runner.sh`'s `deps` (GO-2026-6984: its Extractor follows an existing
+  symbolic link out of its chroot), with the new `runner_sha256` in `stacks/ci/main.tf` and its plan test (and so a
+  new manager name), in one release with tacplus-dev/cluster's runner and helper images (its `gitlab-runner/pin.yaml`
+  build:, which `gitlab-runner/fetch.sh` requires to have cloud main's runner SHA-256), and drop the exception. Why:
+  #103 accepted it 14 days (until 2026-12-08) rather than move the runner's SHA-256 alone, which would turn cluster's
+  gates red while seatrials waited on its apply; the helper image, which does the extracting, carries v0.2.0 too.
 - **The security job fails only on what ships** (looper, #101, 2026-11-23; tacplus-dev/looper#225). What: every
   finding of `ci/security.sh` gets a `scope`, `shipped` (OSV-Scanner on the tree, gitleaks, the pins listed as
   shipped) or `tooling` (Trivy on the CI image, `govulncheck` on every other pin), and only a shipped one can be

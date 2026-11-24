@@ -7,7 +7,8 @@
 # hashes of its pinned builds for each platform and by nothing else (none of upstream's); the stacks require that
 # version; ci/tofurc.sh installs them from bin/'s mirror and never from a registry, and every script that runs tofu
 # uses it. And that security-exceptions.yaml is what looper-scan reads (tacplus-dev/looper#49): a list of entries with
-# exactly id, reason, decided_by and expires (YYYY-MM-DD), each id once. Needs bash, openssl, base64.
+# exactly id, reason, decided_by and expires (YYYY-MM-DD) and an optional where (a path or a path glob, never empty:
+# looper#182, #103), each id once in each where. Needs bash, openssl, base64.
 #
 #   tests/providers_test.sh
 set -uo pipefail
@@ -82,13 +83,15 @@ if [ -f "$exc" ]; then
     seen && n && /^    [a-z_]+:/ { s = $0; sub(/^    /, "", s); field(s); next }
     { print "line " NR ": not an exception entry: " $0; bad = 1 }
     function field(s, key, v) { key = s; sub(/:.*/, "", key); v = s; sub(/^[^:]*:[ \t]*/, "", v); gsub(/^"|"$/, "", v)
-      if (key !~ /^(id|reason|decided_by|expires)$/ || key in k) { print "line " NR ": key " key; bad = 1 }
+      if (key !~ /^(id|reason|decided_by|expires|where)$/ || key in k) { print "line " NR ": key " key; bad = 1 }
       k[key] = v; n++ }
     function check() {
       if (!("id" in k) || k["reason"] == "" || k["decided_by"] == "") { print "an entry lacks an id, a reason or decided_by: " k["id"]; bad = 1 }
       if (k["expires"] !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) { print k["id"] ": expires is not YYYY-MM-DD"; bad = 1 }
-      if (k["id"] in ids) { print k["id"] ": twice"; bad = 1 }
-      ids[k["id"]] = 1 }
+      w = ("where" in k) ? k["where"] : ""
+      if (("where" in k) && w == "") { print k["id"] ": its where is empty"; bad = 1 }
+      if ((k["id"], w) in ids) { print k["id"] ": twice" (w != "" ? " in " w : ""); bad = 1 }
+      ids[k["id"], w] = 1 }
     END { if (n) check(); if (!seen) { print "no exceptions: list"; bad = 1 }; exit bad }
   ' "$exc" > "$work/exc" && ok "security-exceptions.yaml: what looper-scan reads" ||
     fail "security-exceptions.yaml: $(tr '\n' ';' < "$work/exc")"

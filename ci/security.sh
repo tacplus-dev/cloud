@@ -13,8 +13,9 @@
 #   trivy         the CI image the jobs run in (ci/gitlab-project.gitlab-ci.yml's default image, by digest)
 #
 # The policy (looper-scan's): a secret fails, and so does a HIGH or CRITICAL finding with a fixed version, unless
-# an unexpired entry of security-exceptions.yaml names it (its id, or an alias); an entry that has expired, or has
-# more or less than id, reason, decided_by and expires (YYYY-MM-DD), fails; a tool that cannot run fails. The
+# an unexpired entry of security-exceptions.yaml names it (its id, or an alias) and, with a where, its place; an entry
+# that has expired, or has more or less than id, reason, decided_by and expires (YYYY-MM-DD) and an optional where
+# (a path or a path glob, looper-scan's, #103), fails; a tool that cannot run fails. The
 # report: security/report.json (the findings, each blocking, accepted or neither; the problems; the verdict), with
 # each tool's own report in security/raw/; the job's artifact.
 #
@@ -133,8 +134,9 @@ else
 fi
 
 # security-exceptions.yaml, read as looper-scan reads it (tacplus-dev/looper#49): a list "exceptions:" of entries
-# with exactly id, reason, decided_by and expires; a file it cannot read that way is a problem, never an empty list.
-# The commit's, as the CI image is the commit's CI file's.
+# with exactly id, reason, decided_by and expires, and an optional where (looper#182: a path or a path glob, the entry
+# accepting its id there only, #103); a file it cannot read that way is a problem, never an empty list. The commit's,
+# as the CI image is the commit's CI file's.
 step "security-exceptions.yaml"
 exceptions='[]'
 if [ -f "$tree/security-exceptions.yaml" ]; then
@@ -144,7 +146,7 @@ if [ -f "$tree/security-exceptions.yaml" ]; then
       if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v = substr(v, 2, length(v) - 2)
       gsub(/\\/, "\\\\", v); gsub(/"/, "\\\"", v); return "\"" v "\"" }
     function field(s, k, v) { k = s; sub(/:.*/, "", k); v = s; sub(/^[^:]*:/, "", v)
-      if (k !~ /^(id|reason|decided_by|expires)$/) { print "line " NR ": unknown key \"" k "\"" > "/dev/stderr"; bad = 1 }
+      if (k !~ /^(id|reason|decided_by|expires|where)$/) { print "line " NR ": unknown key \"" k "\"" > "/dev/stderr"; bad = 1 }
       cur = cur (n++ ? "," : "{") "\"" k "\":" str(v) }
     BEGIN { printf "[" }
     /^[ \t]*(#|$)/ { next }
@@ -160,16 +162,24 @@ while IFS= read -r e; do [ -z "$e" ] || problem "$e"; done < <(jq -r --arg today
     elif ((.reason // "") == "" or (.decided_by // "") == "") then "exception \(.id): it needs a reason and who decided (decided_by)"
     elif ((.expires // "") | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") | not) then "exception \(.id): expires \(.expires // "" | @json) is not a date YYYY-MM-DD"
     elif .expires < $today then "exception \(.id) expired on \(.expires) (\(.decided_by): \(.reason))"
+    elif has("where") and .where == "" then "exception \(.id): its where is empty (a path or a path glob, or no where)"
     else empty end' <<<"$exceptions")
 echo "$(jq length <<<"$exceptions") entries"
 
-# The policy, and the report.
+# The policy, and the report. An exception's where is looper-scan's (looper#182): a path glob, * and ? within a path
+# segment, ** across them ("**/" also none), on a finding's place: its where up to " (" (a pinned binary's, "bin/tofu
+# (module@version, ...)") or, for a dependency's, its file in the parentheses ("module@version (x/go.mod)").
 norms=("$out"/norm/*.json)
 [ -e "${norms[0]}" ] || norms=(/dev/null)
 jq -s --argjson exc "$exceptions" --arg today "$today" '
+  def glob_re: "^" + (split("**/") | map(split("**") | map(split("*") | map(split("?")
+      | map(gsub("(?<c>[.+^$()|{}\\[\\]\\\\])"; "\\\(.c)")) | join("[^/]")) | join("[^/]*")) | join(".*")) | join("(.*/)?")) + "$";
+  def in_where($glob): ($glob | glob_re) as $re
+    | (.where | sub(" \\(.*$"; "") | test($re)) or any(.where | capture("^[^ ]+ \\((?<p>[^,)]+)[,)]").p; test($re));
   [.[][]] | unique_by([.tool, .id, .where]) | map(
     . as $f
-    | ([$exc[] | select(.expires >= $today and (.id as $x | $f.id == $x or any($f.aliases[]; . == $x)))][0]) as $e
+    | ([$exc[] | select(.expires >= $today and (.id as $x | $f.id == $x or any($f.aliases[]; . == $x))
+                        and ((has("where") | not) or (.where != "" and (.where as $w | $f | in_where($w)))))][0]) as $e
     | . + {excepted: ($e.id // null),
            blocking: ($e == null and (.kind == "secret" or ((.severity == "HIGH" or .severity == "CRITICAL") and .fix)))})
   | sort_by(if .blocking then 0 else 1 end, {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[.severity] // 4, .tool, .id, .where)' \

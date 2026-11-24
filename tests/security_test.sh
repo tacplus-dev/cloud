@@ -7,8 +7,9 @@
 # passes, with its report; a secret planted in the tree fails, and so does one only in its history, and a shallow
 # clone (its history unscanned); an expired exception fails, and one with a key looper-scan does not read; a HIGH
 # or CRITICAL finding with a fixed version fails (trivy on the CI image, by its digest; govulncheck on a pinned
-# binary, symbols present; osv-scanner on the tree), unless an unexpired exception names it or an alias; one
-# without a fix, a MEDIUM one, or a govulncheck module-level one does not; a pinned binary missing fails, and so does
+# binary, symbols present; osv-scanner on the tree), unless an unexpired exception names it or an alias, and, with a
+# where (a path or a path glob, #103), that place: one scoped to another binary does not accept it, and an empty
+# where fails; one without a fix, a MEDIUM one, or a govulncheck module-level one does not; a pinned binary missing fails, and so does
 # a tool that cannot run. Needs bash, git, jq, gitleaks and yq (bin/: ci/tools.sh).
 #
 #   tests/security_test.sh
@@ -137,6 +138,30 @@ scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runn
 exceptions "$r" CVE-2026-0002 2999-12-31
 scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && ok "an exception naming its alias accepts it" ||
   fail "an alias's exception: $(tail -3 "$r/log")"
+# A where scopes an exception to the binaries it names (looper#182, #103), as a path or a path glob.
+r=$(repo)
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/scan/gitlab-runner'
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner &&
+  [ "$(jq -r '[.findings[] | select(.id == "GO-2026-0002")][0].excepted' "$r/security/report.json")" = GO-2026-0002 ] &&
+  ok "an exception whose where is the binary accepts it" || fail "a where on the binary: $(tail -3 "$r/log")"
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tofu'
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && fail "an exception scoped to bin/tofu accepts bin/scan/gitlab-runner's" ||
+  { grep -q 'FAIL HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" && ok "an exception scoped to another binary does not accept it" || fail "a where elsewhere: $(tail -3 "$r/log")"; }
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tflint.d/**/tflint-ruleset-google'
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tflint-ruleset-google && ok "a where's ** spans the path segments between" ||
+  fail "a where glob: $(tail -3 "$r/log")"
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/*'
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && fail "a where's * crosses a /" ||
+  { grep -q 'FAIL HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" && ok "a where's * stays within its path segment" || fail "a where's *: $(tail -3 "$r/log")"; }
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: ""'
+scan "$r" && fail "an exception with an empty where passes" ||
+  { grep -q 'exception GO-2026-0002: its where is empty' "$r/log" && ok "an exception with an empty where fails" || fail "an empty where: $(tail -3 "$r/log")"; }
+jq -n '{results: [{source: {path: "x/go.mod"}, packages: [{package: {name: "golang.org/x/net", version: "0.1.0"},
+  vulnerabilities: [{id: "GO-2026-0003", summary: "a test", affected: [{ranges: [{events: [{introduced: "0"}, {fixed: "0.2.0"}]}]}]}],
+  groups: [{ids: ["GO-2026-0003"], aliases: ["CVE-2026-0003"], max_severity: "7.5"}]}]}]}' > "$work/osv-where.json"
+exceptions "$r" GO-2026-0003 2999-12-31 '    where: x/go.mod'
+scan "$r" STUB_OSV_JSON="$work/osv-where.json" STUB_OSV_RC=1 && ok "a where matches a dependency's file" || fail "a where on a dependency's file: $(tail -3 "$r/log")"
+
 r=$(repo)
 scan "$r" STUB_GOVULNCHECK_JSON="$work/gv-module.json" && ok "a module-level govulncheck finding (no symbol present) does not fail" ||
   fail "module level: $(tail -3 "$r/log")"
