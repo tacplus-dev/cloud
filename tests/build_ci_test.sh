@@ -30,6 +30,13 @@ grep -qF 'content        = file("${path.module}/files/build.gitlab-ci.yml")' "$h
 grep -qxF '  BUILD_DOCKER_TAGS: "arm64, build-docker"' "$file" &&
   ok "the copy sends host Docker jobs to arm64, build-docker, the build pool's runner (#72)" ||
   fail "the copy's BUILD_DOCKER_TAGS: $(grep -F BUILD_DOCKER_TAGS: "$file")"
+# The light jobs run on the build-light runner (#100: tacplus-dev/looper#224), on the normal pool, never on a build
+# runner's slot: pending, plan, report-pass and report-fail carry arm64 and build-light, and none of them build.
+tags_of() { awk -v job="$1:" '$0 == job { in_job = 1; next } in_job && /^[^ #]/ { exit } in_job && /^  tags:/ { sub(/^  tags: */, ""); print; exit }' "$file"; }
+for job in pending plan report-pass report-fail; do
+  [ "$(tags_of "$job")" = "[arm64, build-light]" ] &&
+    ok "the copy runs $job on arm64, build-light, not build (#100)" || fail "the copy's $job tags: [$(tags_of "$job")]"
+done
 
 reset
 cp "$file" "$STUB_CURL/raw"

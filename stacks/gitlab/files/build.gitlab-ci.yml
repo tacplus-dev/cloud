@@ -43,7 +43,7 @@
 # BUILD_DOCKER_TAGS (arm64, build-docker: the VM build pool alone), which the
 # plan says in its log. Its SBOM is a job of its own, in the looper image.
 #
-# Every other job runs on the build runner (tags arm64, build): a pod on the spot
+# Every other job but the light ones (below) runs on the build runner (tags arm64, build): a pod on the spot
 # pool (tacplus-dev/cluster#13; before it, a fresh VM per job), never one an
 # agent's job ran on (Jody, 2026-10-29). Spot preemption is retried the GitLab
 # way (looper#84; tacplus-dev/roadmap decisions/only-vms-are-k8s-nodes-2026-11-04.md):
@@ -55,7 +55,12 @@
 # in its infrastructure alone, its gates green, the manager builds again, once
 # (repo-looper: build_again). plan and status
 # run in the looper image, for looper-build; the gates run in the repository's
-# pinned build image, as the child pipeline plan writes.
+# pinned build image, as the child pipeline plan writes. The light jobs,
+# pending, plan, report-pass and report-fail (looper-build alone, in the looper
+# image: no spot node, no build image), run on the light runner (tags arm64,
+# build-light: tacplus-dev/cloud#100, a pod on the normal pool, looper#224), so
+# they never wait behind the build runner's slots; gates is a trigger and takes
+# no runner.
 #
 # The macOS smoke (looper#36): a web run on main with "smoke": true and no repo
 # or sha is a pipeline of one manual job, macos-smoke, on the Mac runner (tag
@@ -248,6 +253,7 @@ pending:
   stage: plan
   needs: []
   allow_failure: true
+  tags: [arm64, build-light]
   script:
     - looper-build status pending
 
@@ -259,6 +265,7 @@ plan:
   extends: .build-run
   stage: plan
   needs: []
+  tags: [arm64, build-light]
   script:
     - looper-build plan
   artifacts:
@@ -287,6 +294,7 @@ report-pass:
   rules:
     - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_success
+  tags: [arm64, build-light]
   script:
     - looper-build status success
 
@@ -295,6 +303,7 @@ report-fail:
   rules:
     - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_failure
+  tags: [arm64, build-light]
   script:
     - looper-build status failure
 

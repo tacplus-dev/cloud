@@ -22,7 +22,7 @@ locals {
   cloud   = module.settings.gitlab_project
   secrets = "projects/${module.settings.bootstrap.project}/secrets"
   # The tacplus-dev/looper commit whose ci/build.gitlab-ci.yml files/build.gitlab-ci.yml is (ci/build-ci.sh).
-  build_ci_commit = "cf993b6f3674bb852d75b741e02964e9e8355e60"
+  build_ci_commit = "b1dbfe4d1b848f2538d026064e45991250d69d9c"
 }
 
 module "gitlab" {
