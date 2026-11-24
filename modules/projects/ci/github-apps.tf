@@ -21,13 +21,15 @@ locals {
   app_accounts = merge([for k, a in local.apps.keys : { for id, s in a.accounts : id => merge(s, { key = k }) }]...)
   # Each key's signers: the looper project's jobs of its ref in the key's environments (the attribute role), and with
   # namespace, every protected ref of the namespace (the attribute namespace_id); its projects' jobs, through their
-  # pools (the attribute project_path); and its accounts.
+  # pools (the attribute project_path); its accounts; and for the reports' key (looper_vm_app_key), each looper VM's
+  # account (#108, looper-vms.tf).
   app_pool = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.loopers.name}"
   app_signers = { for k, a in local.apps.keys : k => concat(
     a.namespace ? ["${local.app_pool}/attribute.namespace_id/${local.apps.namespace.id}"] : [],
     [for e in a.environments : "${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:${e}"],
     [for p in a.projects : "principalSet://iam.googleapis.com/${local.apps.pools[p.pool]}/attribute.project_path/${p.gitlab_project}"],
     [for id in sort(keys(a.accounts)) : google_service_account.app[id].member],
+    k == var.looper_vm_app_key ? [for n in sort(keys(var.looper_vms)) : local.looper_vm_member[n]] : [],
   ) }
 }
 
@@ -114,6 +116,7 @@ resource "google_kms_crypto_key_iam_binding" "signer" {
   crypto_key_id = google_kms_crypto_key.app[each.key].id
   role          = "roles/cloudkms.signer"
   members       = each.value
+  depends_on    = [google_service_account.looper_vm]
 }
 
 # An account that signs for a key (#30): only its GitLab project's jobs, federated through its pool, become it

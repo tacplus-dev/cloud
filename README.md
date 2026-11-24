@@ -21,8 +21,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
     GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader` and `tacplus-admiral`, import-only),
     their import jobs, the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The
-    GitHub Apps' keys), and the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
-    Admiral's credentials);
+    GitHub Apps' keys), the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
+    Admiral's credentials), and the looper VMs, one instance group of 0..1 per project (below, The looper VMs);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, a spot build pool of c4a-standard-4 from 0 to 8 over the region's zones
     with c4a, for build pods only, and a looper pool of c4a-standard-2 on demand from 0 to 2, for the looper runs'
@@ -1153,6 +1153,25 @@ and `GCP_ADMIRAL_SECRET_ADDERS` set to his account before that pipeline (the imp
    one user who is a Reporter of one project).
 
 Nothing of it is tested end to end here: the first exchange is the Admiral's (admiral#5), after both steps.
+
+## The looper VMs
+
+#108; `decisions/looper-build-vms-2026-11-24.md` (tacplus-dev/roadmap). One looper+builder per project, outside the
+deployment cluster, in `tacplus-ci` (`modules/projects/ci/looper-vms.tf`; the projects in `modules/settings`'
+`looper_vms`, tacplus first). Each is a zonal instance group `looper-vm-<repo>`, at 0 until the kicker
+(tacplus-dev/looper#241) sizes it to 1, of one C4A VM (spot or not, its Hyperdisk Balanced boot disk only a cache) on
+stock Container-Optimized OS for arm64 (the pools' pin). The VM has no external address (NAT), no SSH key, the
+project's keys blocked and no firewall rule to it; its window is Cloud Logging. One cloud-init for every project
+(`files/looper-vm-cloud-init.yaml`, `files/looper-vm.sh`, tested by `tests/looper_vm_test.sh`) reads the repository,
+the image (by digest; empty: nothing runs) and the VM's group from the metadata, pulls the image and runs it with the
+cache and the container socket; when the container exits 0 (idle), the VM sizes its own group to 0.
+
+The VM's account `looper-vm-<repo>`, keyless, writes logs, reads the secret `looper-model-token` and no other, signs
+with `tacplus-looper`'s key (never `tacplus-manager`'s), and resizes its own group alone (the custom role
+`looperVmResizer`: an instance group's get and update, conditioned on the group's name). The kicker's jobs (the looper
+project's environment `kicker`) hold the same role on the `looper-vm-` groups alone. `looper-model-token` is made with
+no version and no adder: Jody adds its value out of band (`gcloud secrets versions add looper-model-token
+--project=tacplus-ci --data-file=-`).
 
 ## Certificates
 

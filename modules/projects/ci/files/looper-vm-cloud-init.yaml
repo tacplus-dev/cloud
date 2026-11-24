@@ -1,0 +1,36 @@
+#cloud-config
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The looper VM's cloud-init (#108; decisions/looper-build-vms-2026-11-24.md, point 10): one for every project, on
+# stock Container-Optimized OS, which runs it at each boot. It writes the one script (files/looper-vm.sh, under /etc,
+# which COS keeps writable for the boot) and the unit that runs it, and starts the unit without waiting on it. Nothing
+# here differs between projects or holds a secret: the script reads the project and the image from the metadata.
+# The unit: an idle exit (0) is not started again, and its ExecStopPost sizes the group to 0; a failure is, after 30
+# s; a stop (a spot preemption's shutdown) gives the container 25 s after its SIGTERM, inside TimeoutStopSec.
+write_files:
+  - path: /etc/looper-vm/looper-vm.sh
+    permissions: "0644"
+    owner: root
+    content: |
+      ${indent(6, script)}
+  - path: /etc/systemd/system/looper-vm.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=The project's looper (tacplus-dev/cloud #108)
+      Requires=docker.service
+      After=docker.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      ExecStart=/bin/bash /etc/looper-vm/looper-vm.sh run
+      ExecStop=/bin/bash /etc/looper-vm/looper-vm.sh stop
+      ExecStopPost=/bin/bash /etc/looper-vm/looper-vm.sh post
+      Restart=on-failure
+      RestartSec=30
+      TimeoutStopSec=30
+runcmd:
+  - systemctl daemon-reload
+  - systemctl start --no-block looper-vm.service

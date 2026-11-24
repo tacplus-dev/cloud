@@ -27,6 +27,8 @@ mock_provider "google" {
 # The parent folder, as the pipeline gives it (GCP_PARENT_FOLDER).
 variables {
   parent_folder = "111111111111"
+  # The looper VMs' boot image (#108), which the stack gives every run of the module as module.settings.cos_arm64_image.
+  looper_vm_os_image = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
 }
 
 run "stack" {
@@ -85,6 +87,15 @@ run "stack" {
       installation_id = "184144753"
     }
     error_message = "The stack does not give the Admiral's Config its provider, audience, account, key, secret and App IDs."
+  }
+  # The looper VMs (#108): tacplus's group, which the kicker resizes, and its account.
+  assert {
+    condition     = output.looper_vms == { tacplus = { group = "looper-vm-tacplus", zone = "us-central1-b", service_account = "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com" } }
+    error_message = "The stack does not give tacplus's looper VM group looper-vm-tacplus in us-central1-b and its account."
+  }
+  override_resource {
+    target = module.ci.google_service_account.looper_vm
+    values = { email = "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com" }
   }
   # Computed at apply: the provider's name and the key ring's and keys' IDs, as Google gives them.
   override_resource {
@@ -201,6 +212,12 @@ run "settings" {
   assert {
     condition     = output.github_apps.key_ring == "looper" && output.github_apps.pool == "gitlab-loopers" && output.github_apps.looper == { project = "tacplus-dev/looper", project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" } && output.github_apps.namespace == { path = "tacplus-dev", id = "145863835", wif_provider = "gitlab-com" }
     error_message = "The apps' federation is not tacplus-dev/looper's main (88136765) and tacplus-dev's namespace (145863835), in the pool gitlab-loopers."
+  }
+  # The looper VMs (#108; decisions/looper-build-vms-2026-11-24.md): tacplus first, the pilot, a spot c4a-standard-8
+  # with a 200 GB cache disk, with no image until tacplus-dev/looper#239 publishes it (its group stays at 0).
+  assert {
+    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
 }
 
@@ -613,6 +630,11 @@ run "ci" {
   assert {
     condition     = length(google_logging_log_view.hub_audit_autoscaler) == 0 && length(google_project_iam_member.hub_audit_autoscaler) == 0
     error_message = "With autoscaler_log unset, the plan makes a log view or grants hub-audit viewAccessor: the host's logging.configWriter may not be in place."
+  }
+  # Without looper VMs (#108), no VM, no account, and no grant: the kicker resizes nothing, nobody reads the model token.
+  assert {
+    condition     = length(google_compute_instance_group_manager.looper_vm) == 0 && length(google_service_account.looper_vm) == 0 && length(google_project_iam_member.looper_vm_kicker) == 0 && length(google_secret_manager_secret_iam_binding.looper_model_token) == 0
+    error_message = "Without looper VMs, the plan makes one, an account, the kicker's resize or a reader of looper-model-token."
   }
 }
 
@@ -1405,4 +1427,231 @@ run "admiral_unknown_key_refused" {
     admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
   expect_failures = [var.admiral]
+}
+
+# The looper VMs (#108; tacplus-dev/roadmap decisions/looper-build-vms-2026-11-24.md): per project a zonal group of
+# 0..1 C4A VMs on the pinned Container-Optimized OS, spot or not, with no external address and no SSH in any form, its
+# one generic cloud-init and its project, image and group as metadata alone; its own account, which writes logs,
+# reads looper-model-token and no other secret, signs with the reports' key (never the manager's) and resizes its own
+# group alone; and the kicker, which resizes the looper VMs' groups alone.
+run "looper_vms" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    looper_vms = {
+      tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper/looper-vm@sha256:1111111111111111111111111111111111111111111111111111111111111111" }
+      small   = { machine_type = "c4a-standard-2", disk_gb = 50, spot = false, image = "" }
+    }
+  }
+  override_resource {
+    target = google_iam_workload_identity_pool.loopers
+    values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-loopers" }
+  }
+  assert {
+    condition     = { for k, a in google_service_account.looper_vm : k => [a.account_id, a.project] } == { tacplus = ["looper-vm-tacplus", "tacplus-ci"], small = ["looper-vm-small", "tacplus-ci"] }
+    error_message = "Each looper VM does not run as its own account, looper-vm-<name>, in tacplus-ci."
+  }
+  # Arm64 C4A on the pinned COS, Hyperdisk Balanced (C4A has no pd-*), the spec's size; on the runners' subnet with no
+  # external address (NAT only); tagged looper-vm, which no firewall rule targets.
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.looper_vm : t.disk[0].source_image == "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12" && t.disk[0].disk_type == "hyperdisk-balanced" && t.disk[0].boot && t.disk[0].auto_delete && length(t.network_interface) == 1 && length(t.network_interface[0].access_config) == 0 && length(t.network_interface[0].ipv6_access_config) == 0 && t.tags == toset(["looper-vm"]) && t.labels == tomap({ managed-by = "tacplus-dev-cloud", looper-vm = k })]) && google_compute_instance_template.looper_vm["tacplus"].machine_type == "c4a-standard-8" && google_compute_instance_template.looper_vm["tacplus"].disk[0].disk_size_gb == 200 && google_compute_instance_template.looper_vm["small"].disk[0].disk_size_gb == 50
+    error_message = "A looper VM is not its C4A machine on the pinned Container-Optimized OS with its Hyperdisk Balanced disk, or has an external address."
+  }
+  assert {
+    condition     = google_compute_instance_template.looper_vm["tacplus"].scheduling[0].provisioning_model == "SPOT" && google_compute_instance_template.looper_vm["tacplus"].scheduling[0].preemptible && google_compute_instance_template.looper_vm["tacplus"].scheduling[0].instance_termination_action == "STOP" && !google_compute_instance_template.looper_vm["tacplus"].scheduling[0].automatic_restart && google_compute_instance_template.looper_vm["tacplus"].scheduling[0].on_host_maintenance == "TERMINATE"
+    error_message = "A spot looper VM is not SPOT, stopped when reclaimed (its group recreates it), with no automatic restart."
+  }
+  assert {
+    condition     = google_compute_instance_template.looper_vm["small"].scheduling[0].provisioning_model == "STANDARD" && !google_compute_instance_template.looper_vm["small"].scheduling[0].preemptible
+    error_message = "A looper VM that is not spot is not STANDARD."
+  }
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.looper_vm : length(t.service_account) == 1 && length(one(t.service_account).scopes) == 1 && endswith(one(one(t.service_account).scopes), "cloud-platform")])
+    error_message = "A looper VM does not run as its account with the cloud-platform scope."
+  }
+  # No SSH in any form: no key in the metadata, the project's keys blocked. The metadata is the project, its image
+  # (none: nothing runs), its group, the one cloud-init, logging on and no OS update: no secret.
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.looper_vm : !contains(keys(t.metadata), "ssh-keys") && !contains(keys(t.metadata), "sshKeys") && t.metadata["block-project-ssh-keys"] == "true" && join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-group looper-image looper-repo user-data" && t.metadata["looper-repo"] == k && t.metadata["looper-group"] == "projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-${k}" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled"]) && google_compute_instance_template.looper_vm["tacplus"].metadata["looper-image"] == "ghcr.io/tacplus-dev/looper/looper-vm@sha256:1111111111111111111111111111111111111111111111111111111111111111" && google_compute_instance_template.looper_vm["small"].metadata["looper-image"] == ""
+    error_message = "A looper VM's metadata has an SSH key, does not block the project's, or holds more than its project, image, group, cloud-init and logging."
+  }
+  # One cloud-init for every project: the script, and the unit that runs it (an idle exit not restarted, a stop given
+  # 30 s), the same text whatever the project.
+  assert {
+    condition     = google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"] == google_compute_instance_template.looper_vm["small"].metadata["user-data"] && startswith(google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"], "#cloud-config\n") && alltrue([for l in split("\n", trimspace(file("../../modules/projects/ci/files/looper-vm.sh"))) : strcontains(google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"], l)]) && alltrue([for l in ["Restart=on-failure", "TimeoutStopSec=30", "ExecStart=/bin/bash /etc/looper-vm/looper-vm.sh run", "ExecStop=/bin/bash /etc/looper-vm/looper-vm.sh stop", "ExecStopPost=/bin/bash /etc/looper-vm/looper-vm.sh post"] : strcontains(google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"], "      ${l}\n")])
+    error_message = "A looper VM's cloud-init is not the one generic script and its unit."
+  }
+  # Sized by the kicker and the VM, never by a plan: at 0, replaced with no surge on a template change.
+  assert {
+    condition     = alltrue([for k, g in google_compute_instance_group_manager.looper_vm : g.name == "looper-vm-${k}" && g.base_instance_name == "looper-vm-${k}" && g.zone == "us-central1-b" && g.target_size == 0 && length(g.update_policy) == 1 && g.update_policy[0].type == "PROACTIVE" && g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0 && g.update_policy[0].max_unavailable_fixed == 1])
+    error_message = "A looper VM's group is not looper-vm-<name> in the stack's zone, at 0, replacing its VM with no surge."
+  }
+  # Each account signs with the reports' key (tacplus-looper), never the manager's; the key's other signers stay.
+  assert {
+    condition     = google_kms_crypto_key_iam_binding.signer["tacplus-looper"].members == toset(concat([for e in ["kicker", "looper-plan", "looper-report", "looper-scan"] : "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:${e}"], ["serviceAccount:looper-vm-small@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"]))
+    error_message = "The looper VMs' accounts do not sign with tacplus-looper's key, or its other signers changed."
+  }
+  assert {
+    condition     = !anytrue([for m in google_kms_crypto_key_iam_binding.signer["tacplus-manager"].members : startswith(m, "serviceAccount:looper-vm-")])
+    error_message = "A looper VM's account signs with tacplus-manager's key: its code would mint the bypass of main's ruleset."
+  }
+  # The model token: looper-model-token, no version here, read by the looper VMs' accounts alone, and no adder.
+  assert {
+    condition     = google_secret_manager_secret.looper_model_token.secret_id == "looper-model-token" && google_secret_manager_secret.looper_model_token.replication[0].user_managed[0].replicas[0].location == "us-central1" && length(google_secret_manager_secret_iam_binding.looper_model_token) == 1 && google_secret_manager_secret_iam_binding.looper_model_token[0].role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_binding.looper_model_token[0].members == toset(["serviceAccount:looper-vm-small@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"])
+    error_message = "looper-model-token is read by someone besides the looper VMs' accounts, or has another binding."
+  }
+  assert {
+    condition     = !anytrue([for b in google_secret_manager_secret_iam_member.manager_reads_token : startswith(b.member, "serviceAccount:looper-vm-")])
+    error_message = "A looper VM's account reads a runner token."
+  }
+  # Its project roles: logWriter, and the resize of its own group alone.
+  assert {
+    condition     = { for k, m in google_project_iam_member.looper_vm_log : k => [m.role, m.member] } == { for k in ["small", "tacplus"] : k => ["roles/logging.logWriter", "serviceAccount:looper-vm-${k}@tacplus-ci.iam.gserviceaccount.com"] }
+    error_message = "A looper VM's account does not write logs, or holds another role."
+  }
+  assert {
+    condition     = google_project_iam_custom_role.looper_vm_resizer.role_id == "looperVmResizer" && google_project_iam_custom_role.looper_vm_resizer.permissions == toset(["compute.instanceGroupManagers.get", "compute.instanceGroupManagers.update"])
+    error_message = "The looper VMs' resize role is more than an instance group's get and update."
+  }
+  assert {
+    condition     = { for k, m in google_project_iam_member.looper_vm_self_stop : k => [m.role, m.member, m.condition[0].expression] } == { for k in ["small", "tacplus"] : k => ["projects/tacplus-ci/roles/looperVmResizer", "serviceAccount:looper-vm-${k}@tacplus-ci.iam.gserviceaccount.com", "resource.name == \"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-${k}\""] }
+    error_message = "A looper VM's account resizes something other than its own group."
+  }
+  # The kicker (tacplus-dev/looper#241): the looper project's jobs of its environment kicker, on the looper VMs' groups
+  # alone; nobody else but each VM on its own group holds the role.
+  assert {
+    condition     = length(google_project_iam_member.looper_vm_kicker) == 1 && google_project_iam_member.looper_vm_kicker[0].role == "projects/tacplus-ci/roles/looperVmResizer" && google_project_iam_member.looper_vm_kicker[0].member == "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:kicker" && google_project_iam_member.looper_vm_kicker[0].condition[0].expression == "resource.name.startsWith(\"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-\")"
+    error_message = "The kicker does not resize the looper VMs' groups, or resizes more."
+  }
+  assert {
+    condition     = alltrue([for m in concat(values(google_project_iam_member.manager), values(google_project_iam_member.hub_audit), values(google_project_iam_member.looper_vm_log)) : !strcontains(m.role, "looperVmResizer")])
+    error_message = "Someone besides the kicker and each looper VM holds the looper VMs' resize role."
+  }
+  assert {
+    condition     = { for k, g in output.looper_vms : k => [g.group, g.zone] } == { small = ["looper-vm-small", "us-central1-b"], tacplus = ["looper-vm-tacplus", "us-central1-b"] }
+    error_message = "The module does not give each looper VM's group and zone."
+  }
+}
+
+# The looper VMs never sign with the manager's key (tacplus-dev/looper#90): their code runs on the VM.
+run "looper_vm_manager_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    # The manager's key, which a looper VM's account would sign with.
+    looper_vms        = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    looper_vm_app_key = "tacplus-manager"
+  }
+  expect_failures = [var.looper_vm_app_key]
+}
+
+# A looper VM's image is pinned by digest, and its machine is C4A (arm64, Hyperdisk Balanced).
+run "looper_vm_unpinned_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    looper_vms  = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper/looper-vm:1.0" } }
+  }
+  expect_failures = [var.looper_vms]
+}
+
+run "looper_vm_not_c4a_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    looper_vms  = { tacplus = { machine_type = "t2a-standard-8", disk_gb = 200, spot = true, image = "" } }
+  }
+  expect_failures = [var.looper_vms]
 }

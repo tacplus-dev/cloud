@@ -231,3 +231,37 @@ variable "hub_audit" {
     error_message = "hub-audit's pool is not a pool's resource name, or its GitLab project not a project's path."
   }
 }
+
+variable "looper_vms" {
+  description = "The looper VMs (looper-vms.tf, #108; decisions/looper-build-vms-2026-11-24.md), by tacplus-dev repository name: each a zonal instance group of 0..1 arm64 VMs on looper_vm_os_image, machine_type (C4A) with a disk_gb Hyperdisk Balanced boot disk (its cache), spot or not, running image (the looper-vm image, by digest; empty: the VM runs nothing), as an account of its own, looper-vm-<name>."
+  type = map(object({
+    machine_type = string
+    disk_gb      = number
+    spot         = bool
+    image        = string
+  }))
+  default = {}
+  validation {
+    condition     = alltrue([for k, v in var.looper_vms : can(regex("^[a-z][a-z0-9-]{0,18}[a-z0-9]$", k)) && can(regex("^c4a-", v.machine_type)) && v.disk_gb >= 10 && floor(v.disk_gb) == v.disk_gb && (v.image == "" || can(regex("^[^[:space:]@]+@sha256:[0-9a-f]{64}$", v.image)))])
+    error_message = "A looper VM is named by its repository (lowercase, 2 to 20 characters: looper-vm-<name> is its account's ID), is a C4A machine (arm64, Hyperdisk Balanced), has a whole disk of 10 GB or more, and runs an image by digest, or none (\"\")."
+  }
+}
+
+variable "looper_vm_os_image" {
+  description = "The looper VMs' boot image: stock Container-Optimized OS for arm64, by name (never a family), as pool_image."
+  type        = string
+  validation {
+    condition     = can(regex("^projects/cos-cloud/global/images/cos-arm64-[0-9]+-[0-9]+-[0-9]+-[0-9]+$", var.looper_vm_os_image))
+    error_message = "The looper VMs boot Container-Optimized OS for arm64 pinned by its image name (projects/cos-cloud/global/images/cos-arm64-<milestone>-<build>), never a family."
+  }
+}
+
+variable "looper_vm_app_key" {
+  description = "The GitHub App key (github_apps' keys) each looper VM's account signs with: the reports' (tacplus-looper), never the manager's."
+  type        = string
+  default     = "tacplus-looper"
+  validation {
+    condition     = (length(var.looper_vms) == 0 || contains(keys(var.github_apps.keys), var.looper_vm_app_key)) && var.looper_vm_app_key != "tacplus-manager"
+    error_message = "The looper VMs' key is not one of github_apps' keys (with looper VMs), or is tacplus-manager: a looper VM's code runs on its VM, and would mint the bypass of main's ruleset (tacplus-dev/looper#90)."
+  }
+}

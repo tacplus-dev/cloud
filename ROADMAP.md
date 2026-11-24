@@ -33,6 +33,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: the gateway listener ready once the NEG seatrials-gateway exists, and the audit lists NEGs (#94). Agent, at Jody's request, 2026-11-22 (seatrials' first deploy, tacplus-dev/fleet-seatrials#1).
 - dev: a `looper` node pool, c4a-standard-2 on demand, autoscaling 0 to 2, tainted for looper runs only, in the quota preferences (#95; cluster#47). Hub, at Jody's request, 2026-11-22 (`tacplus-dev/roadmap:decisions/cluster-node-pools-2026-11-03.md`, addendum 2026-11-22).
 - dev: the spot build pool's maximum 5 to 8 nodes, still from 0; quota preferences follow (#96). Hub, at Jody's request, 2026-11-23.
+- ci: per-project looper VMs, an instance group of 0..1 spot C4A VMs on stock COS with one generic cloud-init, no SSH, their accounts (logs, looper-model-token, tacplus-looper's key, their own resize) and the kicker's resize; tacplus first (#108). Hub, at Jody's request, 2026-11-24 (`tacplus-dev/roadmap:decisions/looper-build-vms-2026-11-24.md`).
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).

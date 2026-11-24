@@ -12,7 +12,9 @@
 #     rule allowing ingress from the internet (0.0.0.0/0 or ::/0, or no source at all, which is 0.0.0.0/0): every load
 #     balancer is proxy-based, so no exception; a firewall rule allowing port 22, in either direction (tcp or all, with
 #     no ports, 22, or a range covering it): no SSH anywhere, not even IAP, the one exception being the runners' internal
-#     rule, exactly as it is, until the runner VMs go (#11); a cluster without private nodes, one whose control plane
+#     rule, exactly as it is, until the runner VMs go (#11); an instance or instance template whose metadata holds an
+#     SSH key (ssh-keys or sshKeys), and a looper VM's (tagged looper-vm, #108) that does not block the project's
+#     (block-project-ssh-keys "true"): no SSH in any form; a cluster without private nodes, one whose control plane
 #     has a public endpoint, no master authorized networks, or a public range among them (#79), a node pool with public
 #     ones (one that does not say inherits the cluster's), or a node pool whose image is not COS_CONTAINERD;
 #   - the one public IP (decisions/network-exposure-2026-11-03.md, #13): in a plan, an external address but the one
@@ -187,6 +189,13 @@ plan_check() {
            elif any($after.network_interface[]?; (.access_config // []) + (.ipv6_access_config // []) | length > 0) then
              "\($a) has an external address (an access_config): only load balancers are public"
            else empty end),
+        # No SSH in any form (#108): no key in a VM'"'"'s metadata (the runner pools'"'"' keys are the fleeting plugin'"'"'s, set
+        # at run time, never planned), and a looper VM blocks the project'"'"'s.
+        (select(.type | IN("google_compute_instance", "google_compute_instance_template", "google_compute_region_instance_template"))
+         | ($after.metadata // {}) as $m
+         | (select($m | has("ssh-keys") or has("sshKeys")) | "\($a) has an SSH key in its metadata: no SSH in any form"),
+           (select(any($after.tags[]?; . == "looper-vm") and $m["block-project-ssh-keys"] != "true")
+            | "\($a) is a looper VM that does not block the project'"'"'s SSH keys (metadata block-project-ssh-keys \"true\"): no SSH in any form (#108)")),
         (select(.type == "google_compute_firewall")
          | if any($unknown[]; test("^(source_ranges|source_tags|source_service_accounts|allow)($|\\.)")) then
              "\($a): its sources or what it allows are known only after apply"

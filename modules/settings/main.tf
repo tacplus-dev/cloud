@@ -442,6 +442,17 @@ output "runner_pools" {
   }
 }
 
+# The looper VMs of the ci project (#108; tacplus-dev/roadmap decisions/looper-build-vms-2026-11-24.md), by
+# tacplus-dev repository: tacplus first, the pilot. Each project's spec will come from its own looper.yaml
+# (tacplus-dev/looper#240) and is right-sized from measured use (point 9); until then it is here. image is the looper-vm
+# image by digest, empty until tacplus-dev/looper#239 publishes it: the group exists at 0 and costs nothing.
+output "looper_vms" {
+  description = "The looper VMs (the ci module's looper_vms): per repository, its machine type (C4A), its Hyperdisk Balanced disk in GB, spot or not, and its image by digest (empty: none yet)."
+  value = {
+    tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" }
+  }
+}
+
 output "ci_cpus" {
   description = <<-EOT
     tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it; a raise is a

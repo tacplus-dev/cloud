@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub curl for tests/looper_vm_test.sh: the metadata server (STUB_LOOPER_VM/attributes/<key>, a missing one 404 as
+# curl -f fails, 22; the VM's token vm-token) and Compute Engine's resize, which answers only with the VM's token, a
+# POST, and unless STUB_LOOPER_VM/resize-fails exists. Each call is logged to STUB_LOOPER_VM/calls: its method and URL,
+# and the bearer token it sent.
+set -uo pipefail
+url='' auth='' method=GET
+while [ $# -gt 0 ]; do
+  case $1 in
+    -X) method=$2; shift ;;
+    -H) [[ $2 == Authorization:* ]] && auth=${2#Authorization: Bearer }; shift ;;
+    --max-time | --retry) shift ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+echo "$method $url${auth:+ Bearer $auth}" >> "$STUB_LOOPER_VM/calls"
+md=http://metadata.google.internal/computeMetadata/v1
+case $url in
+  "$md/instance/service-accounts/default/token") printf '{"access_token":"vm-token","expires_in":3599,"token_type":"Bearer"}' ;;
+  "$md/instance/attributes/"*) f=$STUB_LOOPER_VM/attributes/${url#"$md/instance/attributes/"}; [ -f "$f" ] || exit 22; cat "$f" ;;
+  https://compute.googleapis.com/compute/v1/projects/*/resize\?size=0)
+    [ "$auth" = vm-token ] && [ "$method" = POST ] && [ ! -f "$STUB_LOOPER_VM/resize-fails" ] || exit 22
+    printf '{"kind": "compute#operation"}' ;;
+  *) exit 22 ;;
+esac

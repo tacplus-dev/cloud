@@ -7,7 +7,8 @@
 # image family), and passes this repository's modules and stacks; in a saved plan's JSON, it refuses a key created
 # and any public member, in member, members, a policy_data document or nested anywhere, and passes a plan without
 # them (a key deleted is not one created); and the network rules of 2026-11-03 (#7): it refuses an instance or a
-# template with an external address (an access config, or one known only after apply), an allow rule open to the
+# template with an external address (an access config, or one known only after apply), or an SSH key in its metadata,
+# and a looper VM that does not block the project's (#108), an allow rule open to the
 # internet (0.0.0.0/0, ::/0, or no source at all), a rule allowing port 22 (a port, a range or all ports, either
 # direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, one whose
 # control plane has a public endpoint, no authorized networks or a public range among them (#79), a pool
@@ -87,6 +88,9 @@ passes "a plan deleting a key" plan "$fx/plans/key-deleted.json"
 refuses "a plan with an instance's access config" "an external address" plan "$fx/plans/instance-access-config.json"
 refuses "a plan with a template's IPv6 access config" "an external address" plan "$fx/plans/template-ipv6-access-config.json"
 refuses "a plan with a template's access config unknown" "known only after apply" plan "$fx/plans/template-access-unknown.json"
+refuses "a plan with an SSH key in a VM's metadata (#108)" "has an SSH key in its metadata" plan "$fx/plans/looper-vm-ssh-key.json"
+refuses "a plan with a looper VM that does not block the project's SSH keys (#108)" "does not block the project's SSH keys" plan "$fx/plans/looper-vm-project-keys.json"
+passes "a plan with a looper VM with no SSH key, the project's blocked, and no external address (#108)" plan "$fx/plans/looper-vm-clean.json"
 refuses "a plan with ingress from 0.0.0.0/0" "from the internet" plan "$fx/plans/ingress-world.json"
 refuses "a plan with ingress from ::/0" "from the internet" plan "$fx/plans/ingress-world6.json"
 refuses "a plan with ingress from no source (0.0.0.0/0)" "from the internet" plan "$fx/plans/ingress-no-source.json"

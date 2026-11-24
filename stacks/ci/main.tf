@@ -106,6 +106,9 @@ module "ci" {
     secret     = module.settings.admiral.secret
   }
   admiral_secret_adders = var.admiral_secret_adders
+  # The looper VMs (#108): stock Container-Optimized OS for arm64, the pools' pin, and each project's spec.
+  looper_vm_os_image = module.settings.cos_arm64_image
+  looper_vms         = module.settings.looper_vms
   # The audit job's account (#77): read roles on both projects, which only this repository's protected main becomes,
   # through the pipeline's own pool (bootstrap/bootstrap.sh's provider admits nothing else of gitlab.com).
   hub_audit = {
@@ -130,6 +133,11 @@ output "runner_token_secrets" {
 
 output "app_keys" {
   value = module.ci.app_keys
+}
+
+# Each looper VM's group and account (#108): what the kicker resizes (tacplus-dev/looper#241).
+output "looper_vms" {
+  value = module.ci.looper_vms
 }
 
 output "app_import_jobs" {

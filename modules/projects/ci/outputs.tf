@@ -50,3 +50,8 @@ output "admiral" {
     secret          = "projects/${google_project.ci.project_id}/secrets/${google_secret_manager_secret.admiral["admiral"].secret_id}"
   }
 }
+
+output "looper_vms" {
+  description = "Each looper VM's group (#108), by repository: its name and zone, which the kicker resizes, and its account's email."
+  value       = { for k, g in google_compute_instance_group_manager.looper_vm : k => { group = g.name, zone = g.zone, service_account = google_service_account.looper_vm[k].email } }
+}
