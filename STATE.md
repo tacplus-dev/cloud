@@ -277,6 +277,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   pool's 2 x 2, #95) and 1500 GB of Hyperdisk Balanced (14 x 100 = 1400). Tested with the dev plan test (mock
   providers); not yet seen live: `apply:dev`, Google granting the increase (the pool grows as it is granted), then more
   than 5 build nodes at once.
+- **The looper pool to 4 (#107; Jody, 2026-11-24):** at 19:59Z on 2026-11-24 the control runner sat at its 17
+  (cluster#53) with 18 jobs pending, 5 of them managers, bounded by the looper pool's 2. Its maximum is now 4
+  (c4a-standard-2 on demand, still from 0: at most about $260/month, Jody's yes; a larger maximum still needs it), and
+  the quota preferences follow from it: 56 C4A CPUs (6 + 32 + 8 + 4 = 50) and 2000 GB of Hyperdisk Balanced
+  (16 x 100 = 1600). Tested with the dev plan test (mock providers; the module's fixtures stay at 2); not yet seen
+  live: `apply:dev` and Google granting the increase. tacplus-dev/cluster#61 mirrors it in `gitlab-runner/pool.yaml`
+  only after that apply, and best after the grant (until then a 3rd or 4th looper node may be refused
+  `QUOTA_EXCEEDED`, #88).
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
