@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the looper (#101).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the hub (#108).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, its digest of 2026-11-24 (build:20261123-57a6521, #104; before it
@@ -419,6 +419,21 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   The provider's first `apply:dev` (pipeline 3096232218) failed on the host's `iam.workloadIdentityPoolProviders`,
   then `https://gitlab.com` only (#86); the host has allowed `https://seatrials.tacplus.dev` since 2026-11-21
   (the host's pipeline), so the next `apply:dev` makes it as #84 wrote it (README, The org policies).
+- **The looper VMs (#108; decisions/looper-build-vms-2026-11-24.md, tacplus the pilot):** `modules/settings`
+  (`looper_vms`: tacplus, a spot c4a-standard-8 with 200 GB of Hyperdisk Balanced, no image until
+  tacplus-dev/looper#239). The ci stack's `looper-vms.tf`: the group `looper-vm-tacplus` in us-central1-b at 0 (the
+  kicker and the VM size it, never a plan), its template on the pools' COS arm64 pin, no external address, no SSH key
+  and the project's blocked (`ci/policy.sh` refuses a key in any VM's metadata, and a looper VM that does not block
+  the project's), one generic cloud-init (`files/looper-vm-cloud-init.yaml`, `files/looper-vm.sh`: an idle exit sizes
+  the group to 0, a preemption's does not); the account `looper-vm-tacplus`: logWriter, reader of `looper-model-token`
+  alone (no version, no adder: Jody adds it out of band), a signer of `tacplus-looper`'s key, and `looperVmResizer`
+  on its own group; the kicker's jobs (environment `kicker`) hold `looperVmResizer` on the `looper-vm-` groups alone.
+  Tested with the ci stack's plan tests (mock providers), `tests/looper_vm_test.sh` and `tests/policy_test.sh`; on
+  GitHub Actions too (`.github/workflows/gates.yml`, branches `hub/**`). Not applied, not seen live: whether
+  `cos-arm64-121-18867-652-12` boots on C4A with Hyperdisk, and whether the conditions on `resource.name` admit the
+  resize. **Quota:** at 1 the VM's 8 CPUs are over `CPUS_ALL_REGIONS` (32, all of it the pools' at their peak) and
+  need tacplus-ci's C4A CPU and Hyperdisk Balanced quotas, unread: a raise, or fewer pool CPUs, before the kicker sizes
+  it to 1.
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
