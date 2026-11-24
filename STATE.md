@@ -443,7 +443,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   whether a version exists) on them and no role on the project, and `secretAccessor` for `seatrials-deploy` alone
   (authoritative bindings; output `deployments` `fleet_secrets`). No GitLab token, no bot user, no `FLEET_INIT_TOKEN`
   (gitlab.com Free has no project access tokens). Tested with the dev stack's plan tests (mock providers); not applied
-  yet: `apply:dev` on main does it, then fleet-seatrials#44's job adds the versions.
+  yet: `apply:dev` on main does it, then fleet-seatrials#44's job adds the versions. The root credential's key
+  (#105, fleet-seatrials#77): a third secret, `fleet-root-cred-seatrials`, the same accounts and roles (its reader
+  `seatrials-deploy`, the client-steps job's; output `fleet_secrets.root_cred`); tested the same way, not applied yet.
 - **The test IdP's certificate and seeds (#32; fleet-seatrials#27):** the `deployments` entry's environment account
   `test-idp-deploy` gets, from `environment_certificates` (`test-idp = "idp.test.tacplus.dev"`, which `*.tacplus.dev`
   does not cover), the secrets `tls-test-idp` and `acme-account-test-idp` (us-central1) and the zone
