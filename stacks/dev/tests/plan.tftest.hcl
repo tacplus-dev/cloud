@@ -19,11 +19,11 @@
 # (#20) the deployment's get-credentials on the cluster dev alone, its Cloud Build roles, the builds' own account, its
 # deploy registry (the builds write it, the deployment and the nodes read it) and build bucket (7 days), and its test
 # IdP's account, which only its project's jobs in the environment test-idp become, with no role but get-credentials,
-# and (#28) its fleet secrets fleet-ca-<deployment> and fleet-crypto-<deployment>, whose versions only its
-# init-secrets job's account adds (only its project's jobs in the environment init-secrets become it) and only its
-# identity reads, and (#37) its Google sign-in client's secret google-signin-<deployment>, made with no version, whose
-# versions only the listed people add (Jody, in the Console: Google has no API for a web client) and only its identity
-# reads, and (#84) the Admiral's provider, for its fleet kernel's issuer and its SPIFFE ID alone, and (#88) the Cloud
+# and (#28) its fleet secrets fleet-ca-<deployment> and fleet-crypto-<deployment>, and (#105) its root credential's
+# key fleet-root-cred-<deployment>, whose versions only its init-secrets job's account adds (only its project's jobs
+# in the environment init-secrets become it) and only its identity reads, and (#37) its Google sign-in client's secret
+# google-signin-<deployment>, made with no version, whose versions only the listed people add (Jody, in the Console:
+# Google has no API for a web client) and only its identity reads, and (#84) the Admiral's provider, for its fleet kernel's issuer and its SPIFFE ID alone, and (#88) the Cloud
 # Quotas preferences of the C4A CPUs and the Hyperdisk Balanced GB its pools need, computed from them.
 # (A test sees a module's resources only when it runs that module itself.)
 
@@ -101,9 +101,9 @@ run "stack" {
     condition     = output.cluster_pipeline.registry == "us-central1-docker.pkg.dev/tacplus-dev/ci-images"
     error_message = "The stack does not give the cluster pipeline its registry us-central1-docker.pkg.dev/tacplus-dev/ci-images."
   }
-  # fleet-seatrials#44's names (#28).
+  # fleet-seatrials#44's names (#28), and fleet-seatrials#77's (#105).
   assert {
-    condition     = output.deployments["seatrials"].fleet_secrets.ca == "projects/tacplus-dev/secrets/fleet-ca-seatrials" && output.deployments["seatrials"].fleet_secrets.crypto == "projects/tacplus-dev/secrets/fleet-crypto-seatrials" && output.deployments["seatrials"].fleet_secrets.environment == "init-secrets"
+    condition     = output.deployments["seatrials"].fleet_secrets.ca == "projects/tacplus-dev/secrets/fleet-ca-seatrials" && output.deployments["seatrials"].fleet_secrets.crypto == "projects/tacplus-dev/secrets/fleet-crypto-seatrials" && output.deployments["seatrials"].fleet_secrets.root_cred == "projects/tacplus-dev/secrets/fleet-root-cred-seatrials" && output.deployments["seatrials"].fleet_secrets.environment == "init-secrets"
     error_message = "The stack does not give seatrials its fleet secrets and the init-secrets job's account."
   }
   # fleet-seatrials#27's names (#32).
@@ -577,15 +577,16 @@ run "dev" {
     condition     = output.deployments["seatrials"].registry == "us-central1-docker.pkg.dev/tacplus-dev/seatrials" && output.deployments["seatrials"].build == { bucket = "gs://tacplus-dev-seatrials-build", sa = "seatrials-build@tacplus-dev.iam.gserviceaccount.com" } && output.deployments["seatrials"].environment_accounts == { test-idp = "test-idp-deploy@tacplus-dev.iam.gserviceaccount.com" }
     error_message = "The module does not give the deployment's registry, build bucket and builds' account, and its environment accounts."
   }
-  # The fleet's CA and crypto file (#28, Jody's option D): two secrets of the deployment, us-central1, no version; the
-  # init-secrets job's account adds versions and sees their metadata (never a value), the deployment's identity reads
-  # them, nobody else holds a role (authoritative bindings).
+  # The fleet's CA and crypto file (#28, Jody's option D) and its root credential's key (#105, fleet-seatrials#77):
+  # three secrets of the deployment, us-central1, no version; the init-secrets job's account adds versions and sees
+  # their metadata (never a value), the deployment's identity reads them, nobody else holds a role (authoritative
+  # bindings).
   assert {
-    condition     = toset(keys(google_secret_manager_secret.fleet)) == toset(["fleet-ca-seatrials", "fleet-crypto-seatrials"]) && alltrue([for s in google_secret_manager_secret.fleet : s.replication[0].user_managed[0].replicas[0].location == "us-central1" && s.labels["deployment"] == "seatrials" && s.labels["managed-by"] == "tacplus-dev-cloud"])
-    error_message = "The deployment's fleet secrets are not fleet-ca-seatrials and fleet-crypto-seatrials, in us-central1."
+    condition     = toset(keys(google_secret_manager_secret.fleet)) == toset(["fleet-ca-seatrials", "fleet-crypto-seatrials", "fleet-root-cred-seatrials"]) && alltrue([for s in google_secret_manager_secret.fleet : s.replication[0].user_managed[0].replicas[0].location == "us-central1" && s.labels["deployment"] == "seatrials" && s.labels["managed-by"] == "tacplus-dev-cloud"])
+    error_message = "The deployment's fleet secrets are not fleet-ca-seatrials, fleet-crypto-seatrials and fleet-root-cred-seatrials, in us-central1."
   }
   assert {
-    condition     = toset(keys(google_secret_manager_secret_iam_binding.fleet)) == toset(flatten([for s in ["fleet-ca-seatrials", "fleet-crypto-seatrials"] : [for r in ["secretVersionAdder", "viewer", "secretAccessor"] : "${s}/roles/secretmanager.${r}"]]))
+    condition     = toset(keys(google_secret_manager_secret_iam_binding.fleet)) == toset(flatten([for s in ["fleet-ca-seatrials", "fleet-crypto-seatrials", "fleet-root-cred-seatrials"] : [for r in ["secretVersionAdder", "viewer", "secretAccessor"] : "${s}/roles/secretmanager.${r}"]]))
     error_message = "The fleet secrets' roles are not exactly adding versions, seeing them and reading them."
   }
   assert {
@@ -593,7 +594,7 @@ run "dev" {
     error_message = "The fleet secrets' versions are added by someone besides the init-secrets job's account, or read by someone besides seatrials-deploy."
   }
   # The init-secrets job's account: its own, only fleet-seatrials' jobs in the environment init-secrets on protected
-  # main become it (the provider's condition and this binding), and it holds no role but on the two secrets.
+  # main become it (the provider's condition and this binding), and it holds no role but on the three secrets.
   assert {
     condition     = google_service_account.init_secrets["seatrials"].account_id == "seatrials-init-secrets" && google_service_account_iam_member.init_secrets_wif["seatrials"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.init_secrets_wif["seatrials"].member == "principalSet://iam.googleapis.com/projects/555/locations/global/workloadIdentityPools/gitlab-com/attribute.project_environment/tacplus-dev/fleet-seatrials:init-secrets"
     error_message = "seatrials-init-secrets is not only tacplus-dev/fleet-seatrials' jobs in the environment init-secrets."
@@ -608,7 +609,7 @@ run "dev" {
     error_message = "The init-secrets job's account holds a role on the project."
   }
   assert {
-    condition     = output.deployments["seatrials"].fleet_secrets == { ca = "projects/tacplus-dev/secrets/fleet-ca-seatrials", crypto = "projects/tacplus-dev/secrets/fleet-crypto-seatrials", environment = "init-secrets", sa = "seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com" }
+    condition     = output.deployments["seatrials"].fleet_secrets == { ca = "projects/tacplus-dev/secrets/fleet-ca-seatrials", crypto = "projects/tacplus-dev/secrets/fleet-crypto-seatrials", root_cred = "projects/tacplus-dev/secrets/fleet-root-cred-seatrials", environment = "init-secrets", sa = "seatrials-init-secrets@tacplus-dev.iam.gserviceaccount.com" }
     error_message = "The module does not give the deployment's fleet secrets and the init-secrets job's account."
   }
   assert {
@@ -1352,6 +1353,62 @@ run "environment_secret_fleet_taken_refused" {
         gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
         environment_accounts = { test-idp = "test-idp-deploy" }
         environment_secrets  = { test-idp = ["fleet-ca-seatrials"] }
+        init_secrets         = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
+      }
+    }
+  }
+  expect_failures = [var.deployments]
+}
+
+run "environment_secret_root_cred_taken_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/dev"
+  }
+  variables {
+    project_id      = "tacplus-dev"
+    name            = "tacplus dev"
+    folder          = "folders/444"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    cluster = {
+      name            = "dev"
+      zone            = "us-central1-a"
+      release_channel = "REGULAR"
+      disk_gb         = 100
+      normal          = { machine_type = "c4a-standard-2", nodes = 3 }
+      spot            = { machine_type = "c4a-standard-4", max_nodes = 3 }
+      looper          = { machine_type = "c4a-standard-2", max_nodes = 2 }
+    }
+    network = {
+      nodes         = "10.20.0.0/20"
+      pods          = "10.24.0.0/14"
+      services      = "10.28.0.0/20"
+      control_plane = "172.16.0.0/28"
+    }
+    dns = { zone = "dev-tacplus-dev", domain = "dev.tacplus.dev." }
+    zone = {
+      zone   = "tacplus-dev"
+      domain = "tacplus.dev."
+      records = [
+        { name = "tacplus.dev.", type = "A", ttl = 3600, rrdatas = ["185.199.108.153"] },
+        { name = "www.tacplus.dev.", type = "CNAME", ttl = 3600, rrdatas = ["tacplus-dev.github.io."] },
+      ]
+    }
+    cluster_pipeline = {
+      account_id     = "cluster-admin-pipeline"
+      gitlab_project = "tacplus-dev/cluster"
+      pool           = "gitlab-com"
+      provider       = "tacplus-dev-cluster"
+      registry       = "ci-images"
+    }
+    # An environment's secret named as the deployment's root credential's key (#32, #105): the test IdP's jobs would
+    # read it.
+    deployments = {
+      seatrials = {
+        gitlab_project       = "tacplus-dev/fleet-seatrials", environment = "seatrials", domain = "tacplus.dev", hostnames = ["seatrials.tacplus.dev"], account_id = "seatrials-deploy", wif_provider = "tacplus-dev-fleet-seatrials"
+        environment_accounts = { test-idp = "test-idp-deploy" }
+        environment_secrets  = { test-idp = ["fleet-root-cred-seatrials"] }
         init_secrets         = { environment = "init-secrets", account_id = "seatrials-init-secrets" }
       }
     }

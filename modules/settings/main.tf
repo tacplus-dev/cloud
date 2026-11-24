@@ -160,8 +160,9 @@ output "deployments" {
     are its identity's; and environment_secrets, the IDs of the secrets only the account and the deployment's identity
     add versions to and read (#73); and init_secrets (#28), the GitLab environment of its init-secrets job and the
     account only its project's jobs in that environment, on protected main, may become: it alone adds the versions of
-    fleet-ca-<deployment> and fleet-crypto-<deployment> (the fleet's CA and crypto file; it sees their metadata, never
-    a value), which its identity alone reads; and google_signin (#37), true when it has a Google sign-in client: the
+    fleet-ca-<deployment>, fleet-crypto-<deployment> and (#105) fleet-root-cred-<deployment> (the fleet's CA, crypto
+    file and root credential's key; it sees their metadata, never a value), which its identity alone reads; and
+    google_signin (#37), true when it has a Google sign-in client: the
     secret google-signin-<deployment> (the client JSON the Console downloads), whose versions the dev stack's
     google_signin_adders add by hand, in the Console (Google has no API that makes a web client), and which its
     identity alone reads. Optionally (#34): llmproxy, its llmproxy's identity in the Anthropic organization, which the
@@ -183,8 +184,9 @@ output "deployments" {
     # which owns the test IdP's certificate (idp.test.tacplus.dev: *.tacplus.dev does not cover it) and its seeds,
     # test-idp-seeds, in Secret Manager rather than GitLab variables (#32, fleet-seatrials#27; as #28). Its
     # init-secrets job, in the GitLab environment init-secrets, runs as seatrials-init-secrets (#28,
-    # fleet-seatrials#44). Its Google sign-in client is in tacplus-dev, its secret google-signin-seatrials (#37,
-    # fleet-seatrials#46): Jody makes the client and adds the secret's versions in the Console.
+    # fleet-seatrials#44), and adds the root credential's key to fleet-root-cred-seatrials (#105, fleet-seatrials#77),
+    # which seatrials-deploy alone reads, for its client-steps job. Its Google sign-in client is in tacplus-dev, its
+    # secret google-signin-seatrials (#37, fleet-seatrials#46): Jody makes the client and adds the secret's versions in the Console.
     # Its llmproxy's Anthropic identity (#34), made by hand in the Console on 2026-10-24 and adopted by the anthropic
     # stack by these IDs, which its llmproxy names (fleet-seatrials deploy/bootstrap/services/llmproxy.yaml): the
     # issuer is the fleet's kernel (OIDC discovery at its public name), the rule matches llmproxy's own identity. The

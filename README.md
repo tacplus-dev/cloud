@@ -32,9 +32,10 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     pipeline), each deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below,
     Certificates),
     its `get-credentials` on the cluster, Cloud Build roles, deploy registry, build bucket and environment accounts
-    (below, Deployments: images, the cluster and environment accounts), its fleet's CA and crypto file secrets, which
-    only its init-secrets job writes (below, The fleet's CA and crypto file), its Google sign-in client's secret,
-    which Jody writes in the Console and only its identity reads (below, The Google sign-in client),
+    (below, Deployments: images, the cluster and environment accounts), its fleet's CA, crypto file and root credential
+    secrets, which only its init-secrets job writes (below, The fleet's CA, crypto file and root credential), its
+    Google sign-in client's secret, which Jody writes in the Console and only its identity reads (below, The Google
+    sign-in client),
     the one public IP, the global address `gateway`, its TCP proxy load balancer passing TLS through to the NEGs of the
     gateway's Service (below, The public entry), and `tacplus.dev`'s own zone, which only this pipeline writes (below,
     The tacplus.dev cutover), and the Admiral's workload identity provider, for its fleet kernel's issuer (below, The
@@ -1216,21 +1217,23 @@ from the same `deployments` entry:
 The output `deployments` names each one's `registry`, `build` (`bucket`, `sa`), `environment_accounts` (by
 environment, the service account's email) and `environment_secrets` (by environment, the secrets' names).
 
-### The fleet's CA and crypto file
+### The fleet's CA, crypto file and root credential
 
-#28 (Jody's option D, 2026-11-08; fleet-seatrials#44): a deployment's fleet CA and crypto file are made once by its
+#28 (Jody's option D, 2026-11-08; fleet-seatrials#44): a deployment's fleet CA and crypto file, and (#105,
+fleet-seatrials#77) its root credential's private key, are made once by its
 project's `init-secrets` job and live in Secret Manager, as its certificate does: no GitLab variable holds them, and no
 GitLab token or bot user writes them (gitlab.com Free has no project access tokens; `decisions/secrets-by-pipeline-2026-11-05.md`).
 From the `deployments` entry's `init_secrets` (`modules/projects/dev/fleet-secrets.tf`):
 
-- **The secrets** `fleet-ca-<deployment>` and `fleet-crypto-<deployment>`, us-central1, made with no version: the job
-  adds the first. Their values are never in this repository, a plan or the state.
+- **The secrets** `fleet-ca-<deployment>`, `fleet-crypto-<deployment>` and `fleet-root-cred-<deployment>` (the root
+  credential's private key; its public half is the deployment's `operator.yaml`'s), us-central1, made with no version:
+  the job adds the first. Their values are never in this repository, a plan or the state.
 - **The job's account** `<init_secrets.account_id>`: only its project's jobs in the GitLab environment
   `<init_secrets.environment>`, on protected `main`, may become it (its provider's condition, and the
   `workloadIdentityUser` binding on `attribute.project_environment/<project>:<environment>`, as an environment
   account's). It holds `secretVersionAdder` (adds a version, reads none) and `viewer` (whether a version exists, so that
-  a second run skips; never a value) on the two secrets, and no role on the project. The module refuses it as any other
-  of the deployment's accounts, and its environment as any other of the deployment's environments.
+  a second run skips; never a value) on the three secrets, and no role on the project. The module refuses it as any
+  other of the deployment's accounts, and its environment as any other of the deployment's environments.
 - **The reader:** the deployment's identity alone holds `secretAccessor` on them. All three bindings are authoritative:
   a grant added by hand is drift.
 
@@ -1242,10 +1245,11 @@ Where each of a deployment's secrets lives, and who writes and reads it:
 | `acme-account-seatrials` | its ACME account's key | `seatrials-deploy` | `seatrials-deploy` |
 | `fleet-ca-seatrials` | the fleet's CA | `seatrials-init-secrets` (fleet-seatrials' jobs in `init-secrets`) | `seatrials-deploy` |
 | `fleet-crypto-seatrials` | the fleet's crypto file | `seatrials-init-secrets` (fleet-seatrials' jobs in `init-secrets`) | `seatrials-deploy` |
+| `fleet-root-cred-seatrials` | the fleet's root credential's private key | `seatrials-init-secrets` (fleet-seatrials' jobs in `init-secrets`) | `seatrials-deploy` (fleet-seatrials' client-steps job) |
 | `google-signin-seatrials` | its Google sign-in (OAuth web) client: the client JSON the Console downloads | Jody, by hand in the Console (`GCP_GOOGLE_SIGNIN_ADDERS`): once when the client is made, the bootstrap step, and at each rotation; Google offers no API that makes a web client or its secret | `seatrials-deploy` (fleet-seatrials' `apply` and `signin-secrets` jobs) |
 
-The output `deployments` names each one's `fleet_secrets` (`ca`, `crypto`, the job's `environment` and its `sa`, the
-`GCP_SERVICE_ACCOUNT` its job impersonates through the deployment's `GCP_WIF_PROVIDER`).
+The output `deployments` names each one's `fleet_secrets` (`ca`, `crypto`, `root_cred`, the job's `environment` and
+its `sa`, the `GCP_SERVICE_ACCOUNT` its job impersonates through the deployment's `GCP_WIF_PROVIDER`).
 
 ### The Google sign-in client
 

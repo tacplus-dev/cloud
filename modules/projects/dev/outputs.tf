@@ -55,7 +55,7 @@ output "deployments" {
         name_servers   = google_dns_managed_zone.acme_challenge["${k}/${e}"].name_servers
       } }
       environment_secrets = { for e, ids in d.environment_secrets : e => [for id in ids : "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.environment[id].secret_id}"] }
-      fleet_secrets       = d.init_secrets == null ? null : { ca = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-ca-${k}"].secret_id}", crypto = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-crypto-${k}"].secret_id}", environment = d.init_secrets.environment, sa = google_service_account.init_secrets[k].email }
+      fleet_secrets       = d.init_secrets == null ? null : { ca = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-ca-${k}"].secret_id}", crypto = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-crypto-${k}"].secret_id}", root_cred = "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.fleet["fleet-root-cred-${k}"].secret_id}", environment = d.init_secrets.environment, sa = google_service_account.init_secrets[k].email }
       google_signin       = d.google_signin ? "projects/${google_project.dev.project_id}/secrets/${google_secret_manager_secret.google_signin[k].secret_id}" : null
     }
   }

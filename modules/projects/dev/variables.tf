@@ -153,7 +153,7 @@ variable "deployments" {
     error_message = "Each certificate, a deployment's or an environment's, has a domain of its own: its challenge zone is its account's alone."
   }
   validation {
-    condition     = length(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}"])])) == length(distinct(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}"])])))
+    condition     = length(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}", "fleet-root-cred-${k}"])])) == length(distinct(flatten([for k, d in var.deployments : concat(["tls-${k}", "acme-account-${d.environment}"], flatten([for e in keys(d.environment_certificates) : ["tls-${e}", "acme-account-${e}"]]), flatten(values(d.environment_secrets)), d.init_secrets == null ? [] : ["fleet-ca-${k}", "fleet-crypto-${k}", "fleet-root-cred-${k}"])])))
     error_message = "Each secret, a certificate's, an environment's or a fleet secret, is one account's alone: no two have one ID."
   }
 }

@@ -1,9 +1,10 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# Each deployment's fleet CA and crypto file (#28, Jody's option D, 2026-11-08; fleet-seatrials#44): made once by its
-# project's init-secrets job, which adds them as the first versions of fleet-ca-<deployment> and
-# fleet-crypto-<deployment>, and read by its deploy jobs. No GitLab variable and no GitLab token holds them (gitlab.com
+# Each deployment's fleet CA and crypto file (#28, Jody's option D, 2026-11-08; fleet-seatrials#44) and its root
+# credential's key (#105, fleet-seatrials#77): made once by its project's init-secrets job, which adds them as the first
+# versions of fleet-ca-<deployment>, fleet-crypto-<deployment> and fleet-root-cred-<deployment>, and read by its deploy
+# jobs (the root credential's by its client-steps job). No GitLab variable and no GitLab token holds them (gitlab.com
 # Free has no project access token; decisions/secrets-by-pipeline-2026-11-05.md). The job's account is its own: only its
 # project's jobs in its GitLab environment, on protected main, may become it (the provider's condition, certificates.tf,
 # and the binding naming the project and the environment together, as deploy.tf's environment accounts). It adds
@@ -17,6 +18,7 @@ locals {
   fleet_secrets = merge(
     { for k in keys(local.init_secrets) : "fleet-ca-${k}" => k },
     { for k in keys(local.init_secrets) : "fleet-crypto-${k}" => k },
+    { for k in keys(local.init_secrets) : "fleet-root-cred-${k}" => k },
   )
   # Who holds each role on them: the init-secrets job's account, or the deployment's identity.
   fleet_secret_roles = {
@@ -49,8 +51,9 @@ resource "google_service_account_iam_member" "init_secrets_wif" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.gitlab.name}/attribute.project_environment/${var.deployments[each.key].gitlab_project}:${each.value.environment}"
 }
 
-# fleet-ca-<deployment>: the fleet's CA. fleet-crypto-<deployment>: its crypto file. Made with no version: the job adds
-# them. Their values are only ever the pipeline's: none is in this repository, a plan or the state.
+# fleet-ca-<deployment>: the fleet's CA. fleet-crypto-<deployment>: its crypto file. fleet-root-cred-<deployment>: its
+# root credential's private key (the public half is the deployment's operator.yaml's). Made with no version: the job
+# adds them. Their values are only ever the pipeline's: none is in this repository, a plan or the state.
 resource "google_secret_manager_secret" "fleet" {
   for_each  = local.fleet_secrets
   project   = google_project.dev.project_id
