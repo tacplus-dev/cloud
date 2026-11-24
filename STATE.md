@@ -472,12 +472,15 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   tflint 0.66.0 and Trivy 0.76.2 (#62). OpenTelemetry Go < v1.47.0 (GHSA-q7gw-24fr-5p69, MODERATE, no Go vulndb id, so
   the security job does not see it; the nightly scan found it, #99) in OpenTofu, tflint, its ruleset, OSV-Scanner, Trivy
   and the fleeting plugin, whose latest releases still have it: accepted until **2026-12-23** (Jody, #99); GitLab Runner
-  is past it (v19.6.0, `tests/security_test.sh` checks its build).
+  is past it (v19.6.0, `tests/security_test.sh` checks its build). GO-2026-6975 (otel < v1.47.0, W3C baggage) in
+  OpenTofu, tflint, its ruleset and Trivy, and GO-2026-6984 (saracen/fastzip v0.2.0) in our GitLab Runner v19.6.0 build,
+  both published 2026-11-23 with no tool release fixing them, turned the hub's security job red (#103): accepted until
+  **2026-12-08**, each entry scoped by `where` to its binary (Jody's decision, CI tooling never blocks).
 - **Security job (#10):** `security` (`ci/security.sh`), on every push, merge request and nightly, before `plan:folder`:
   OSV-Scanner on the tree, `govulncheck -mode=binary` on every pinned binary (the tools, the scanners, both providers,
   GitLab Runner and its plugin), gitleaks on the tree and its full history, Trivy on the CI image; looper-scan's policy,
-  `security-exceptions.yaml` enforced (an expired entry fails); its report `security/report.json`, the artifact. Its
-  first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
+  `security-exceptions.yaml` enforced (an expired entry fails; one with a `where` accepts its id only there, #103); its
+  report `security/report.json`, the artifact. Its first run here passes: the CI image's 223 fixable HIGH/CRITICAL findings fixed by its new digest, the scanners'
   standard library ones by building them with the latest Go (go1.27.4 since #39), gitleaks' xz (GO-2025-3922) accepted until **2026-12-04**. On build:2.6 (#22) the image had one, its `gh`'s x/net
   CVE-2026-78661, accepted (#27) until build:2.6.10 (#43) fixed it with zlib's and dropped OpenEXR (tacplus-dev/tacplus#554):
   on that digest the security job passed, 0 failing findings (run here 2026-11-12), until 2026-11-14 03:31Z, when Trivy's
@@ -489,9 +492,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by th
   or CRITICAL findings, none with a fix (run here 2026-11-23). Each kernel
   advisory batch recurs this way until the image question in PROPOSALS.md is decided; #23's (kin-openapi) are fixed by the kubernetes
   provider's build, and #24's by building gitleaks and OSV-Scanner with the fixed klauspost/compress (GO-2026-6865) and
-  brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry.
+  brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry for it.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
-  the policy) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
+  the policy, a `where`) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build:2.6's 2026-11-23 rebuild, #97)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
