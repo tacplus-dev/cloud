@@ -6,11 +6,12 @@
 # exceptions file) with gitleaks itself and stubs for osv-scanner, govulncheck and trivy (tests/stub): a clean tree
 # passes, with its report; a secret planted in the tree fails, and so does one only in its history, and a shallow
 # clone (its history unscanned); an expired exception fails, and one with a key looper-scan does not read; a HIGH
-# or CRITICAL finding with a fixed version fails (trivy on the CI image, by its digest; govulncheck on a pinned
-# binary, symbols present; osv-scanner on the tree), unless an unexpired exception names it or an alias, and, with a
-# where (a path or a path glob, #103), that place: one scoped to another binary does not accept it, and an empty
-# where fails; one without a fix, a MEDIUM one, or a govulncheck module-level one does not; a pinned binary missing fails, and so does
-# a tool that cannot run. Needs bash, git, jq, gitleaks and yq (bin/: ci/tools.sh).
+# or CRITICAL finding with a fixed version in what ships fails (osv-scanner on the tree), unless an unexpired
+# exception names it or an alias, and, with a where (a path or a path glob, #103), that place: one scoped to another
+# binary does not accept it, and an empty where fails; one in CI tooling (trivy on the CI image, by its digest;
+# govulncheck on a pinned binary, symbols present) passes, listed as tooling (#101), and an expired exception for it
+# still fails; one without a fix, a MEDIUM one, or a govulncheck module-level one does not fail; a pinned binary
+# missing fails, and so does a tool that cannot run. Needs bash, git, jq, gitleaks and yq (bin/: ci/tools.sh).
 #
 #   tests/security_test.sh
 set -uo pipefail
@@ -83,7 +84,7 @@ ok "govulncheck scans every pinned binary"
 r=$(repo)
 echo "token = \"$(token)\"" > "$r/config.txt" && commit "$r" "a secret"
 if scan "$r"; then fail "a planted secret passes"
-elif jq -e '[.findings[] | select(.tool == "gitleaks" and .blocking and .id == "config.txt:github-pat:1")] | length > 0' "$r/security/report.json" >/dev/null 2>&1; then
+elif jq -e '[.findings[] | select(.tool == "gitleaks" and .scope == "shipped" and .blocking and .id == "config.txt:github-pat:1")] | length > 0' "$r/security/report.json" >/dev/null 2>&1; then
   ok "a secret planted in the tree fails the job"
 else fail "a planted secret: $(tail -5 "$r/log")"; fi
 grep -q 'ghp_' "$r/security/report.json" "$r"/security/raw/*.json && fail "the report holds the secret (not redacted)" || ok "the report redacts it"
@@ -92,7 +93,7 @@ r=$(repo)
 echo "token = \"$(token)\"" > "$r/config.txt" && commit "$r" "a secret"
 rm "$r/config.txt" && commit "$r" "the secret removed"
 if scan "$r"; then fail "a secret in the history passes"
-elif jq -e '[.findings[] | select(.tool == "gitleaks" and .blocking)] | length == 1' "$r/security/report.json" >/dev/null 2>&1; then
+elif jq -e '[.findings[] | select(.tool == "gitleaks" and .scope == "shipped" and .blocking)] | length == 1' "$r/security/report.json" >/dev/null 2>&1; then
   ok "a secret only in the history fails the job"
 else fail "a secret in the history: $(tail -5 "$r/log")"; fi
 
@@ -116,12 +117,24 @@ else grep -q 'unknown key "severity"' "$r/log" && ok "an exception with a key lo
 trivy_json "$work/high-fixed.json" HIGH 1.1
 trivy_json "$work/critical-nofix.json" CRITICAL ""
 trivy_json "$work/medium-fixed.json" MEDIUM 1.1
+# tooling REPO TOOL ID WHERE: the report has that finding as tooling, not blocking, and the output lists it under the
+# CI tooling section, with its count.
+tooling() {
+  jq -e --arg t "$2" --arg id "$3" '.tooling == 1 and
+    ([.findings[] | select(.tool == $t and .id == $id and .scope == "tooling" and (.blocking | not))] | length == 1)' \
+    "$1/security/report.json" >/dev/null 2>&1 &&
+    grep -qx 'CI tooling (reported, never failing):' "$1/log" && grep -q "^TOOLING HIGH $2 $3: $4" "$1/log" &&
+    grep -q ': 0 failing the policy, 1 in CI tooling (reported, never failing), 0 accepted' "$1/log"
+}
 r=$(repo)
-scan "$r" STUB_TRIVY_JSON="$work/high-fixed.json" && fail "a HIGH finding with a fix in the CI image passes" ||
-  { grep -q 'FAIL HIGH trivy CVE-2026-0001' "$r/log" && ok "a HIGH finding with a fixed version fails (trivy, the CI image)" || fail "trivy HIGH: $(tail -3 "$r/log")"; }
+scan "$r" STUB_TRIVY_JSON="$work/high-fixed.json" && tooling "$r" trivy CVE-2026-0001 'the CI image: libfoo@1.0' &&
+  ok "a HIGH finding with a fixed version in the CI image passes, reported as CI tooling (trivy)" || fail "trivy HIGH: $(tail -5 "$r/log")"
 exceptions "$r" CVE-2026-0001 2999-12-31
 scan "$r" STUB_TRIVY_JSON="$work/high-fixed.json" && [ "$(jq -r '.findings[0].excepted' "$r/security/report.json")" = CVE-2026-0001 ] &&
-  ok "an unexpired exception accepts it" || fail "an exception did not accept it: $(tail -3 "$r/log")"
+  ! grep -q '^TOOLING' "$r/log" && ok "an unexpired exception accepts a tooling finding" || fail "an exception did not accept it: $(tail -3 "$r/log")"
+exceptions "$r" CVE-2026-0001 2000-01-01
+scan "$r" STUB_TRIVY_JSON="$work/high-fixed.json" && fail "an expired exception for a tooling finding passes" ||
+  { grep -q 'exception CVE-2026-0001 expired on 2000-01-01' "$r/log" && ok "an expired exception for a tooling finding still fails" || fail "expired, tooling: $(tail -3 "$r/log")"; }
 r=$(repo)
 scan "$r" STUB_TRIVY_JSON="$work/critical-nofix.json" && ok "a CRITICAL finding without a fix does not fail" || fail "CRITICAL, no fix: $(tail -3 "$r/log")"
 scan "$r" STUB_TRIVY_JSON="$work/medium-fixed.json" && ok "a MEDIUM finding with a fix does not fail" || fail "MEDIUM: $(tail -3 "$r/log")"
@@ -132,27 +145,33 @@ cat > "$work/gv.json" <<'EOF'
 EOF
 grep -v '"function"' "$work/gv.json" > "$work/gv-module.json"
 echo '{"finding": {"osv": "GO-2026-0002", "fixed_version": "v0.2.0", "trace": [{"module": "golang.org/x/net", "version": "v0.1.0"}]}}' >> "$work/gv-module.json"
-r=$(repo)
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && fail "a govulncheck finding with a fix passes" ||
-  { grep -q 'FAIL HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" && ok "a pinned binary's vulnerable symbol with a fix fails (govulncheck)" || fail "govulncheck: $(tail -3 "$r/log")"; }
+for b in tofu tflint-ruleset-google terraform-provider-google_v8 gitlab-runner fleeting-plugin-googlecloud; do
+  r=$(repo)
+  scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=$b && tooling "$r" govulncheck GO-2026-0002 "bin/.*$b (golang.org/x/net@v0.1.0" ||
+    fail "govulncheck, bin/…/$b: $(tail -5 "$r/log")"
+done
+ok "a pinned binary's vulnerable symbol with a fix passes, reported as CI tooling (govulncheck: tofu, the ruleset, a provider, GitLab Runner, its plugin)"
 exceptions "$r" CVE-2026-0002 2999-12-31
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && ok "an exception naming its alias accepts it" ||
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=fleeting-plugin-googlecloud &&
+  [ "$(jq -r '.findings[0].excepted' "$r/security/report.json")" = CVE-2026-0002 ] && ok "an exception naming its alias accepts it" ||
   fail "an alias's exception: $(tail -3 "$r/log")"
-# A where scopes an exception to the binaries it names (looper#182, #103), as a path or a path glob.
+# A where scopes an exception to the binaries it names (looper#182, #103), as a path or a path glob: a tooling finding
+# it does not accept is reported, unexcepted, and a shipped one fails.
+excepted() { jq -r --arg id "$2" '[.findings[] | select(.id == $id)][0].excepted' "$1/security/report.json"; }
 r=$(repo)
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/scan/gitlab-runner'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner &&
-  [ "$(jq -r '[.findings[] | select(.id == "GO-2026-0002")][0].excepted' "$r/security/report.json")" = GO-2026-0002 ] &&
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = GO-2026-0002 ] &&
   ok "an exception whose where is the binary accepts it" || fail "a where on the binary: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tofu'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && fail "an exception scoped to bin/tofu accepts bin/scan/gitlab-runner's" ||
-  { grep -q 'FAIL HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" && ok "an exception scoped to another binary does not accept it" || fail "a where elsewhere: $(tail -3 "$r/log")"; }
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
+  grep -q '^TOOLING HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" &&
+  ok "an exception scoped to another binary does not accept it" || fail "a where elsewhere: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tflint.d/**/tflint-ruleset-google'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tflint-ruleset-google && ok "a where's ** spans the path segments between" ||
-  fail "a where glob: $(tail -3 "$r/log")"
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tflint-ruleset-google && [ "$(excepted "$r" GO-2026-0002)" = GO-2026-0002 ] &&
+  ok "a where's ** spans the path segments between" || fail "a where glob: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/*'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && fail "a where's * crosses a /" ||
-  { grep -q 'FAIL HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" && ok "a where's * stays within its path segment" || fail "a where's *: $(tail -3 "$r/log")"; }
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
+  ok "a where's * stays within its path segment" || fail "a where's *: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: ""'
 scan "$r" && fail "an exception with an empty where passes" ||
   { grep -q 'exception GO-2026-0002: its where is empty' "$r/log" && ok "an exception with an empty where fails" || fail "an empty where: $(tail -3 "$r/log")"; }
@@ -161,6 +180,10 @@ jq -n '{results: [{source: {path: "x/go.mod"}, packages: [{package: {name: "gola
   groups: [{ids: ["GO-2026-0003"], aliases: ["CVE-2026-0003"], max_severity: "7.5"}]}]}]}' > "$work/osv-where.json"
 exceptions "$r" GO-2026-0003 2999-12-31 '    where: x/go.mod'
 scan "$r" STUB_OSV_JSON="$work/osv-where.json" STUB_OSV_RC=1 && ok "a where matches a dependency's file" || fail "a where on a dependency's file: $(tail -3 "$r/log")"
+exceptions "$r" GO-2026-0003 2999-12-31 '    where: y/go.mod'
+scan "$r" STUB_OSV_JSON="$work/osv-where.json" STUB_OSV_RC=1 && fail "an exception scoped to another file accepts a shipped finding" ||
+  { grep -q 'FAIL HIGH osv-scanner GO-2026-0003: golang.org/x/net@0.1.0 (x/go.mod)' "$r/log" &&
+    ok "an exception scoped to another file does not accept a shipped finding" || fail "a where elsewhere, shipped: $(tail -3 "$r/log")"; }
 
 r=$(repo)
 scan "$r" STUB_GOVULNCHECK_JSON="$work/gv-module.json" && ok "a module-level govulncheck finding (no symbol present) does not fail" ||
@@ -171,7 +194,12 @@ jq -n '{results: [{source: {path: "x/go.mod"}, packages: [{package: {name: "gola
   groups: [{ids: ["GO-2026-0003"], aliases: ["CVE-2026-0003"], max_severity: "7.5"}]}]}]}' > "$work/osv.json"
 r=$(repo)
 scan "$r" STUB_OSV_JSON="$work/osv.json" STUB_OSV_RC=1 && fail "an osv-scanner finding with a fix passes" ||
-  { grep -q 'FAIL HIGH osv-scanner GO-2026-0003: golang.org/x/net@0.1.0 (x/go.mod)' "$r/log" && ok "a dependency's HIGH finding with a fix fails (osv-scanner)" || fail "osv: $(tail -3 "$r/log")"; }
+  { grep -q 'FAIL HIGH osv-scanner GO-2026-0003: golang.org/x/net@0.1.0 (x/go.mod)' "$r/log" &&
+    jq -e '.tooling == 0 and .findings[0].scope == "shipped" and .findings[0].blocking' "$r/security/report.json" >/dev/null &&
+    ok "a dependency's HIGH finding with a fix fails, shipped (osv-scanner)" || fail "osv: $(tail -3 "$r/log")"; }
+scan "$r" STUB_OSV_JSON="$work/osv.json" STUB_OSV_RC=1 STUB_TRIVY_JSON="$work/high-fixed.json" && fail "a shipped finding beside a tooling one passes" ||
+  { grep -q 'FAIL HIGH osv-scanner' "$r/log" && grep -q ': 1 failing the policy, 1 in CI tooling' "$r/log" &&
+    ok "a shipped finding beside a tooling one still fails" || fail "shipped and tooling: $(tail -5 "$r/log")"; }
 r=$(repo)
 scan "$r" STUB_OSV_RC=128 && ok "a tree with no manifest osv-scanner reads passes" || fail "osv 128: $(tail -3 "$r/log")"
 

@@ -653,14 +653,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   build:, which `gitlab-runner/fetch.sh` requires to have cloud main's runner SHA-256), and drop the exception. Why:
   #103 accepted it 14 days (until 2026-12-08) rather than move the runner's SHA-256 alone, which would turn cluster's
   gates red while seatrials waited on its apply; the helper image, which does the extracting, carries v0.2.0 too.
-- **The security job fails only on what ships** (looper, #101, 2026-11-23; tacplus-dev/looper#225). What: every
-  finding of `ci/security.sh` gets a `scope`, `shipped` (OSV-Scanner on the tree, gitleaks, the pins listed as
-  shipped) or `tooling` (Trivy on the CI image, `govulncheck` on every other pin), and only a shipped one can be
-  `blocking`; tooling findings are listed in `security/report.json` and a "CI tooling (reported, never failing)"
-  section, never failing; problems and expired exceptions still fail. Open (#101's design): GitLab Runner and its
-  fleeting plugin, which the manager runs, shipped (recommended) or tooling; dropping the tooling-only exceptions in
-  the same land. Why: Jody's decision `decisions/security-gates-ship-only-2026-11-23.md` (tacplus-dev/roadmap):
-  advisories against CI-only tools stopped `plan:folder` and every apply until a bump or an exception.
+- **What the ci stack deploys, scanned as shipped** (looper, #101, 2026-11-24; tacplus-dev/looper#225). What: since
+  #101 every pin of `ci/security.sh` is `tooling` (reported, never failing), as #101 and Jody's direction on #103 have
+  it, GitLab Runner and its fleeting plugin (`bin/scan/`) among them; give those two, and the runners' default and
+  helper images (deployed by digest, today not scanned here), the scope `shipped`. Why: they are not CI tools here but
+  the service cloud deploys (`ci/runner.sh`, the manager), holding the runner tokens and running every tacplus-dev job;
+  the decision's "shipped" includes "the images it publishes or deploys". Needs Jody's decision.
+- **The tooling-only exceptions dropped** (looper, #101, 2026-11-24). What: remove the `security-exceptions.yaml`
+  entries that accept only tooling findings (today all of them), leaving those findings reported, unexcepted, under
+  "CI tooling (reported, never failing)". Why: since #101 they no longer gate a land, but an expired one still fails the
+  job (2026-12-03, 12-04, 12-06, 12-08, 12-23), so each would stop the applies again unless the nightly fixer renews it
+  (decision item 3).
 - **The CI image pinned at a dated build tag, a floating one refused** (looper, #102, 2026-11-23; looper#226). What:
   `tests/ci_test.sh` requires `default.image` (and `build.lock`, the same ref) at a tacplus line's dated build tag,
   `build:<YYYYMMDD>-<commit>@sha256:…`, and fails a floating `build:X.Y` one, which its `[0-9.]+` accepts today; in the

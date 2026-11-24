@@ -12,12 +12,17 @@
 #   gitleaks      the tree, and its history (every commit: a shallow clone is refused)
 #   trivy         the CI image the jobs run in (ci/gitlab-project.gitlab-ci.yml's default image, by digest)
 #
-# The policy (looper-scan's): a secret fails, and so does a HIGH or CRITICAL finding with a fixed version, unless
-# an unexpired entry of security-exceptions.yaml names it (its id, or an alias) and, with a where, its place; an entry
-# that has expired, or has more or less than id, reason, decided_by and expires (YYYY-MM-DD) and an optional where
-# (a path or a path glob, looper-scan's, #103), fails; a tool that cannot run fails. The
-# report: security/report.json (the findings, each blocking, accepted or neither; the problems; the verdict), with
-# each tool's own report in security/raw/; the job's artifact.
+# The policy (looper-scan's, tacplus-dev/looper#225): each finding has a scope, where it is. shipped: the tree's
+# manifests and lock files (osv-scanner) and the tree and its history (gitleaks); tooling: the pinned binaries (bin/,
+# bin/scan/) and the CI image, which only our pipelines run. A shipped secret fails, and so does a shipped HIGH or
+# CRITICAL finding with a fixed version, unless an unexpired entry of security-exceptions.yaml names it (its id, or an
+# alias) and, with a where, its place; a tooling finding never fails: it is reported (the "CI tooling (reported, never
+# failing)" section), and an exception accepts it as it does a shipped one (tacplus-dev/roadmap
+# decisions/security-gates-ship-only-2026-11-23.md, #101). An entry that has expired, or has more or less than id,
+# reason, decided_by and expires (YYYY-MM-DD) and an optional where (a path or a path glob, looper-scan's, #103),
+# fails, whatever it names; a tool that cannot run fails. The report: security/report.json (the findings, each with
+# its scope, and blocking, accepted or neither; tooling, the count of those the policy would fail were they shipped;
+# the problems; the verdict), with each tool's own report in security/raw/; the job's artifact.
 #
 #   ci/security.sh      # needs bin/ (ci/tools.sh, ci/tools.sh security), git, jq; exits 1 when the policy fails
 set -uo pipefail
@@ -33,16 +38,16 @@ problem() { problems+=("$1"); echo "security: $1" >&2; }
 step() { echo "== $1"; }
 today=$(date -u +%Y-%m-%d)
 
-# Each tool's findings, normalized as looper-scan's: an array of {tool, kind (sca|secret), id, aliases, severity,
-# fix, where, title}, in norm/.
+# Each tool's findings, normalized as looper-scan's: an array of {tool, kind (sca|secret), scope (shipped|tooling),
+# id, aliases, severity, fix, where, title}, in norm/.
 JQ_LIB='def finding($tool; $kind; $id; $aliases; $sev; $fix; $where; $title):
-  {tool: $tool, kind: $kind, id: $id, aliases: ($aliases // [] | map(select(. != $id)) | unique),
+  {tool: $tool, kind: $kind, scope: $scope, id: $id, aliases: ($aliases // [] | map(select(. != $id)) | unique),
    severity: $sev, fix: $fix, where: $where, title: ($title // "" | tostring | .[0:300])};
 def bucket: if . == null then "UNKNOWN" elif . >= 9 then "CRITICAL" elif . >= 7 then "HIGH"
   elif . >= 4 then "MEDIUM" elif . > 0 then "LOW" else "UNKNOWN" end;'
-norm() { # name jq-program raw [jq args...]
-  local name=$1 prog=$2 raw=$3; shift 3
-  jq -s "$@" "$JQ_LIB $prog" "$raw" > "$out/norm/$name.json" || problem "$name: its report could not be read ($raw)"
+norm() { # name scope jq-program raw [jq args...]
+  local name=$1 scope=$2 prog=$3 raw=$4; shift 4
+  jq -s --arg scope "$scope" "$@" "$JQ_LIB $prog" "$raw" > "$out/norm/$name.json" || problem "$name: its report could not be read ($raw)"
 }
 
 # The commit's tree, as committed (no bin/, no .terraform/).
@@ -54,7 +59,7 @@ step "osv-scanner: the tree"
 rc=0
 osv-scanner scan source -r --format json --output "$out/raw/osv-scanner.json" "$tree" >/dev/null 2>"$out/raw/osv-scanner.log" || rc=$?
 case $rc in
-  0|1) norm osv-scanner '
+  0|1) norm osv-scanner shipped '
     [.[0].results[]? | (.source.path | ltrimstr($root + "/")) as $where | .packages[]? | .package as $p
      | (.vulnerabilities // []) as $vs | .groups[]? | . as $g
      | ([$vs[] | select(.id as $i | $g.ids | index($i)) | .affected[]?.ranges[]?.events[]? | .fixed // empty] | length > 0) as $fix
@@ -84,7 +89,7 @@ for p in "${pinned[@]}"; do
       problem "govulncheck: $rel: $(grep -m1 . "$out/raw/govulncheck-$i.log")"; continue
     fi
     echo "$rel"
-    norm "govulncheck-$i" '
+    norm "govulncheck-$i" tooling '
       ([.[] | .osv // empty | {(.id): .}] | add // {}) as $osv
       | [.[] | .finding // empty | select(.trace[0].function != null)]
       | unique_by(.osv) | map(.trace[0] as $t
@@ -101,7 +106,7 @@ gl_norm='[.[0][]? | (.File | ltrimstr($root + "/")) as $f
   | ((if (.Commit // "") != "" then .Commit[0:12] + ":" else "" end) + $f + ":" + .RuleID + ":" + (.StartLine | tostring)) as $id
   | finding("gitleaks"; "secret"; $id; [.RuleID]; "CRITICAL"; true; $id; .Description)]'
 if gitleaks dir --no-banner --redact --exit-code 0 -f json -r "$out/raw/gitleaks-tree.json" "$tree" >/dev/null 2>"$out/raw/gitleaks-tree.log"; then
-  norm gitleaks-tree "$gl_norm" "$out/raw/gitleaks-tree.json" --arg root "$tree"
+  norm gitleaks-tree shipped "$gl_norm" "$out/raw/gitleaks-tree.json" --arg root "$tree"
 else
   problem "gitleaks dir: $(tail -1 "$out/raw/gitleaks-tree.log")"
 fi
@@ -109,7 +114,7 @@ if [ "$(git -C "$here" rev-parse --is-shallow-repository 2>/dev/null)" != false 
   problem "gitleaks git: $here is a shallow clone, or no repository: its history cannot be scanned (git fetch --unshallow)"
 elif gitleaks git --no-banner --redact --exit-code 0 -f json -r "$out/raw/gitleaks-history.json" "$here" >/dev/null 2>"$out/raw/gitleaks-history.log"; then
   echo "$(git -C "$here" rev-list --count HEAD) commits"
-  norm gitleaks-history "$gl_norm" "$out/raw/gitleaks-history.json" --arg root "$here"
+  norm gitleaks-history shipped "$gl_norm" "$out/raw/gitleaks-history.json" --arg root "$here"
 else
   problem "gitleaks git: $(tail -1 "$out/raw/gitleaks-history.log")"
 fi
@@ -123,7 +128,7 @@ if [[ ! $image =~ @sha256:[0-9a-f]{64}$ ]]; then
 # on every runner and every retry, so the layers come over HTTP/1.1 instead. The scan itself is unchanged.
 elif GODEBUG=http2client=0 trivy image -q --scanners vuln --timeout 30m --format json -o "$out/raw/trivy-image.json" "$image" 2>"$out/raw/trivy-image.log"; then
   echo "$image"
-  norm trivy-image '
+  norm trivy-image tooling '
     [.[0].Results[]? | .Target as $t | (.Vulnerabilities // [])[]
      | finding("trivy"; "sca"; .VulnerabilityID; []; (.Severity // "UNKNOWN"); ((.FixedVersion // "") != "");
                ("the CI image: " + .PkgName + "@" + (.InstalledVersion // "") + " "
@@ -166,12 +171,14 @@ while IFS= read -r e; do [ -z "$e" ] || problem "$e"; done < <(jq -r --arg today
     else empty end' <<<"$exceptions")
 echo "$(jq length <<<"$exceptions") entries"
 
-# The policy, and the report. An exception's where is looper-scan's (looper#182): a path glob, * and ? within a path
-# segment, ** across them ("**/" also none), on a finding's place: its where up to " (" (a pinned binary's, "bin/tofu
-# (module@version, ...)") or, for a dependency's, its file in the parentheses ("module@version (x/go.mod)").
+# The policy, and the report. fails: what the policy fails, were it shipped; only a shipped one is blocking. An
+# exception's where is looper-scan's (looper#182): a path glob, * and ? within a path segment, ** across them ("**/"
+# also none), on a finding's place: its where up to " (" (a pinned binary's, "bin/tofu (module@version, ...)") or, for
+# a dependency's, its file in the parentheses ("module@version (x/go.mod)").
+POLICY='def fails: .excepted == null and (.kind == "secret" or ((.severity == "HIGH" or .severity == "CRITICAL") and .fix));'
 norms=("$out"/norm/*.json)
 [ -e "${norms[0]}" ] || norms=(/dev/null)
-jq -s --argjson exc "$exceptions" --arg today "$today" '
+jq -s --argjson exc "$exceptions" --arg today "$today" "$POLICY"'
   def glob_re: "^" + (split("**/") | map(split("**") | map(split("*") | map(split("?")
       | map(gsub("(?<c>[.+^$()|{}\\[\\]\\\\])"; "\\\(.c)")) | join("[^/]")) | join("[^/]*")) | join(".*")) | join("(.*/)?")) + "$";
   def in_where($glob): ($glob | glob_re) as $re
@@ -180,9 +187,9 @@ jq -s --argjson exc "$exceptions" --arg today "$today" '
     . as $f
     | ([$exc[] | select(.expires >= $today and (.id as $x | $f.id == $x or any($f.aliases[]; . == $x))
                         and ((has("where") | not) or (.where != "" and (.where as $w | $f | in_where($w)))))][0]) as $e
-    | . + {excepted: ($e.id // null),
-           blocking: ($e == null and (.kind == "secret" or ((.severity == "HIGH" or .severity == "CRITICAL") and .fix)))})
-  | sort_by(if .blocking then 0 else 1 end, {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[.severity] // 4, .tool, .id, .where)' \
+    | . + {excepted: ($e.id // null)} | . + {blocking: (fails and .scope == "shipped")})
+  | sort_by(if .blocking then 0 elif .scope == "shipped" then 1 else 2 end,
+            {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[.severity] // 4, .tool, .id, .where)' \
   "${norms[@]}" > "$work/findings.json" || { problem "the findings could not be read together"; echo '[]' > "$work/findings.json"; }
 blocking=$(jq '[.[] | select(.blocking)] | length' "$work/findings.json")
 verdict=pass
@@ -191,12 +198,15 @@ verdict=pass
 printf '%s\n' "${problems[@]}" | jq -R . | jq -s 'map(select(. != ""))' > "$work/problems.json"
 jq -n --arg commit "$(git -C "$here" rev-parse HEAD 2>/dev/null)" --arg image "$image" --arg date "$today" --arg verdict "$verdict" \
   --slurpfile findings "$work/findings.json" --slurpfile problems "$work/problems.json" --argjson exceptions "$exceptions" \
-  '{commit: $commit, date: $date, image: $image, verdict: $verdict, problems: $problems[0], exceptions: $exceptions, findings: $findings[0]}' \
+  "$POLICY"'{commit: $commit, date: $date, image: $image, verdict: $verdict, problems: $problems[0], exceptions: $exceptions,
+    tooling: [$findings[0][] | select(.scope == "tooling" and fails)] | length, findings: $findings[0]}' \
   > "$out/report.json"
 
 step "verdict"
-jq -r '"\(.findings | length) finding(s): \([.findings[] | select(.blocking)] | length) failing the policy, \([.findings[] | select(.excepted)] | length) accepted by an exception."' "$out/report.json"
+jq -r '"\(.findings | length) finding(s): \([.findings[] | select(.blocking)] | length) failing the policy, \(.tooling) in CI tooling (reported, never failing), \([.findings[] | select(.excepted)] | length) accepted by an exception."' "$out/report.json"
 jq -r '.problems[] | "PROBLEM \(.)"' "$out/report.json"
 jq -r '.findings[] | select(.blocking) | "FAIL \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)"' "$out/report.json"
+jq -r "$POLICY"'[.findings[] | select(.scope == "tooling" and fails)] | if length > 0 then "CI tooling (reported, never failing):",
+  (.[] | "TOOLING \(.severity) \(.tool) \(.id): \(.where)\(if .title != "" then ": " + .title else "" end)") else empty end' "$out/report.json"
 echo "security: $verdict (security/report.json)"
 [ "$verdict" = pass ]

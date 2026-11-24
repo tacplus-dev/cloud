@@ -98,7 +98,7 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `tools` | every push and merge request | OpenTofu, tflint (and its google ruleset), shellcheck, yq and gitleaks, pinned by version and SHA-256, and the gitlab, kubernetes and anthropic providers built from source (`ci/tools.sh`); checks the project's `.gitlab-ci.yml` is this repository's with only `CLOUD_COMMIT` set (`ci/pin.sh --check`). |
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too; and the anthropic stack against a stub of Anthropic's (`tests/anthropic_plan_test.sh`, #34). |
-| `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
+| `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks): it fails on what ships, never on CI tooling (#101); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
 | `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), an Anthropic identity adopted with a change (below, The Anthropic organization), or a `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi (#87; below, The build pipeline: its settings). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0` or a VM's external IP (below, The hub's audit). |
@@ -275,16 +275,22 @@ request and nightly schedule:
 - **gitleaks** on the tree and its whole history (the job fetches it: a shallow clone fails);
 - **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
 
-**The policy** is looper-scan's: it fails on any secret, and on any HIGH or CRITICAL finding that has a fixed version,
-unless an unexpired entry of `security-exceptions.yaml` names it (its ID or an alias) and, with a `where` (a path or a
-path glob, looper-scan's: `*` within a path segment, `**` across them), the finding's binary or file (#103); an entry
-that has expired, whose fields are not exactly `id`, `reason`, `decided_by` and `expires` (YYYY-MM-DD) and an optional
-`where`, or whose `where` is empty, fails it too, and so does a tool that cannot run or a pinned binary missing. A
-failing `security` job stops the pipeline before `plan:folder`. The report:
-`security/report.json` (every finding: blocking, accepted or neither; the problems; the verdict), with each tool's own
-report in `security/raw/`; the job's artifact, kept 30 days. The vulnerability databases are the day's, so a commit
-that passed can fail the next night: fix the pin, or accept the finding with a reason and an expiry, at most 30 days.
-`tests/security_test.sh` tests it (a planted secret, an expired exception, a clean tree, the policy, a `where`) with stubs for
+**The policy** is looper-scan's (tacplus-dev/looper#225): every finding has a `scope`, `shipped` (OSV-Scanner and
+gitleaks: the tree, its lock files and its history) or `tooling` (govulncheck on the pinned binaries, Trivy on the CI
+image: what only our pipelines run), and only a shipped one fails (tacplus-dev/roadmap
+`decisions/security-gates-ship-only-2026-11-23.md`, #101). It fails on any shipped secret, and on any shipped HIGH or
+CRITICAL finding that has a fixed version, unless an unexpired entry of `security-exceptions.yaml` names it (its ID or
+an alias) and, with a `where` (a path or a path glob, looper-scan's: `*` within a path segment, `**` across them), the
+finding's binary or file (#103). A tooling finding is reported, never failing: the job lists each one the policy would
+otherwise fail under "CI tooling (reported, never failing)", with its count beside those failing; an exception accepts
+it as it does a shipped one. An entry that has expired, whose fields are not exactly `id`, `reason`, `decided_by` and
+`expires` (YYYY-MM-DD) and an optional `where`, or whose `where` is empty, fails the job whatever it names, and so does
+a tool that cannot run or a pinned binary missing. A failing `security` job stops the pipeline before `plan:folder`.
+The report: `security/report.json` (every finding: its scope, and blocking, accepted or neither; `tooling`, the count
+reported; the problems; the verdict), with each tool's own report in `security/raw/`; the job's artifact, kept 30
+days. The vulnerability databases are the day's, so a commit that passed can fail the next night: fix the pin, or
+accept the finding with a reason and an expiry, at most 30 days. `tests/security_test.sh` tests it (a planted secret,
+an expired exception, a clean tree, the policy, a `where`, a tooling finding reported and passing) with stubs for
 the scanners that need a database.
 
 ### How a change flows
