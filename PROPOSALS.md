@@ -668,3 +668,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   (`20261123-ef62327`'s, the same digest if it still resolves to it). Why: looper#226's nightly re-pin writes a dated tag,
   which the test refuses, so every such land here would come back red; and `2.6` moves on every rebuild, so the label
   stops naming what runs (cluster#54).
+- **The looper pool to 4** (looper, #107, 2026-11-24). What: `stacks/dev/main.tf`'s `looper` `max_nodes` 2 -> 4
+  (c4a-standard-2, on demand, from 0), with a comment line recording Jody's yes of 2026-11-24. The quota preferences
+  already follow from the pools (#88): C4A CPUs 46 -> 50 (asked 56), Hyperdisk Balanced 1400 -> 1600 GB (asked 2000).
+  The work is in the stack test's quota assertion and the README's pool and quota paragraphs. Open (#107's design): the
+  new monthly ceiling (about $260 at most, against #95's $130), whether the module test's fixture moves too, and
+  whether tacplus-dev/cluster's `gitlab-runner/pool.yaml` mirror waits for Google to grant the quotas and not only for
+  cloud's apply. Why: on 2026-11-24 at 19:59Z the control runner was at its 17 (cluster#53) with 18 jobs pending, 5 of
+  them managers; the pool's maximum of 2 is the bound.
