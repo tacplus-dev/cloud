@@ -1,9 +1,10 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-23 by the looper (#99).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the looper (#104).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, the 2026-11-23 rebuild (build:20261123-ef62327, #97: krb5
+  `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, its digest of 2026-11-24 (build:20261123-57a6521, #104; before it
+  build:20261123-ef62327, #97: krb5
   1.21.3-5+deb13u2 and Debian's other fixes of that day, whose 159 HIGH advisories in 2.6.13's packages failed the security
   job that morning; 2.6.13, #91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
   6.12.117-1, DSA-6628-1, whose six HIGH kernel CVEs in 6.12.116-1 failed the security job on 2.6.10 on 2026-11-14; no
