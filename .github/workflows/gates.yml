@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# The full gates (gates.yaml: ci/tools.sh && ci/lint.sh all && ci/checks.sh) on GitHub Actions, for the hub's branches
+# (hub/**, #108): the same commands in the same image, the CI image build.lock and ci/gitlab-project.gitlab-ci.yml pin
+# by digest (arm64, as the GitLab runners), with no credential and no cloud (the stacks' plans are tested against mock
+# providers). The GitLab pipeline stays the one that plans and applies.
+name: gates
+on:
+  push:
+    branches: ["hub/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/tacplus-dev/tacplus/build:2.6@sha256:72fcd0448dc768bc3fc709c14b17acbc3470e94cf5b03b7d65520cae07e6f121
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The checkout is the runner's user's, the container root: git's ls-files (the lint and tests) needs it trusted.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ci/tools.sh && ci/lint.sh all && ci/checks.sh
