@@ -23,6 +23,8 @@ locals {
   looper_vm_group        = { for k, v in var.looper_vms : k => "${local.looper_vm_group_prefix}${k}" }
   # The kicker's jobs: tacplus-dev/looper's protected ref in its environment kicker, as local.app_signers names them.
   looper_vm_kicker = "${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:kicker"
+  # The plan (looper-dispatch plan, environment looper-plan) asks the same of a VM project before it plans its reports.
+  looper_vm_plan = "${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:looper-plan"
 }
 
 resource "google_service_account" "looper_vm" {
@@ -114,6 +116,20 @@ resource "google_project_iam_member" "looper_vm_kicker" {
   project = google_project.ci.project_id
   role    = "projects/${google_project.ci.project_id}/roles/${google_project_iam_custom_role.looper_vm_resizer.role_id}"
   member  = local.looper_vm_kicker
+  condition {
+    title       = "looper-vm groups only"
+    description = "The looper VMs' instance groups alone (tacplus-dev/cloud #108, tacplus-dev/looper#241)"
+    expression  = "resource.name.startsWith(\"${local.looper_vm_group_prefix}\")"
+  }
+}
+
+# The plan starts the VM too, or reads it up, before it skips a VM project's reports (tacplus-dev/looper#241): without
+# this its every look failed ("could not be read (Compute)") and the project's reports ran in the cluster instead.
+resource "google_project_iam_member" "looper_vm_plan" {
+  count   = length(var.looper_vms) > 0 ? 1 : 0
+  project = google_project.ci.project_id
+  role    = "projects/${google_project.ci.project_id}/roles/${google_project_iam_custom_role.looper_vm_resizer.role_id}"
+  member  = local.looper_vm_plan
   condition {
     title       = "looper-vm groups only"
     description = "The looper VMs' instance groups alone (tacplus-dev/cloud #108, tacplus-dev/looper#241)"

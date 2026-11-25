@@ -633,7 +633,7 @@ run "ci" {
   }
   # Without looper VMs (#108), no VM, no account, and no grant: the kicker resizes nothing, nobody reads the model token.
   assert {
-    condition     = length(google_compute_instance_group_manager.looper_vm) == 0 && length(google_service_account.looper_vm) == 0 && length(google_project_iam_member.looper_vm_kicker) == 0 && length(google_secret_manager_secret_iam_binding.looper_model_token) == 0
+    condition     = length(google_compute_instance_group_manager.looper_vm) == 0 && length(google_service_account.looper_vm) == 0 && length(google_project_iam_member.looper_vm_kicker) == 0 && length(google_project_iam_member.looper_vm_plan) == 0 && length(google_secret_manager_secret_iam_binding.looper_model_token) == 0
     error_message = "Without looper VMs, the plan makes one, an account, the kicker's resize or a reader of looper-model-token."
   }
 }
@@ -1550,6 +1550,11 @@ run "looper_vms" {
   assert {
     condition     = length(google_project_iam_member.looper_vm_kicker) == 1 && google_project_iam_member.looper_vm_kicker[0].role == "projects/tacplus-ci/roles/looperVmResizer" && google_project_iam_member.looper_vm_kicker[0].member == "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:kicker" && google_project_iam_member.looper_vm_kicker[0].condition[0].expression == "resource.name.startsWith(\"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-\")"
     error_message = "The kicker does not resize the looper VMs' groups, or resizes more."
+  }
+  # The plan's identity too (looper#241), on the same groups alone.
+  assert {
+    condition     = length(google_project_iam_member.looper_vm_plan) == 1 && google_project_iam_member.looper_vm_plan[0].role == "projects/tacplus-ci/roles/looperVmResizer" && endswith(google_project_iam_member.looper_vm_plan[0].member, ":main:true:looper-plan") && google_project_iam_member.looper_vm_plan[0].condition[0].expression == google_project_iam_member.looper_vm_kicker[0].condition[0].expression
+    error_message = "The plan cannot read or start the looper VMs' groups, or can reach more than them."
   }
   assert {
     condition     = alltrue([for m in concat(values(google_project_iam_member.manager), values(google_project_iam_member.hub_audit), values(google_project_iam_member.looper_vm_log)) : !strcontains(m.role, "looperVmResizer")])
