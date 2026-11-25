@@ -5,8 +5,9 @@
 # The looper VM's one script (#108; tacplus-dev/roadmap decisions/looper-build-vms-2026-11-24.md, point 10), the same
 # for every project: files/looper-vm-cloud-init.yaml writes it and the unit looper-vm.service that runs it. It decides
 # no work. What differs between projects is only the VM's metadata, which the ci stack writes from looper_vms:
-# looper-repo (the tacplus-dev repository), looper-image (the looper-vm image, by digest; empty, nothing runs) and
-# looper-group (the VM's own instance group, by resource name). No secret is in the metadata or here: the container
+# looper-repo (the tacplus-dev repository), or for an org's shared VM (decision point 12) looper-org and looper-except
+# (the repositories with a VM of their own, NAME,...), looper-image (the looper-vm image, by digest; empty, nothing
+# runs) and looper-group (the VM's own instance group, by resource name). No secret is in the metadata or here: the container
 # fetches its own credentials as the VM's service account.
 #
 #   looper-vm.sh run    ExecStart: the cache directory, made usable or made again, never waited on (point 3); the
@@ -54,15 +55,27 @@ cache_exec() {
 }
 
 run() {
-  local repo image try
+  local repo org except image try work
   mkdir -p "$state" && rm -f "$state/stopping" "$state/idle"
-  repo=$(metadata looper-repo) image=$(metadata looper-image)
+  repo=$(metadata looper-repo) org=$(metadata looper-org) except=$(metadata looper-except) image=$(metadata looper-image)
   if [ -z "$image" ]; then
     log "no looper-image in the metadata: nothing to run (the group stays as the kicker sized it)"
     return 0
   fi
-  if ! [[ $repo =~ ^[a-z0-9][a-z0-9._-]*$ ]] || ! [[ $image =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]; then
-    log "looper-repo [$repo] is not a repository's name, or looper-image [$image] is not an image by digest: nothing runs"
+  if ! [[ $image =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]; then
+    log "looper-image [$image] is not an image by digest: nothing runs"
+    return 0
+  fi
+  if [ -n "$org" ]; then
+    if ! [[ $org =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || ! [[ $except =~ ^([a-z0-9][a-z0-9._-]*(,[a-z0-9][a-z0-9._-]*)*)?$ ]] || [ -n "$repo" ]; then
+      log "looper-org [$org] with looper-except [$except] and looper-repo [$repo] is not an org's shared VM: nothing runs"
+      return 0
+    fi
+    work=(--org "$org"); [ -z "$except" ] || work+=(--except "$except")
+  elif [[ $repo =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+    work=(--repo "$repo")
+  else
+    log "looper-repo [$repo] is not a repository's name: nothing runs"
     return 0
   fi
   cache_ready
@@ -73,14 +86,14 @@ run() {
     sleep $((try * poll))
   done
   docker rm -f looper-vm >/dev/null 2>&1
-  log "starting $image for $repo"
+  log "starting $image for ${work[*]}"
   # Docker's gcplogs driver sends the container's output to Cloud Logging as it is written (the VM's account is a
   # logWriter): with --rm, a container that dies at once took its log with it before the agent read it.
   docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$cache:/var/lib/looper-cache" \
-    -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST="$cache" -e LOOPER_VM_REPO="$repo" \
-    "$image" looper-vm --repo "$repo"
+    -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST="$cache" -e LOOPER_VM_REPO="${repo:-$org}" \
+    "$image" looper-vm "${work[@]}"
   local rc=$?
   if [ "$rc" = 0 ] && [ ! -f "$state/stopping" ]; then
     log "the container exited 0: idle"

@@ -70,6 +70,18 @@ resized && [ ! -s "$stub/systemctl" ] && ok "idle: the VM's own group is resized
 looper post
 ! resized && ok "a second post (a restart's) resizes nothing" || fail "a second post resized again"
 
+# An org's shared VM (decision point 12): looper-org and looper-except, no looper-repo: the parent works the org but
+# the repositories with a VM of their own. An org VM that also names a repository is refused.
+world "$image"
+printf '' > "$stub/attributes/looper-repo"; printf %s tacplus-dev > "$stub/attributes/looper-org"; printf %s tacplus > "$stub/attributes/looper-except"
+looper run
+grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus-dev $image looper-vm --org tacplus-dev --except tacplus" "$stub/docker" &&
+  ok "an org's shared VM runs looper-vm --org, less the repositories with their own VM" || fail "the org VM: exit $rc, docker: $(cat "$stub/docker")"
+world "$image"
+printf %s tacplus-dev > "$stub/attributes/looper-org"
+looper run
+[ "$rc" = 0 ] && ! grep -q '^docker run ' "$stub/docker" && ok "an org VM that names a repository too runs nothing" || fail "org and repo: exit $rc, docker: $(cat "$stub/docker")"
+
 # The resize fails: the VM powers off, it does not loop.
 world "$image"
 : > "$stub/resize-fails"

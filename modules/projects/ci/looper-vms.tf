@@ -21,6 +21,8 @@ locals {
   # which its idle resize calls): the template cannot name the group, which names the template.
   looper_vm_group_prefix = "projects/${google_project.ci.project_id}/zones/${var.zone}/instanceGroupManagers/looper-vm-"
   looper_vm_group        = { for k, v in var.looper_vms : k => "${local.looper_vm_group_prefix}${k}" }
+  # The repositories with a VM of their own: an org's shared VM works every other one (decision point 12).
+  looper_vm_own = sort([for k, v in var.looper_vms : k if v.org == ""])
   # The kicker's jobs: tacplus-dev/looper's protected ref in its environment kicker, as local.app_signers names them.
   looper_vm_kicker = "${local.app_pool}/attribute.role/${local.apps.looper.project_id}:${local.apps.looper.ref}:true:kicker"
   # The plan (looper-dispatch plan, environment looper-plan) asks the same of a VM project before it plans its reports.
@@ -214,7 +216,9 @@ resource "google_compute_instance_template" "looper_vm" {
   # project's keys blocked.
   metadata = {
     user-data              = templatefile("${path.module}/files/looper-vm-cloud-init.yaml", { script = file("${path.module}/files/looper-vm.sh") })
-    looper-repo            = each.key
+    looper-repo            = each.value.org == "" ? each.key : ""
+    looper-org             = each.value.org
+    looper-except          = each.value.org == "" ? "" : join(",", local.looper_vm_own)
     looper-image           = each.value.image
     looper-group           = local.looper_vm_group[each.key]
     google-logging-enabled = "true"

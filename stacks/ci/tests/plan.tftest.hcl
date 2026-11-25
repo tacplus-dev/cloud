@@ -90,7 +90,7 @@ run "stack" {
   }
   # The looper VMs (#108): tacplus's group, which the kicker resizes, and its account.
   assert {
-    condition     = output.looper_vms == { tacplus = { group = "looper-vm-tacplus", zone = "us-central1-b", service_account = "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com" } }
+    condition     = output.looper_vms == { tacplus = { group = "looper-vm-tacplus", zone = "us-central1-b", service_account = "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com" }, tacplus-dev = { group = "looper-vm-tacplus-dev", zone = "us-central1-b", service_account = "looper-vm-tacplus-dev@tacplus-ci.iam.gserviceaccount.com" } }
     error_message = "The stack does not give tacplus's looper VM group looper-vm-tacplus in us-central1-b and its account."
   }
   override_resource {
@@ -216,7 +216,7 @@ run "settings" {
   # The looper VMs (#108; decisions/looper-build-vms-2026-11-24.md): tacplus first, the pilot, a spot c4a-standard-8
   # with a 200 GB cache disk, with no image until tacplus-dev/looper#239 publishes it (its group stays at 0).
   assert {
-    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:3c15e274db19bd813c6d4e1cf28102857f644876e48acef3ceff88531293d5a0" } }
+    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:33f1949884d1062ce39189eb05cd276407718e5ee4a9591e9fb4988743d0a096" }, tacplus-dev = { machine_type = "c4a-standard-4", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:33f1949884d1062ce39189eb05cd276407718e5ee4a9591e9fb4988743d0a096", org = "tacplus-dev" } }
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
 }
@@ -1463,7 +1463,7 @@ run "looper_vms" {
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
     looper_vms = {
       tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper/looper-vm@sha256:1111111111111111111111111111111111111111111111111111111111111111" }
-      small   = { machine_type = "c4a-standard-2", disk_gb = 50, spot = false, image = "" }
+      small   = { machine_type = "c4a-standard-2", disk_gb = 50, spot = false, image = "", org = "tacplus-dev" }
     }
   }
   override_resource {
@@ -1495,7 +1495,7 @@ run "looper_vms" {
   # No SSH in any form: no key in the metadata, the project's keys blocked. The metadata is the project, its image
   # (none: nothing runs), its group, the one cloud-init, logging on and no OS update: no secret.
   assert {
-    condition     = alltrue([for k, t in google_compute_instance_template.looper_vm : !contains(keys(t.metadata), "ssh-keys") && !contains(keys(t.metadata), "sshKeys") && t.metadata["block-project-ssh-keys"] == "true" && join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-group looper-image looper-repo user-data" && t.metadata["looper-repo"] == k && t.metadata["looper-group"] == "projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-${k}" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled"]) && google_compute_instance_template.looper_vm["tacplus"].metadata["looper-image"] == "ghcr.io/tacplus-dev/looper/looper-vm@sha256:1111111111111111111111111111111111111111111111111111111111111111" && google_compute_instance_template.looper_vm["small"].metadata["looper-image"] == ""
+    condition     = alltrue([for k, t in google_compute_instance_template.looper_vm : !contains(keys(t.metadata), "ssh-keys") && !contains(keys(t.metadata), "sshKeys") && t.metadata["block-project-ssh-keys"] == "true" && join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-except looper-group looper-image looper-org looper-repo user-data" && t.metadata["looper-group"] == "projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/looper-vm-${k}" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled"]) && google_compute_instance_template.looper_vm["tacplus"].metadata["looper-image"] == "ghcr.io/tacplus-dev/looper/looper-vm@sha256:1111111111111111111111111111111111111111111111111111111111111111" && google_compute_instance_template.looper_vm["small"].metadata["looper-image"] == "" && [for k in ["tacplus", "small"] : [for m in ["looper-repo", "looper-org", "looper-except"] : google_compute_instance_template.looper_vm[k].metadata[m]]] == [["tacplus", "", ""], ["", "tacplus-dev", "tacplus"]]
     error_message = "A looper VM's metadata has an SSH key, does not block the project's, or holds more than its project, image, group, cloud-init and logging."
   }
   # One cloud-init for every project: the script, and the unit that runs it (an idle exit not restarted, a stop given
