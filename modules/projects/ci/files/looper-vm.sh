@@ -37,11 +37,20 @@ metadata() { curl -sf --max-time 10 --retry 3 -H 'Metadata-Flavor: Google' "$md/
 # if even that fails, the container starts without it, cold. Never repaired by hand, never waited on.
 cache_ready() {
   local probe=$cache/.looper-vm-probe
-  if mkdir -p "$cache" 2>/dev/null && : > "$probe" 2>/dev/null && rm -f "$probe"; then return 0; fi
+  if mkdir -p "$cache" 2>/dev/null && : > "$probe" 2>/dev/null && rm -f "$probe"; then cache_exec; return 0; fi
   log "the cache $cache is unusable: removed and made again"
   rm -rf "$cache" 2>/dev/null
-  if mkdir -p "$cache" 2>/dev/null && : > "$probe" 2>/dev/null && rm -f "$probe"; then return 0; fi
+  if mkdir -p "$cache" 2>/dev/null && : > "$probe" 2>/dev/null && rm -f "$probe"; then cache_exec; return 0; fi
   log "the cache $cache cannot be made: the container starts cold"
+}
+
+# COS mounts /var noexec, and the build containers run what they cache there (Go keeps each `go run` binary in its
+# GOCACHE, looper#245): the cache is bind-mounted on itself, once a boot, and that mount remounted exec. If that
+# fails it says so; the container still starts.
+cache_exec() {
+  if ! { mountpoint -q "$cache" || mount --bind "$cache" "$cache"; } || ! mount -o remount,bind,exec "$cache"; then
+    log "the cache $cache could not be made exec: a build that runs a cached binary fails"
+  fi
 }
 
 run() {

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub mountpoint for tests/looper_vm_test.sh: logs its arguments to STUB_LOOPER_VM/mount; the cache is never a mount point yet.
+echo "mountpoint $*" >> "$STUB_LOOPER_VM/mount"
+exit 1

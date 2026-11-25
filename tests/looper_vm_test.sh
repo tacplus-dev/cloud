@@ -31,7 +31,7 @@ world() {
   printf %s tacplus > "$stub/attributes/looper-repo"
   printf %s "$1" > "$stub/attributes/looper-image"
   printf %s "$group" > "$stub/attributes/looper-group"
-  : > "$stub/calls"; : > "$stub/docker"; : > "$stub/systemctl"
+  : > "$stub/calls"; : > "$stub/docker"; : > "$stub/systemctl"; : > "$stub/mount"
 }
 # looper ARG: the script, as the unit runs it; its status in $rc.
 looper() {
@@ -60,6 +60,9 @@ expected="docker run --rm --name looper-vm --network host --log-driver=gcplogs -
 [ "$rc" = 0 ] && grep -qxF "docker pull $image" "$stub/docker" && grep -qxF "$expected" "$stub/docker" &&
   ok "the image is pulled by digest and runs with the repo, the cache and the container socket" || fail "the run: exit $rc, docker: $(cat "$stub/docker")"
 [ -d "$root/var/lib/looper-cache" ] && ok "the cache directory is made" || fail "no cache directory"
+[ "$(cat "$stub/mount")" = "mountpoint -q $root/var/lib/looper-cache
+mount --bind $root/var/lib/looper-cache $root/var/lib/looper-cache
+mount -o remount,bind,exec $root/var/lib/looper-cache" ] && ok "the cache is bind-mounted on itself and remounted exec (looper#245)" || fail "the cache mount: $(cat "$stub/mount")"
 ! grep -qiE 'token|secret|key' "$stub/docker" && ok "the container is given no credential" || fail "a credential on docker's command line: $(cat "$stub/docker")"
 looper post
 resized && [ ! -s "$stub/systemctl" ] && ok "idle: the VM's own group is resized to 0 with the VM's token" || fail "idle: $(cat "$stub/calls" "$stub/systemctl")"
