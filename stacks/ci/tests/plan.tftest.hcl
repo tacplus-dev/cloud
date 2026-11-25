@@ -216,7 +216,7 @@ run "settings" {
   # The looper VMs (#108; decisions/looper-build-vms-2026-11-24.md): tacplus first, the pilot, a spot c4a-standard-8
   # with a 200 GB cache disk, with no image until tacplus-dev/looper#239 publishes it (its group stays at 0).
   assert {
-    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:3370d3b9197a94688730ae45e6630258b795ec158bd1ba7df0a0e3b41f4fe0e4" } }
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
 }
