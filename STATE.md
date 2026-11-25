@@ -540,7 +540,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
 - **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (3ed6045 since #92: looper#221's image 790b7849, with looper#207's side-by-side scanners
+  `build_ci_commit` (3e40ec7 since #109: looper#237's build of 4 jobs, `BUILD_CHILD_VERDICT` "true" on the looper image
+  d53cb7c1 (main-e0ab92d, whose child's security job sets the verdict, `looper-build scan`), `tests/build_ci_test.sh`
+  refusing it on 790b7849; before it 3ed6045, #92: looper#221's image 790b7849, with looper#207's side-by-side scanners
   (`BUILD_SCAN_JOBS`), #209 and #210, the light jobs on `build-light`; before it b1dbfe4, #100: looper#224's light
   tags `arm64, build-light`; before it cf993b6, #92: looper#209's report slots below the pool's nodes,
   `BUILD_POOL_NODES` "2", `BUILD_REPORT_TAGS`, still the looper image cd7d3689; before it e877150, #82: the looper image cd7d3689, looper#202's `BUILD_GATES_REQUESTS_<repo>`, looper#185's
