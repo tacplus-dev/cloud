@@ -135,8 +135,8 @@ run "settings" {
     error_message = "The pools are not shared, build, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 2
-    error_message = "The shared pool is not one always-on t2a-standard-8 and a second on demand (13 jobs a VM, #63; Jody 2026-11-14)."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
+    error_message = "The shared pool is not one always-on t2a-standard-8 (13 jobs a VM, #63; its second VM's CPUs the looper VMs' since 2026-11-25)."
   }
   # A full shared VM queues its jobs, it does not fail them (#63): on 2026-11-15 its 350 GB pd-standard disk (525
   # write IOPS, 42 MiB/s, shared by 24 jobs and Docker) stopped Docker answering containers/create within 120 s, and
@@ -148,10 +148,10 @@ run "settings" {
   }
   # Every pool at its peak fits tacplus-ci's CPU quota (#55): each pool's max_instances VMs, and two managers (a
   # handoff), never more CPUs than CPUS_ALL_REGIONS, or a pool's VM fails QUOTA_EXCEEDED (the second build VM,
-  # 2026-11-13). A t2a-standard-N has N CPUs.
+  # 2026-11-13). The looper VMs (0..1 each) count too. A t2a-standard-N and a c4a-standard-N have N CPUs.
   assert {
-    condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])])) <= output.ci_cpus.quota
-    error_message = "The pools' VMs at their max_instances and two managers need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N."
+    condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])], [for v in values(output.looper_vms) : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])])) <= output.ci_cpus.quota
+    error_message = "The pools' VMs at their max_instances, two managers and the looper VMs need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N or c4a-standard-N."
   }
   # Every pool's SSD-backed disks at its peak fit tacplus-ci's SSD quota (#63): each pool on pd-balanced, pd-ssd or
   # pd-extreme, its max_instances VMs' disks (capacity times a job's share, plus the OS's), and the managers' boot

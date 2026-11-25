@@ -387,7 +387,7 @@ output "runner_pools" {
     # second VM's (ci_cpus below). Interim, as the pool is: the in-cluster runners replace it (tacplus-dev/looper#84).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = local.shared_disk_type, os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 2, idle_count = 1, idle_time = "30m"
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 1, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
       spot            = false
@@ -410,9 +410,12 @@ output "runner_pools" {
     # Also tagged build-docker since #70: tacplus-dev/looper#172's BUILD_DOCKER_TAGS ("arm64, build-docker") sends the
     # jobs that still need host Docker here, never to the in-cluster build runner (no socket), which takes arm64 and
     # build too. It keeps arm64 and build until #11 removes it.
+    # max_instances 0 since the looper VMs (Jody, 2026-11-25: "Lower the pools by 12"): its runner (58928680) is
+    # paused, the in-cluster build runner takes its jobs, and its 8 CPUs, with the shared pool's second VM's, are the
+    # looper VMs' 12 (ci_cpus below).
     build = {
       machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = 4, max_instances = 1, idle_count = 0, idle_time = "15m"
+      capacity        = 4, max_instances = 0, idle_count = 0, idle_time = "15m"
       job             = local.jobs.build
       service_account = false
       spot            = false
@@ -461,7 +464,8 @@ output "ci_cpus" {
     request to Google, then this line); the manager's machine type, and how many managers run at once at most (a
     handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
     CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
-    Today: shared 16, build 8, cluster 4, deploy 2, managers 2: 32.
+    Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 4: 28 (Jody, 2026-11-25:
+    "Lower the pools by 12", for the looper VMs).
   EOT
   value = {
     quota                = 32
@@ -478,7 +482,7 @@ output "ci_disks" {
     module's). The ci stack's test refuses pools whose SSD-backed disks, each pool at its max_instances, and the
     managers' (ci_cpus.managers of them, a handoff) need more GB than the quota: a pool's VM over it fails
     QUOTA_EXCEEDED, as a VM over the CPU quota did on 2026-11-13, and the shared pool's second VM would never come.
-    Today: shared 2 x 154, deploy 80, cluster 70, managers 2 x 20: 498 of 500. The build pool's 450 GB is pd-standard
+    Today: shared 154 (one VM since 2026-11-25), deploy 80, cluster 70, managers 2 x 20: 344 of 500. The build pool's 450 GB is pd-standard
     (its builds share a disk four at a time; pd-balanced for it too is the quota raised first, PROPOSALS.md).
   EOT
   value = {
