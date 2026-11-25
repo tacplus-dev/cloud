@@ -90,8 +90,9 @@ run "stack" {
   }
   # The looper VMs (#108): tacplus's group, which the kicker resizes, and its account.
   assert {
-    condition     = output.looper_vms == { tacplus = { group = "looper-vm-tacplus", zone = "us-central1-b", service_account = "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com" }, tacplus-dev = { group = "looper-vm-tacplus-dev", zone = "us-central1-b", service_account = "looper-vm-tacplus-dev@tacplus-ci.iam.gserviceaccount.com" } }
-    error_message = "The stack does not give tacplus's looper VM group looper-vm-tacplus in us-central1-b and its account."
+    # The accounts' emails are the override's below, one for every VM: the module's run checks each its own.
+    condition     = { for k, g in output.looper_vms : k => [g.group, g.zone] } == { tacplus = ["looper-vm-tacplus", "us-central1-b"], tacplus-dev = ["looper-vm-tacplus-dev", "us-central1-b"] } && output.looper_vms.tacplus.service_account == "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"
+    error_message = "The stack does not give tacplus's and the org's looper VM groups (looper-vm-tacplus, looper-vm-tacplus-dev) in us-central1-b and its account."
   }
   override_resource {
     target = module.ci.google_service_account.looper_vm
