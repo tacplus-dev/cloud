@@ -241,12 +241,13 @@ variables:
   # The child pipeline's security job sets the build's verdict (looper#237):
   # "true" drops the pending job and an ordinary build's report-pass and
   # report-fail, plan setting pending and its own failure. It needs
-  # default.image a looper image whose looper-build has scan (main-e0ab92d
-  # on): an older image's child sets no success, and report-pass must.
+  # default.image a looper image whose looper-build scan sets it (main-1fca965
+  # on, looper#246: an older scan had no token for it): an older image's
+  # child sets no success, and report-pass must.
   BUILD_CHILD_VERDICT: "true"
 
 default:
-  image: ghcr.io/tacplus-dev/looper@sha256:d53cb7c1ca89816424f3681bf16cde38684ec05f87d8977f71591dad9b30494b
+  image: ghcr.io/tacplus-dev/looper@sha256:bd0b9fa432dc3981db909e6e44e0bdfb345379bd85ee8c654bd6ab9ad1a85649
   tags: [arm64, build]
   retry:
     max: 2
