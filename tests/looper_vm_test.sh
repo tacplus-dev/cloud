@@ -56,7 +56,7 @@ looper run
 # The image runs: pulled by digest, the container with the repo, the cache and the socket; exit 0 is idle.
 world "$image"
 looper run
-expected="docker run --rm --name looper-vm --network host -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus $image looper-vm --repo tacplus"
+expected="docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus $image looper-vm --repo tacplus"
 [ "$rc" = 0 ] && grep -qxF "docker pull $image" "$stub/docker" && grep -qxF "$expected" "$stub/docker" &&
   ok "the image is pulled by digest and runs with the repo, the cache and the container socket" || fail "the run: exit $rc, docker: $(cat "$stub/docker")"
 [ -d "$root/var/lib/looper-cache" ] && ok "the cache directory is made" || fail "no cache directory"

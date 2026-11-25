@@ -65,7 +65,9 @@ run() {
   done
   docker rm -f looper-vm >/dev/null 2>&1
   log "starting $image for $repo"
-  docker run --rm --name looper-vm --network host \
+  # Docker's gcplogs driver sends the container's output to Cloud Logging as it is written (the VM's account is a
+  # logWriter): with --rm, a container that dies at once took its log with it before the agent read it.
+  docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$cache:/var/lib/looper-cache" \
     -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST="$cache" -e LOOPER_VM_REPO="$repo" \
