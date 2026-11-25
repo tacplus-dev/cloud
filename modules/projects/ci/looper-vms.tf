@@ -137,6 +137,40 @@ resource "google_project_iam_member" "looper_vm_plan" {
   }
 }
 
+# The VMs' diagnosis, read only (hub, 2026-11-25; no gcloud on a Mac and no SSH): the plan's identity, in
+# tacplus-dev/looper's manual job looper-vm-diagnose, reads a looper VM's serial console (those instances alone) and
+# the project's logs (the VM's container logs through google-logging-enabled), nothing it can change.
+resource "google_project_iam_custom_role" "looper_vm_console" {
+  count       = length(var.looper_vms) > 0 ? 1 : 0
+  project     = google_project.ci.project_id
+  role_id     = "looperVmConsole"
+  title       = "Looper VM console reader"
+  description = "Reads a looper VM's serial console (tacplus-dev/cloud #108)."
+  permissions = ["compute.instances.getSerialPortOutput", "compute.instances.get"]
+  depends_on  = [terraform_data.iam_ready]
+}
+
+resource "google_project_iam_member" "looper_vm_console" {
+  count   = length(var.looper_vms) > 0 ? 1 : 0
+  project = google_project.ci.project_id
+  role    = google_project_iam_custom_role.looper_vm_console[0].id
+  member  = local.looper_vm_plan
+  condition {
+    title       = "looper-vm instances only"
+    description = "The looper VMs' instances alone (tacplus-dev/cloud #108)"
+    expression  = "resource.name.startsWith(\"projects/${google_project.ci.project_id}/zones/${var.zone}/instances/looper-vm-\")"
+  }
+  depends_on = [terraform_data.iam_ready]
+}
+
+resource "google_project_iam_member" "looper_vm_logs" {
+  count      = length(var.looper_vms) > 0 ? 1 : 0
+  project    = google_project.ci.project_id
+  role       = "roles/logging.viewer"
+  member     = local.looper_vm_plan
+  depends_on = [terraform_data.iam_ready]
+}
+
 resource "google_compute_instance_template" "looper_vm" {
   for_each     = var.looper_vms
   project      = google_project.ci.project_id
