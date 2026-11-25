@@ -449,7 +449,7 @@ output "runner_pools" {
 output "looper_vms" {
   description = "The looper VMs (the ci module's looper_vms): per repository, its machine type (C4A), its Hyperdisk Balanced disk in GB, spot or not, and its image by digest (empty: none yet)."
   value = {
-    tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:dc4a57abeb9def11dbcdd2b5a52953f30ec7120bca30ce8213b7d1650e79567f" }
+    tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:3c15e274db19bd813c6d4e1cf28102857f644876e48acef3ceff88531293d5a0" }
   }
 }
 
