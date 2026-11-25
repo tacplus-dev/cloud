@@ -93,3 +93,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-24 looper issue Register a GitLab runner 'manager' (tags arm64, manager) and its token secret (cluster#60) (#106)
 - 2026-11-24 looper issue ci/security.sh: fail only on findings in what ships; report CI tooling (bin/ binaries, the CI image), never blocking (looper#225) (#101)
 - 2026-11-25 looper issue dev: looper pool max_nodes 2 -> 4 (Jody's yes 2026-11-24) (#107)
+- 2026-11-25 looper issue Copy looper's ci/build.gitlab-ci.yml once it folds a build to 4 jobs (BUILD_CHILD_VERDICT, looper#237) (#109)
