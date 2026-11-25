@@ -62,6 +62,15 @@
 # they never wait behind the build runner's slots; gates is a trigger and takes
 # no runner.
 #
+# Fewer jobs a build (looper#237: GitLab's free plan counts every job, bridges
+# too, of the alive pipelines, parent and child, against ~500): with
+# BUILD_CHILD_VERDICT "true" an ordinary build is four, plan and the gates
+# trigger here, gates and security-<repo> in the child. plan sets the pending
+# status, and its own failure's; the security job, after the gates, sets the
+# verdict (looper-build scan): the gates' reason, the security checks', or
+# pass. A release's pass waits for its publish and SBOM: report-pass and
+# report-fail are then a release's alone, and there is no pending job.
+#
 # The macOS smoke (looper#36): a web run on main with "smoke": true and no repo
 # or sha is a pipeline of one manual job, macos-smoke, on the Mac runner (tag
 # macos, a fresh Tart VM per job, protected refs only), and none of the build's
@@ -229,9 +238,15 @@ variables:
   BUILD_POOL_NODES: "2"
   BUILD_REPORT_TAGS: "arm64, build"
   BUILD_NIGHTLY_TAGS: "arm64, build"
+  # The child pipeline's security job sets the build's verdict (looper#237):
+  # "true" drops the pending job and an ordinary build's report-pass and
+  # report-fail, plan setting pending and its own failure. It needs
+  # default.image a looper image whose looper-build has scan (main-e0ab92d
+  # on): an older image's child sets no success, and report-pass must.
+  BUILD_CHILD_VERDICT: "true"
 
 default:
-  image: ghcr.io/tacplus-dev/looper@sha256:790b78493c18c89d2127887c08e48229ebcd5b3cc77120dc94e272ea5ad1ad81
+  image: ghcr.io/tacplus-dev/looper@sha256:d53cb7c1ca89816424f3681bf16cde38684ec05f87d8977f71591dad9b30494b
   tags: [arm64, build]
   retry:
     max: 2
@@ -242,15 +257,11 @@ default:
   rules:
     - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true"
 
-# The commit status: a build's verdict, never a nightly's or a verify run's.
-.status-run:
-  rules:
-    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
-
-# The commit is marked pending while it builds.
+# The commit is marked pending while it builds; with BUILD_CHILD_VERDICT, by plan (looper#237).
 pending:
-  extends: .status-run
   stage: plan
+  rules:
+    - if: $BUILD_CHILD_VERDICT != "true" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
   needs: []
   allow_failure: true
   tags: [arm64, build-light]
@@ -261,13 +272,17 @@ pending:
 # build.lock), write the gates job in the pinned image and the security checks' jobs, and on a
 # release the formal verification's (a verify run: those alone). No pin, or a bad one, is a fail verdict.
 # A nightly with no repo: the child pipeline of each pinned repository's nightly (looper#164).
+# With BUILD_CHILD_VERDICT it marks the commit pending first, and a failed plan's verdict is its
+# own (looper#237: no pending job, no report-fail but a release's); a nightly's or a verify run's
+# status is none.
 plan:
   extends: .build-run
   stage: plan
   needs: []
   tags: [arm64, build-light]
   script:
-    - looper-build plan
+    - if [ "$BUILD_CHILD_VERDICT" = true ]; then looper-build status pending || true; fi
+    - looper-build plan || { [ "$BUILD_CHILD_VERDICT" != true ] || looper-build status failure; exit 1; }
   artifacts:
     when: always
     expire_in: 30 days
@@ -288,11 +303,16 @@ gates:
       yaml_variables: false
       pipeline_variables: false
 
-# The verdict, on the commit.
+# The verdict, on the commit. With BUILD_CHILD_VERDICT a release's alone, once its child's
+# publish and SBOM passed (looper#237: any other build's is its security job's, looper-build scan,
+# and these are not created). Under an old parent the new child's security job sets it first:
+# report-pass sets the same again, and report-fail leaves the reason it set be.
 report-pass:
   stage: report
   rules:
-    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+    - if: $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+      when: on_success
+    - if: $BUILD_CHILD_VERDICT != "true" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_success
   tags: [arm64, build-light]
   script:
@@ -301,7 +321,9 @@ report-pass:
 report-fail:
   stage: report
   rules:
-    - if: $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+    - if: $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+      when: on_failure
+    - if: $BUILD_CHILD_VERDICT != "true" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_failure
   tags: [arm64, build-light]
   script:

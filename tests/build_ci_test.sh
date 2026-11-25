@@ -37,6 +37,15 @@ for job in pending plan report-pass report-fail; do
   [ "$(tags_of "$job")" = "[arm64, build-light]" ] &&
     ok "the copy runs $job on arm64, build-light, not build (#100)" || fail "the copy's $job tags: [$(tags_of "$job")]"
 done
+# The child's verdict (#109: tacplus-dev/looper#237): BUILD_CHILD_VERDICT "true" drops report-pass, so it needs an
+# image whose looper-build has scan; looper#221's 790b7849 has not, and its builds would never turn green.
+if grep -qxF '  BUILD_CHILD_VERDICT: "true"' "$file"; then
+  ! grep -qF 'ghcr.io/tacplus-dev/looper@sha256:790b7849' "$file" &&
+    ok "the copy's child verdict runs on an image with looper-build scan, not 790b7849 (#109)" ||
+    fail "the copy sets BUILD_CHILD_VERDICT \"true\" on the looper image 790b7849, whose child sets no pass"
+else
+  ok "the copy keeps report-pass and report-fail (BUILD_CHILD_VERDICT not \"true\")"
+fi
 
 reset
 cp "$file" "$STUB_CURL/raw"
