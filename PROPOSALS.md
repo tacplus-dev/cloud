@@ -725,3 +725,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   at 0 and paused), so is the build pool removed now or kept until `BUILD_BUILDER_IMAGE` is pinned; the plain destroy
   of the manager; deleting strays; jody1-328023's `gitlab-runner-mgr` and runners 57939705 and 58307468, outside this
   repository; the quota raise's size.
+- **The dev cluster as one fixed pool of 3 small nodes, deployments only** (looper, #114, 2026-11-26;
+  tacplus-dev/roadmap `decisions/looper-build-vms-2026-11-24.md` point 8). What, in four steps: (1) drop the `looper`
+  pool, its `cluster.looper` field and `looper_*` outputs, after tacplus-dev/cluster drops `pool.yaml`'s `looper`
+  block and control's toleration (else control's `concurrent` overcommits the normal pool); (2) when the merge train
+  retires (tacplus-dev/looper#249, #251), drop the `spot` pool, its zone lookup and `spot_*` outputs, and the build,
+  build-light, build-report and manager runners and their token secrets, keeping `google_container_node_pool.pool` a
+  one-entry `for_each`; (3) move `kick` and `infra` off the cluster to an on-demand runner VM in `tacplus-ci` reaching
+  the private control plane by peering and one more authorized network (if peering reaches it), then namespace `ci`
+  goes; (4) size the 3 nodes from the deployments' measured peak requests (likely c4a-standard-2 stays), then lower
+  the quota preferences. Why: the cluster's only job left is testing our deployments; the other pools and runners
+  are the retiring train's and old loopers', and cost quota, money and surface. Open (#114's design): control's fate,
+  where tacplus-dev/build's `build`-tagged release builds (#112) run once the spot pool goes, where infra runs
+  (peered VM, a VM in dev's node subnet, or kept in-cluster), the node size floor and a roll's outage, and when the
+  quota preferences come down.
