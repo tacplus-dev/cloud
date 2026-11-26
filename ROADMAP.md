@@ -38,6 +38,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - Retire tacplus-ci's runner pools and their manager, which nothing runs on (#113). Hub, at Jody's request, 2026-11-25 ("make sure you have all the dead stuff cut").
 - The dev cluster as one pool of 3 small nodes, no autoscaling, deployments only: the looper pool now, the spot pool and the CI runners when the merge train retires (#114). Hub, at Jody's request, 2026-11-25 ("the K8S cluster should have 3 small nodes ... not running any loopers or builders").
 - Release builds by branch on tacplus-dev/build: the nightly and release-branch schedules and the build-now trigger (#112; tacplus-dev/looper#252). Hub, at Jody's request, 2026-11-26 (`tacplus-dev/roadmap:decisions/agentic-dev-flow-2026-11-25.md`; "dont wait on me unless you absolutely have to").
+- tests/ci_test.sh accepts the CI image at a tacplus line's dated build tag (#102). Hub, on its recommendation with Jody's standing agreement (tp-act-on-recommendations), 2026-11-26.
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
