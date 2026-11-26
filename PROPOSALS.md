@@ -680,3 +680,23 @@ the looper then marks it `promoted` or `declined` here with the date.
   whether tacplus-dev/cluster's `gitlab-runner/pool.yaml` mirror waits for Google to grant the quotas and not only for
   cloud's apply. Why: on 2026-11-24 at 19:59Z the control runner was at its 17 (cluster#53) with 18 jobs pending, 5 of
   them managers; the pool's maximum of 2 is the bound.
+- **tacplus-ci's quota for the reserved machines** (looper, #111, 2026-11-26). What: before `reserved_vms` pins an
+  image, raise `CPUS_ALL_REGIONS` of `tacplus-ci` from 32 to at least 49. The extra 21 CPUs are check-tacplus 16,
+  check-tacplus-dev 4 and merger 1; ask for 56 so a replacement has room. Also check the region's C4A
+  `CPUS_PER_VM_FAMILY` (the looper VMs already use 12; this adds 21) and `HDB_TOTAL_GB` (the looper VMs use 400 GB;
+  this adds 410) against the audit's Quotas table. Best done as the preferences the entry above proposes, or by hand
+  and then `ci_cpus.quota`. Why: the ci stack's test counts a reserved machine's CPUs once it has an image, so the
+  pin is refused until the quota covers it. A VM over quota sits in `QUOTA_EXCEEDED` and holds CPUs the pools need
+  at their peak (2026-11-13).
+- **The reserved machines' apps and images** (looper, #111, 2026-11-26). What: Jody creates the GitHub Apps
+  `tacplus-check` and `tacplus-merger` (their permissions as tacplus-dev/looper#249 and #251 state them; the merger
+  as the bypass actor of main's ruleset in place of `tacplus-manager` once the managers retire). Their IDs then go
+  into `github_apps`, with `import` true, and their keys are imported as #19's were. Then `reserved_vms` pins the
+  looper image that runs `looper-vm check` and `looper-vm merger`, and its sizes follow the rolling check's measured
+  peaks (looper#249). Why: until then the machines' groups are at 0 (#111), so nothing is spent and nothing runs.
+- **The model's own containers cut off from the metadata server too** (looper, #111, 2026-11-26). What: on a looper
+  VM, run the report's model (today in the main container, on the host's network) behind the same refusal as the
+  build containers. That means its own network namespace, or a metadata proxy that serves only what the looper's
+  parent needs (the model token's read and the App key's signing). Why: #111 cuts off only the containers started
+  through the socket (the panel's finding 5, as asked). Model-written code that the model runs directly in the main
+  container can still mint the VM account's tokens, which read `looper-model-token` and sign with `tacplus-looper`.
