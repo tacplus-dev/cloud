@@ -754,3 +754,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   which this repository does not manage. Open (#115's design): B, A or A then B; which account copies
   (`seatrials-deploy` is only a reader of `seatrials`, `seatrials-build` its writer); the registry's project, name
   and location; retention; whether `registry` is a protected environment on build (also #112).
+- **The in-cluster nightly runner and its token secret** (looper, #116, 2026-11-26; tacplus-dev/cluster#46, option A,
+  hub's decision on Jody's standing authority). What: a dev-stack secret `gitlab-runner-nightly` (`runner_tokens`,
+  read by `cluster-admin-pipeline` alone, the same bindings as the others) and a gitlab-stack group runner of
+  tacplus-dev, `nightly`: tags `arm64, build-nightly` (not `build`: GitLab gives a runner every job whose tags are a
+  subset of its own), untagged off, any ref, unpaused, its token written as the secret's version 1 by this pipeline,
+  with the plan tests, README, STATE and HISTORY, as `build-report`'s (#93). Then the hub re-pins cluster to
+  cluster#46 (whose `apply` needs the version), then tacplus-dev/looper#220 sets `BUILD_NIGHTLY_TAGS`. Why: on
+  2026-11-21/22 the nightly's CodeQL jobs (3500m / 12Gi, looper#189) for 10 of 31 repositories waited Pending behind
+  the report builds on the spot pool and published nothing. Its own entry, at cluster's PriorityClass `build-nightly`
+  (0, preempting: above reports, below lands), lets it preempt a report instead. Interim: it goes with the spot pool
+  in #114's step 2. Open (#116's design): the ROADMAP line; adding it to #114's list.
