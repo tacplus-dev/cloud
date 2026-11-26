@@ -570,6 +570,13 @@ date in the commit (never computed: the plan is the commit's alone). Today one (
   artifacts ever carry anything sensitive, this becomes a bot account of the recap's own, its token in Secret Manager.
   Its expiry is the token's: renew both together.
 
+fleet-seatrials' pipeline user (#117) needs no entry: a job token has its job's user's permissions, and the user that
+fleet-seatrials' triggered pipelines run as (the trigger's owner, this stack's token user) is a member of tacplus-dev,
+so a Reporter of tacplus-dev/build by inheritance, as is any group member (GitLab refuses a project membership below
+an inherited one). The one that could need it is its daily schedule's owner, which the hub makes by hand: a member of
+tacplus-dev reads the records; a user of fleet-seatrials alone gets `tacplus-dev/build:<user>`, Reporter, here, or its
+scheduled pipelines' reads of the release records get a 404.
+
 **Renewing one:** the drift job's expiry check (`ci/expiry.sh`) reports every `expires_at` of the stacks that is past or
 within 30 days, in the drift issue. A commit of a later date renews it; the pipeline applies it.
 
@@ -605,6 +612,19 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   ceiling: on an otherwise empty node the gates still burst to it. `ci/policy.sh` refuses, in a plan, any
   `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi. Every other repository's keeps the defaults. It takes
   effect once the looper image pinned in `build.gitlab-ci.yml` carries #202.
+- **Its job token allowlist** (#117; tacplus-dev/looper#262, tacplus-dev/fleet-seatrials#82): the projects of
+  `build.job_token_readers`, one `gitlab_project_job_token_scope` each, today tacplus-dev/fleet-seatrials, whose deploy
+  reads the release records (`release-<repo>/main/record`, `release-tacplus/main/record`, build's generic packages)
+  with its own `JOB-TOKEN`. One entry per project, not the whole list: an entry the hub made by hand stays. The job's
+  user must also be at least a Reporter of build (above, Memberships).
+- **`BUILD_SEATRIALS_TRIGGER_TOKEN`** (#117; tacplus-dev/looper#262), once tacplus-dev/fleet-seatrials#82 is live:
+  `build.downstream_triggers`, a pipeline trigger of the project it starts (fleet-seatrials), owned, as build's own, by
+  this pipeline's token user, and rotated as build's own (its `rotate_by`). Its token is build's protected, masked
+  variable, scoped to one environment, `seatrials-trigger`, a protected environment of build (Maintainers deploy): main's
+  `release-report` alone declares it (`environment: {name: seatrials-trigger, action: access}`) and starts seatrials'
+  pipeline after a main record moves; no other job of build receives it, the gates job, which runs a repository's own
+  code, least of all. The module refuses a downstream trigger scoped `*` or not at all. Until it is there,
+  `release-report` logs "seatrials not started" and dev waits for its daily schedule.
 - **Its rotation**, every 90 days: the trigger's `rotate_by` in `stacks/gitlab/main.tf` is a date in the commit, never
   computed (the plan is the commit's alone). The drift job's expiry check (`ci/expiry.sh`) reports it from 30 days
   before; a commit of a date 90 days later replaces the trigger: the new one is made and becomes the variable's

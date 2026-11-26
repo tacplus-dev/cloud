@@ -56,6 +56,13 @@ module "gitlab" {
     "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
     # tacplus-dev/cluster#18: the recap reads cluster's pipelines and jobs too (it got a 404).
     "tacplus-dev/cluster:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
+    # fleet-seatrials' pipeline user reads tacplus-dev/build's release records (#117): a job token has its job's user's
+    # permissions, so that user must be at least a Reporter of build. Its triggered pipelines run as the trigger's
+    # owner, this stack's token user (tacplus-dev's group bot, Owner), and any member of tacplus-dev is a Reporter of
+    # build by inheritance (GitLab refuses a project membership below an inherited one): no entry. Its daily schedule,
+    # which the hub has still to make (fleet-seatrials' docs/deploy-pipeline.md, The daily schedule), runs as its
+    # owner: a member of tacplus-dev, or, if it is ever a user of fleet-seatrials alone, an entry here,
+    # "tacplus-dev/build:<user>", Reporter, a year's expiry.
   }
   # tacplus-dev/build (#26; tacplus-dev/looper#71, #84): its runner settings (group runners on, shared off, #35: its jobs
   # are tagged build, which only tacplus-dev's group runners take); its .gitlab-ci.yml, tacplus-dev/looper's
@@ -80,6 +87,17 @@ module "gitlab" {
     # none; only the limits may be the ceilings, to which it bursts on an otherwise empty node (ci/policy.sh refuses a
     # larger request). Every other repository's keeps the defaults.
     variables = { BUILD_GATES_REQUESTS_tacplus = "3 10Gi 3500m 12Gi" }
+    # fleet-seatrials rolls dev to each green main release by digest (#117; tacplus-dev/looper#262,
+    # tacplus-dev/fleet-seatrials#82): its deploy reads release-<repo>/main/record, and release-tacplus/main/record,
+    # with its own JOB-TOKEN, which build's job token allowlist admits.
+    job_token_readers = ["tacplus-dev/fleet-seatrials"]
+    # Once tacplus-dev/fleet-seatrials#82 is live (until then a triggered pipeline deploys from source, not by digest),
+    # its trigger, whose token main's release-report reads to start seatrials' pipeline after a record moves, scoped to
+    # the protected environment seatrials-trigger, which only that job declares (#117, the hub's decision of
+    # 2026-11-26), rotated every 90 days as build's own: the entry seatrials, its project tacplus-dev/fleet-seatrials,
+    # its description "BUILD_SEATRIALS_TRIGGER_TOKEN of tacplus-dev/build", its rotate_by 90 days after it lands, its
+    # variable_key BUILD_SEATRIALS_TRIGGER_TOKEN and its environment_scope seatrials-trigger.
+    downstream_triggers = {}
   }
   # The pools replaced jody1-328023's runners (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the
   # loopers' always-on node) and build (on demand, from zero) take jobs; deploy (fleet-seatrials') and cluster

@@ -232,6 +232,17 @@ run "stack" {
     condition     = output.build.schedules == { nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } } }
     error_message = "tacplus-dev/build's schedules are not the one nightly of every pinned repository (#67: 03:00 UTC, the input nightly: true and no repo)."
   }
+  # fleet-seatrials reads tacplus-dev/build's release records with its own JOB-TOKEN (#117; tacplus-dev/looper#262,
+  # tacplus-dev/fleet-seatrials#82): build's job token allowlist admits it, and no other project. Its trigger, whose
+  # token is build's BUILD_SEATRIALS_TRIGGER_TOKEN, waits for fleet-seatrials#82 to be live: none yet.
+  assert {
+    condition     = output.build.job_token_readers == { "tacplus-dev/fleet-seatrials" = 77 }
+    error_message = "tacplus-dev/build's job token allowlist does not admit tacplus-dev/fleet-seatrials alone (#117)."
+  }
+  assert {
+    condition     = output.build.downstream_triggers == {}
+    error_message = "The stack makes a downstream trigger before tacplus-dev/fleet-seatrials#82 is live (#117)."
+  }
 }
 
 run "gitlab" {
@@ -260,10 +271,14 @@ run "gitlab" {
       "tacplus-dev/build:tacplus-looper-bot" = { access_level = "reporter", expires_at = "2027-10-01" }
     }
     build = {
-      project   = "tacplus-dev/build"
-      ci_file   = { content = "stages: [build]\n", commit_message = "ci/build.gitlab-ci.yml at tacplus-dev/looper@abc" }
-      trigger   = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
-      schedules = { looper = { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } } }
+      project           = "tacplus-dev/build"
+      ci_file           = { content = "stages: [build]\n", commit_message = "ci/build.gitlab-ci.yml at tacplus-dev/looper@abc" }
+      trigger           = { description = "BUILD_TRIGGER_TOKEN of tacplus-dev/looper", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules         = { looper = { cron = "0 5 * * *", inputs = { repo = "looper", nightly = "true" } } }
+      job_token_readers = ["tacplus-dev/fleet-seatrials"]
+      downstream_triggers = {
+        seatrials = { project = "tacplus-dev/fleet-seatrials", description = "BUILD_SEATRIALS_TRIGGER_TOKEN of tacplus-dev/build", rotate_by = "2027-02-24", variable_key = "BUILD_SEATRIALS_TRIGGER_TOKEN", environment_scope = "seatrials-trigger" }
+      }
     }
   }
 
@@ -333,6 +348,26 @@ run "gitlab" {
   assert {
     condition     = gitlab_project.build["build"].name == "build" && gitlab_project.build["build"].group_runners_enabled && !gitlab_project.build["build"].shared_runners_enabled
     error_message = "tacplus-dev/build's runner settings are not group runners on and shared runners off (#35)."
+  }
+  # The job token allowlist (#117): one entry per reader, on tacplus-dev/build, its target the reader's project ID.
+  assert {
+    condition     = keys(gitlab_project_job_token_scope.build) == ["tacplus-dev/fleet-seatrials"] && gitlab_project_job_token_scope.build["tacplus-dev/fleet-seatrials"].project == "77" && gitlab_project_job_token_scope.build["tacplus-dev/fleet-seatrials"].target_project_id == 77
+    error_message = "tacplus-dev/build's job token allowlist does not admit the reader's project, by its ID."
+  }
+  # A downstream trigger (#117): on the project it starts, rotated by rotate_by; its token tacplus-dev/build's protected,
+  # masked variable, scoped to its environment alone, and that environment protected (Maintainers deploy), so that no
+  # other job of build, the gates job running a repository's own code least of all, receives it.
+  assert {
+    condition     = gitlab_pipeline_trigger.downstream["seatrials"].project == "77" && terraform_data.downstream_trigger_rotation["seatrials"].input == "2027-02-24" && gitlab_pipeline_trigger.downstream["seatrials"].description == "BUILD_SEATRIALS_TRIGGER_TOKEN of tacplus-dev/build (tacplus-dev/cloud, rotated by 2027-02-24)"
+    error_message = "The downstream trigger is not on the project it starts, or its rotation is not keyed on rotate_by."
+  }
+  assert {
+    condition     = gitlab_project_variable.downstream_trigger["seatrials"].project == "77" && gitlab_project_variable.downstream_trigger["seatrials"].key == "BUILD_SEATRIALS_TRIGGER_TOKEN" && gitlab_project_variable.downstream_trigger["seatrials"].protected && gitlab_project_variable.downstream_trigger["seatrials"].masked && gitlab_project_variable.downstream_trigger["seatrials"].raw && gitlab_project_variable.downstream_trigger["seatrials"].environment_scope == "seatrials-trigger"
+    error_message = "BUILD_SEATRIALS_TRIGGER_TOKEN is not tacplus-dev/build's protected, masked variable scoped to seatrials-trigger."
+  }
+  assert {
+    condition     = gitlab_project_protected_environment.downstream["seatrials"].project == "77" && gitlab_project_protected_environment.downstream["seatrials"].environment == "seatrials-trigger" && [for a in gitlab_project_protected_environment.downstream["seatrials"].deploy_access_levels_attribute : a.access_level] == ["maintainer"]
+    error_message = "seatrials-trigger is not a protected environment of tacplus-dev/build, deployable by Maintainers."
   }
 }
 
@@ -443,6 +478,45 @@ run "build_schedules_capped" {
       project   = "tacplus-dev/build"
       trigger   = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
       schedules = { for r in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"] : r => { cron = "0 5 * * *", inputs = { repo = r, nightly = "true" } } }
+    }
+  }
+  expect_failures = [var.build]
+}
+
+# A downstream trigger's token is scoped to one environment (#117): unscoped (*) or empty, it would reach every job of
+# tacplus-dev/build, the gates job, which runs a repository's own code, too.
+run "downstream_trigger_unscoped_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    build = {
+      project             = "tacplus-dev/build"
+      trigger             = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules           = {}
+      downstream_triggers = { seatrials = { project = "tacplus-dev/fleet-seatrials", description = "x", rotate_by = "2027-02-24", variable_key = "BUILD_SEATRIALS_TRIGGER_TOKEN", environment_scope = "*" } }
+    }
+  }
+  expect_failures = [var.build]
+}
+
+# Nor empty.
+run "downstream_trigger_empty_refused" {
+  command = plan
+  module {
+    source = "../../modules/gitlab"
+  }
+  variables {
+    projects = {}
+    runners  = {}
+    build = {
+      project             = "tacplus-dev/build"
+      trigger             = { description = "x", rotate_by = "2027-02-05", variable_project = "88136765", variable_key = "BUILD_TRIGGER_TOKEN" }
+      schedules           = {}
+      downstream_triggers = { seatrials = { project = "tacplus-dev/fleet-seatrials", description = "x", rotate_by = "2027-02-24", variable_key = "BUILD_SEATRIALS_TRIGGER_TOKEN", environment_scope = "" } }
     }
   }
   expect_failures = [var.build]

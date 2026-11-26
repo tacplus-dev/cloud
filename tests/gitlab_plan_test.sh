@@ -19,7 +19,7 @@
 # runner, the same but tags arm64 and build-report, and its token's version in gitlab-runner-build-report (#93), the
 # build-light runner, the same but tags arm64 and build-light, and its token's version in gitlab-runner-build-light
 # (#100), the manager runner, the same but tags arm64 and manager, and its token's version in gitlab-runner-manager
-# (#106), and the pools' runners,
+# (#106), and the pools' runners, and tacplus-dev/build's job token allowlist entry for tacplus-dev/fleet-seatrials (#117),
 # the cluster and deploy pools' paused (#66); it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
 # it. The fixture is built from the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot
 # read tacplus-dev/cloud's settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
@@ -198,6 +198,14 @@ if plan; then
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"
+  # fleet-seatrials reads tacplus-dev/build's release records with its own JOB-TOKEN (#117; tacplus-dev/looper#262):
+  # build's (4003) job token allowlist admits fleet-seatrials (4004); its trigger waits for tacplus-dev/fleet-seatrials#82.
+  scope=$(change 'module.gitlab.gitlab_project_job_token_scope.build["tacplus-dev/fleet-seatrials"]')
+  jq -e '.actions == ["create"] and .after.project == "4003" and .after.target_project_id == 4004' <<< "$scope" > /dev/null &&
+    [ "$(jq -c '[.resource_changes[] | select(.type == "gitlab_project_job_token_scope") | .index]' "$work/plan.json")" = '["tacplus-dev/fleet-seatrials"]' ] &&
+    ok "tacplus-dev/build's job token allowlist admits tacplus-dev/fleet-seatrials, and no other project (#117)" || fail "the job token allowlist: $scope"
+  [ -z "$(jq -r '.resource_changes[] | select(.address | startswith("module.gitlab.gitlab_pipeline_trigger.downstream")) | .address' "$work/plan.json")" ] &&
+    ok "no downstream trigger before tacplus-dev/fleet-seatrials#82 is live (#117)" || fail "a downstream trigger is planned"
 else
   fail "the stack does not plan against gitlab.com's answers: $(grep -A4 '^Error' "$work/plan.txt")"
 fi

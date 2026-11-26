@@ -4,7 +4,8 @@
 # tacplus-dev/build, the build pipeline (#26; tacplus-dev/looper#71, #84): its .gitlab-ci.yml, its pipeline trigger,
 # whose token is the looper project's BUILD_TRIGGER_TOKEN, and its schedules. Every secret is created and rotated by a
 # pipeline (tacplus-dev/roadmap decisions/secrets-by-pipeline-2026-11-05.md): the trigger's token is made here, never
-# seen by anyone, and a commit of a later rotate_by replaces it; and its runner settings, the project adopted (#35).
+# seen by anyone, and a commit of a later rotate_by replaces it; its runner settings, the project adopted (#35); and
+# its job token allowlist and its downstream triggers (#117).
 
 locals {
   build = var.build == null ? {} : { build = var.build }
@@ -83,6 +84,60 @@ resource "gitlab_project_variable" "build" {
   masked            = false
   raw               = true
   environment_scope = "*"
+}
+
+# Its job token allowlist (#117; tacplus-dev/looper#262): fleet-seatrials' deploy reads the release records
+# (release-<repo>/main/record, a generic package of build) with its own JOB-TOKEN. One entry per reader, not the whole
+# list (gitlab_project_job_token_scopes would remove every entry made by hand). A job token has its job's user's
+# permissions too: that user must be at least a Reporter of build (a member of tacplus-dev is, by inheritance).
+resource "gitlab_project_job_token_scope" "build" {
+  for_each          = var.build == null ? toset([]) : toset(var.build.job_token_readers)
+  project           = local.other_project_id[var.build.project]
+  target_project_id = tonumber(local.other_project_id[each.key])
+}
+
+# Its downstream triggers (#117; tacplus-dev/looper#262): a pipeline trigger of another project, which a build job
+# starts (main's release-report starts fleet-seatrials' pipeline once a main record moves), its token build's own
+# protected, masked variable, rotated as build's trigger is. Its owner is the token's user, tacplus-dev's group bot,
+# and the pipelines it starts run as that user. The variable is scoped to one environment, and that environment is
+# protected: only a job on a protected ref, of a Maintainer, declaring it (release-report's
+# environment: {name: seatrials-trigger, action: access}) receives the token, and no other job of build, the gates
+# job, which runs a repository's own code, least of all.
+locals {
+  downstream_triggers = var.build == null ? {} : var.build.downstream_triggers
+}
+
+resource "terraform_data" "downstream_trigger_rotation" {
+  for_each = local.downstream_triggers
+  input    = each.value.rotate_by
+}
+
+resource "gitlab_pipeline_trigger" "downstream" {
+  for_each    = local.downstream_triggers
+  project     = local.other_project_id[each.value.project]
+  description = "${each.value.description} (tacplus-dev/cloud, rotated by ${each.value.rotate_by})"
+  lifecycle {
+    create_before_destroy = true
+    replace_triggered_by  = [terraform_data.downstream_trigger_rotation[each.key]]
+  }
+}
+
+resource "gitlab_project_variable" "downstream_trigger" {
+  for_each          = local.downstream_triggers
+  project           = local.other_project_id[var.build.project]
+  key               = each.value.variable_key
+  value             = gitlab_pipeline_trigger.downstream[each.key].token
+  protected         = true
+  masked            = true
+  raw               = true
+  environment_scope = each.value.environment_scope
+}
+
+resource "gitlab_project_protected_environment" "downstream" {
+  for_each                       = local.downstream_triggers
+  project                        = local.other_project_id[var.build.project]
+  environment                    = each.value.environment_scope
+  deploy_access_levels_attribute = [{ access_level = "maintainer" }]
 }
 
 resource "gitlab_pipeline_schedule" "build" {
