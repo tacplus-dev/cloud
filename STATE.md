@@ -1,9 +1,11 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by the looper (#111).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by the looper (#102).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
-  `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, its digest of 2026-11-24 (build:20261123-57a6521, #104; before it
+  `ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521` by digest, the 2.6 line's dated build tag, never the floating
+  `build:2.6` (#102; `tests/ci_test.sh` refuses one; looper#226's nightly scan moves it; `.github/workflows/gates.yml`
+  still at build:20261123-57a6521's digest, PROPOSALS.md); before it build:20261123-57a6521's digest, #104;
   build:20261123-ef62327, #97: krb5
   1.21.3-5+deb13u2 and Debian's other fixes of that day, whose 159 HIGH advisories in 2.6.13's packages failed the security
   job that morning; 2.6.13, #91; since 2.6.12, #59: rebuilt by tacplus-dev/tacplus#711 with `linux-libc-dev`
@@ -543,7 +545,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   brotli (GO-2026-6888), GO-2026-6865 in the downloaded OpenTofu and Trivy accepted until **2026-12-06**; GitLab Runner and its plugin, built here (#40), have no entry for it.
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy, a `where`) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
-- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest (build:2.6's 2026-11-23 rebuild, #97)
+- **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest at its dated build tag (#102)
   and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
