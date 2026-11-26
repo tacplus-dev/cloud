@@ -140,8 +140,8 @@ run "settings" {
     error_message = "The pools are not shared, build, deploy and cluster."
   }
   assert {
-    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 1 && output.runner_pools.shared.max_instances == 1
-    error_message = "The shared pool is not one always-on t2a-standard-8 (13 jobs a VM, #63; its second VM's CPUs the looper VMs' since 2026-11-25)."
+    condition     = output.runner_pools.shared.machine_type == "t2a-standard-8" && output.runner_pools.shared.capacity == 13 && output.runner_pools.shared.idle_count == 0 && output.runner_pools.shared.max_instances == 1
+    error_message = "The shared pool is not one t2a-standard-8 on demand, none kept running (13 jobs a VM, #63; idle since 2026-11-25, its VM cut)."
   }
   # A full shared VM queues its jobs, it does not fail them (#63): on 2026-11-15 its 350 GB pd-standard disk (525
   # write IOPS, 42 MiB/s, shared by 24 jobs and Docker) stopped Docker answering containers/create within 120 s, and
@@ -233,8 +233,8 @@ run "settings" {
   # 2026-11-25): tacplus's rolling check on more than 8 CPUs, the org's, and the merger's small machine, none spot, with
   # no image until tacplus-dev/looper#249 and #251 run them (their groups at 0), each signing with its role's key.
   assert {
-    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } } && tonumber(regex("^c4a-standard-([0-9]+)$", output.reserved_vms.check-tacplus.machine_type)[0]) > 8
-    error_message = "The reserved machines are not tacplus's check (c4a-standard-16, more than 8 CPUs), the org's (c4a-standard-4) and the merger's (c4a-standard-1), with no image yet."
+    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } } && tonumber(regex("^c4a-standard-([0-9]+)$", output.reserved_vms.check-tacplus.machine_type)[0]) > 8
+    error_message = "The reserved machines are not tacplus's check (c4a-standard-8 until measured), the org's (c4a-standard-4) and the merger's (c4a-standard-1), with no image yet."
   }
 }
 

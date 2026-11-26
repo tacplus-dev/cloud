@@ -35,6 +35,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - dev: the spot build pool's maximum 5 to 8 nodes, still from 0; quota preferences follow (#96). Hub, at Jody's request, 2026-11-23.
 - ci: per-project looper VMs, an instance group of 0..1 spot C4A VMs on stock COS with one generic cloud-init, no SSH, their accounts (logs, looper-model-token, tacplus-looper's key, their own resize) and the kicker's resize; tacplus first (#108). Hub, at Jody's request, 2026-11-24 (`tacplus-dev/roadmap:decisions/looper-build-vms-2026-11-24.md`).
 - A reserved machine for the rolling check of main (per heavy project, and one for the rest) and a small control machine for the merger; build containers on a looper VM cut off from its metadata server (#111). Hub, at Jody's request, 2026-11-25 (`tacplus-dev/roadmap:decisions/agentic-dev-flow-2026-11-25.md`, approved after a panel review).
+- Retire tacplus-ci's runner pools and their manager, which nothing runs on (#113). Hub, at Jody's request, 2026-11-25 ("make sure you have all the dead stuff cut").
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).

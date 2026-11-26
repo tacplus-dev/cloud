@@ -392,9 +392,13 @@ output "runner_pools" {
     # A second VM on demand since #63 (Jody, 2026-11-14: "Ok you can raise the VMs"): one stays always on, the second
     # runs while more than 13 jobs do (about $0.31/h) and goes 30 minutes after. Its 8 CPUs are the build pool's
     # second VM's (ci_cpus below). Interim, as the pool is: the in-cluster runners replace it (tacplus-dev/looper#84).
+    # No VM kept running since 2026-11-25 (Jody: "make sure you have all the dead stuff cut. I dont want a large
+    # bill"): its last job was 2026-11-25T09:43Z, the reports having moved to the looper VMs and the rest to the
+    # in-cluster runners, and its always-on t2a-standard-8 (about $0.31/h) sat at 0.1% CPU. A job that still comes
+    # gets a VM on demand, gone 30 minutes after. The pools and their manager retire with the merge train (#113).
     shared = {
       machine_type    = local.shared_machine_type, disk_type = local.shared_disk_type, os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 1, idle_time = "30m"
+      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 0, idle_time = "30m"
       job             = local.jobs.shared
       service_account = false
       spot            = false
@@ -477,7 +481,7 @@ output "looper_vms" {
 output "reserved_vms" {
   description = "The reserved machines (the ci module's reserved_vms): per name, its role (check, the rolling check of main; merger, the merger), the tacplus-dev repository (repo) or org (org) it serves, its machine type (C4A), its Hyperdisk Balanced disk in GB, its image by digest (empty: none yet, and no VM), and its GitHub App key."
   value = {
-    check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "", key = "tacplus-check" }
+    check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }
     check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
     merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" }
   }
@@ -491,7 +495,10 @@ output "ci_cpus" {
     CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
     Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 4: 28 (Jody, 2026-11-25:
     "Lower the pools by 12", for the looper VMs). The reserved machines (#111) count once they have an image (their
-    group is at 0 until then): 16 + 4 + 1 more, 49, so the quota is raised before their images are pinned (PROPOSALS.md).
+    group is at 0 until then): 8 + 4 + 1 more. No quota is raised for them (Jody, 2026-11-25: "why do we need a CPU
+    quota request??"): the pools retire with the merge train (#113: 16 CPUs back), and check-tacplus is 8 CPUs until a
+    measurement of the full gates on it says it needs more. Before their images are pinned, the region's C4A family
+    limit (24) and Hyperdisk Balanced GB (500) are met by sizing (the audit's Quotas table), not by a request.
   EOT
   value = {
     quota                = 32
