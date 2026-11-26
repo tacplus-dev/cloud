@@ -765,3 +765,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   the report builds on the spot pool and published nothing. Its own entry, at cluster's PriorityClass `build-nightly`
   (0, preempting: above reports, below lands), lets it preempt a report instead. Interim: it goes with the spot pool
   in #114's step 2. Open (#116's design): the ROADMAP line; adding it to #114's list.
+- **fleet-seatrials reads tacplus-dev/build's release records, and build starts its pipeline** (looper, #117,
+  2026-11-26; tacplus-dev/looper#262, approved, tacplus-dev/fleet-seatrials#82). What: in `modules/gitlab`'s `build`,
+  `job_token_readers` (one `gitlab_project_job_token_scope` per path, not authoritative, today fleet-seatrials) and
+  `downstream_triggers` (a `gitlab_pipeline_trigger` of fleet-seatrials, owned by the `gitlab-token` group bot, rotated by
+  `rotate_by` like `build.trigger`, its token build's protected, masked `BUILD_SEATRIALS_TRIGGER_TOKEN` with
+  `environment_scope = "seatrials-trigger"`, the module refusing `*`). A `members` Reporter entry on build for
+  fleet-seatrials' schedule owner is added only if that user is not already a group member (inherited access). Plan-test
+  assertions, README, STATE and HISTORY go with it. The allowlist (and the member, if any) lands now; the trigger once
+  fleet-seatrials#82 is live. Why: fleet-seatrials' `JOB-TOKEN` reads `release-<repo>/main/record` only if build's
+  allowlist admits it and its user can read build; `release-report` starts seatrials only with a token, which a
+  pipeline makes and nobody sees (decisions/secrets-by-pipeline-2026-11-05.md); the scope keeps the token from the gates
+  job, which runs a repository's code. Open (#117's design): who owns fleet-seatrials' daily schedule; the group bot as
+  the trigger's owner (its triggered deploys then run as a group Owner) or a dedicated bot; `seatrials-trigger` as a
+  protected environment (it can fail the record job); an authoritative allowlist; one commit or two.
