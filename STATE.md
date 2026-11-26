@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by the hub (#108).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by the looper (#111).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:2.6` by digest, its digest of 2026-11-24 (build:20261123-57a6521, #104; before it
@@ -442,6 +442,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-24 by th
   resize. **Quota:** at 1 the VM's 8 CPUs are over `CPUS_ALL_REGIONS` (32, all of it the pools' at their peak) and
   need tacplus-ci's C4A CPU and Hyperdisk Balanced quotas, unread: a raise, or fewer pool CPUs, before the kicker sizes
   it to 1.
+- **The reserved machines and the metadata cut-off (#111; decisions/agentic-dev-flow-2026-11-25.md):**
+  `modules/settings` (`reserved_vms`): `check-tacplus` (c4a-standard-16), `check-tacplus-dev` (c4a-standard-4) and
+  `merger` (c4a-standard-1), on demand, with no image yet (tacplus-dev/looper#249, #251), so their groups are at 0.
+  The ci stack's `reserved-vms.tf` gives each its own group, its own account (logWriter, and a signer of its role's key
+  alone: `tacplus-check` or `tacplus-merger`, neither of which has a version or an app yet), the looper VMs' OS and
+  cloud-init, and `looper-role` in the metadata. `files/looper-vm.sh` runs `looper-vm check` or `looper-vm merger`
+  (the merger with no container socket) and never sizes these machines down. On every VM it cuts the build
+  containers off from the metadata server (a `DOCKER-USER` rule, or nothing starts). Tested with the ci stack's plan
+  tests and `tests/looper_vm_test.sh`. Not applied, not seen live: whether COS's iptables and Docker's
+  `DOCKER-USER` behave as the stubs do. **Before an image is pinned:** Jody's two apps and key imports, and
+  `CPUS_ALL_REGIONS` raised to 49 or more (the stack test counts the machines then; PROPOSALS.md).
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
