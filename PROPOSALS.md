@@ -739,3 +739,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   where tacplus-dev/build's `build`-tagged release builds (#112) run once the spot pool goes, where infra runs
   (peered VM, a VM in dev's node subnet, or kept in-cluster), the node size floor and a roll's outage, and when the
   quota preferences come down.
+- **The release images in tacplus-dev, readable by the deployments that copy them** (looper, #115, 2026-11-26;
+  tacplus-dev/fleet-seatrials#82, tacplus-dev/looper#252). What: a DOCKER repository `releases` in `tacplus-ci`
+  (multi-region `us`, no cleanup policy) made by the ci stack. Its one writer is a `release-publish` account that only
+  tacplus-dev/build's protected `main` jobs in the environment `registry` can become, through a new provider in the ci
+  pool (the build cache's admits every ref). Its readers are a settings list `release_readers` (for seatrials, the
+  account its `releases` job copies as), both bindings authoritative. `ci/hub-audit.sh` gains a registries section
+  listing each repository's IAM members (hub-audit through a custom role with `getIamPolicy` and `list` only), and
+  `ci/policy.sh` refuses other members on `releases`. looper#252 then publishes there; fleet-seatrials follows the
+  record's `image`. Alternative: a hand grant of `artifactregistry.reader` on jody1-328023's `tacplus` as a bridge
+  (README, Interim), which ties dev to the project #15 is deleting and may be refused by thescottsweb.com's
+  domain-restricted sharing. Why: fleet-seatrials#82's `releases` job copies each green main release by digest into
+  seatrials' own registry, so the dev nodes never pull across organizations. Today the releases are in jody1-328023,
+  which this repository does not manage. Open (#115's design): B, A or A then B; which account copies
+  (`seatrials-deploy` is only a reader of `seatrials`, `seatrials-build` its writer); the registry's project, name
+  and location; retention; whether `registry` is a protected environment on build (also #112).
