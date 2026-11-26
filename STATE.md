@@ -461,7 +461,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   (`EXTERNAL_MANAGED`, TCP), a target TCP proxy (no PROXY header), a backend service (TCP, idle timeout a day) and a TCP
   health check on the endpoints' port; `gateway` on 443 to the NEG `seatrials-gateway` (endpoints 8443, tacplus-dev/operator#22
   renders its Service), `test-idp` on 8443 to `seatrials-test-idp` (the test IdP's own port: a TCP proxy does not route
-  by SNI; fleet-seatrials renders it). Both start `ready = false`, with no backend, until GKE has made the NEGs. The
+  by SNI; fleet-seatrials renders it). Each starts `ready = false`, with no backend, until GKE has made its NEG; `test-idp` is
+  `ready = true` (#42), `gateway` not yet. The
   firewall rule `allow-google-proxies`, the dev module's only one, admits tcp:8443 to the nodes from `35.191.0.0/16` and
   `130.211.0.0/22` alone. `ci/policy.sh plan` admits only that forwarding rule (global, `EXTERNAL_MANAGED`, TCP, on
   `gateway`, to a TCP proxy), refuses any certificate, Certificate Manager resource, SSL policy, HTTP(S) or SSL proxy or
@@ -499,8 +500,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   #28); it alone adds and reads the certificate's versions and administers the zone (authoritative bindings), it and
   seatrials-deploy add, read and list the seeds' (#68, #73), and it holds no other role but get-credentials. The module refuses a certificate or secrets for an
   environment with no account, two certificates on one domain and two secrets with one ID. Output
-  `deployments.seatrials.environment_certificates` and `environment_secrets` name them. The listener `test-idp` stays
-  `ready = false` until its NEG exists: the first test-idp run, which needs these, makes it. Tested with the dev stack's
+  `deployments.seatrials.environment_certificates` and `environment_secrets` name them. The listener `test-idp` is
+  `ready = true` (#42): its NEG `seatrials-test-idp` (us-central1-a, 8443) exists since the first test-idp run, 2026-11-17. Tested with the dev stack's
   plan tests (mock providers); not applied yet: `apply:dev` on main does it, and whether the job adds, reads and writes
   its records shows in fleet-seatrials#27.
 - **The Google sign-in client's secret (#37; Jody, fleet-seatrials#46):** the dev stack's `google-signin.tf`, from a
