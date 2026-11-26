@@ -40,6 +40,7 @@ Nothing built yet. The design is approved (tacplus-dev/roadmap#2, 2026-11-02).
 - Release builds by branch on tacplus-dev/build: the nightly and release-branch schedules and the build-now trigger (#112; tacplus-dev/looper#252). Hub, at Jody's request, 2026-11-26 (`tacplus-dev/roadmap:decisions/agentic-dev-flow-2026-11-25.md`; "dont wait on me unless you absolutely have to").
 - tests/ci_test.sh accepts the CI image at a tacplus line's dated build tag (#102). Hub, on its recommendation with Jody's standing agreement (tp-act-on-recommendations), 2026-11-26.
 - seatrials' deploy account reads the release images, read-only on the release repository (#115; tacplus-dev/fleet-seatrials#82). Hub, on its recommendation with Jody's standing agreement (tp-act-on-recommendations), 2026-11-26.
+- Register the nightly runner (arm64, build-nightly) and its token secret gitlab-runner-nightly (#116; tacplus-dev/cluster#46). Hub, on its recommendation with Jody's standing agreement (tp-act-on-recommendations), 2026-11-26.
 
 ## Later
 - `prod`: its project, the `cloud-prod-pipeline` identity and the `apply-prod` gate, when Jody says production is next (`tacplus-dev/roadmap:PRODUCTION.md`).
