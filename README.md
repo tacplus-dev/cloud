@@ -18,8 +18,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   - `bootstrap` / `tacplus-bootstrap`: this pipeline's state bucket, its identity and the secrets it reads (made by the
     bootstrap script, below);
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
-    containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
-    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader`, `tacplus-admiral`, `tacplus-check`
+    containers, one always on: below, The runners' image), the build cache (below, The build cache), the release
+    registry `releases` (below, The release registry), and the GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader`, `tacplus-admiral`, `tacplus-check`
     and `tacplus-merger`, import-only),
     their import jobs, the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The
     GitHub Apps' keys), the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
@@ -101,9 +101,9 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too; and the anthropic stack against a stub of Anthropic's (`tests/anthropic_plan_test.sh`, #34). |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks): it fails on what ships, never on CI tooling (#101); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), an Anthropic identity adopted with a change (below, The Anthropic organization), or a `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi (#87; below, The build pipeline: its settings). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), an Anthropic identity adopted with a change (below, The Anthropic organization), another writer, a reader not a service account or another role on the release registry (#115; below, The release registry), or a `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi (#87; below, The build pipeline: its settings). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
-| `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0` or a VM's external IP (below, The hub's audit). |
+| `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names, registries' IAM), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0`, a VM's external IP or a public registry (below, The hub's audit). |
 | `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), the pool check (`ci/pools.sh`: why a runner pool makes no VM, below, The pools) and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
@@ -480,8 +480,11 @@ project's protected `main` becomes, through the pipeline's own provider.
 - **Its rights:** on `tacplus-ci` and `tacplus-dev`, `roles/compute.viewer`, `roles/container.viewer`,
   `roles/monitoring.viewer`, `roles/serviceusage.serviceUsageConsumer`, `roles/secretmanager.viewer` (names and
   versions' metadata, never their values: no accessor) and `roles/cloudquotas.viewer` (the quotas' limits and
-  preferences, #88). No write role: `ci/policy.sh` refuses any other role to it in a
-  plan, and the module refuses one in its input. And the cluster autoscaler's log alone (#85), once `modules/settings`'
+  preferences, #88); and (#115) its own custom role `hubAuditRegistries` on each project, which lists the Artifact
+  Registry repositories and reads their IAM policies (`artifactregistry.locations.list`,
+  `artifactregistry.repositories.get`, `.list` and `.getIamPolicy`) and never downloads an image: no predefined role
+  does only that. No write role: `ci/policy.sh` refuses any other role to it in a
+  plan (and that custom role any other permission, or on another project), and the module refuses one in its input. And the cluster autoscaler's log alone (#85), once `modules/settings`'
   `autoscaler_log` is `true` (after the host's `roles/logging.configWriter`, above): `roles/logging.viewAccessor` on
   each project, conditioned on `resource.name` being that project's view `hub-audit-autoscaler`, on its `_Default`
   bucket, whose filter is `LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")` and nothing more.
@@ -510,6 +513,9 @@ project's protected `main` becomes, through the pipeline's own provider.
   - **utilization** over the last hour, the maximum of its 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace `ci`;
   - **secrets:** their names and their versions' states only;
+  - **registries** (#115): every Artifact Registry repository, in every location, its format, and each role's members
+    on the repository's own policy: the release registry's writer and readers (below, The release registry) as the
+    hub checks them, and each deploy registry's;
   - **scheduling** (#85), through the cluster's API (`roles/container.viewer`; the job runs in the cluster, which alone
     reaches its private endpoint): each spot node, its allocatable CPU and memory against the sum of its pods'
     requests, and each pod on it with its phase, creation, owner (its owner references, or the GitLab job of a runner's
@@ -527,7 +533,7 @@ project's protected `main` becomes, through the pipeline's own provider.
   An API not enabled in a project (GKE's in `tacplus-ci`) is noted in `unavailable`, its list empty. `findings` are
   the exposure findings, `errors` the reads it could not make.
 - **Red:** the job fails, its report kept, on an exposure finding (an ingress rule open to `0.0.0.0/0` or `::/0`, a VM
-  with an external IP) or a read it could not make, so either shows in the pipeline too.
+  with an external IP, a registry granting a role to `allUsers` or `allAuthenticatedUsers`) or a read it could not make, so either shows in the pipeline too.
 - **Reading it:** the hub reads the latest `audit` artifact:
   `glab api "projects/88513714/jobs/artifacts/main/download?job=audit" > audit.zip` (the zip holds `src/audit/audit.json`
   and `src/audit/audit.md`), or one file, `glab api "projects/88513714/jobs/artifacts/main/raw/src/audit/audit.json?job=audit"`.
@@ -902,6 +908,35 @@ cache only speeds a build up).
 **Not yet:** nothing is applied before Jody's bootstrap and the first pipeline, and the runners stay paused until they
 move off jody1-328023. Once twenty jobs have run here on fresh VMs, looper's `runner-image measure 20` should show no
 first-job image-pull failure (#4's acceptance).
+
+## The release registry
+
+#115 (Jody's approval of its design B, 2026-11-26; tacplus-dev/looper#252, tacplus-dev/fleet-seatrials#82): the images
+tacplus-dev/build's release builds publish by digest, `<repo>:<branch>-<commit, 12 hex>`, in `tacplus-ci` rather than
+jody1-328023 (#15 empties it). `modules/projects/ci/releases.tf`, its names in `modules/settings` (`releases`).
+
+- **Where:** the Docker repository `us-docker.pkg.dev/tacplus-ci/releases` (multi-region `us`, as the releases' first
+  home `us-docker.pkg.dev/jody1-328023/tacplus`). No cleanup policy: a deployment pins a release by digest, and nothing
+  it pins is deleted.
+- **Its writer:** `release-publish@tacplus-ci.iam.gserviceaccount.com` alone (`artifactregistry.writer`, an
+  authoritative binding). Only tacplus-dev/build's publish jobs become it: its protected `main`, in its GitLab
+  environment `registry`, through the provider `tacplus-dev-build-release` of the pool `gitlab-com` in `tacplus-ci`
+  (condition: the project, a branch, `main`, protected; the binding names the project and environment together, the
+  provider mapping `attribute.project_environment`). Not the build cache's provider, which admits any job of build on
+  any ref. A publish job federates with an `id_tokens` token whose audience is its provider
+  (`https://iam.googleapis.com/projects/<tacplus-ci's number>/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release`),
+  as `release-publish`: the ci stack's output `releases` gives the registry, the account and the provider, build's
+  variables for a release.
+- **Its readers:** each deployment that copies a release by digest into its own deploy registry (the same manifest,
+  nothing rebuilt), so that the cluster never pulls across projects: `artifactregistry.reader`, authoritative, to its
+  identity in `tacplus-dev`. Today seatrials' alone, `seatrials-deploy@tacplus-dev.iam.gserviceaccount.com`, as its
+  `releases` job runs (fleet-seatrials#82). Nobody else reads it.
+- **Guarded:** `ci/policy.sh` refuses, in a plan, any other writer, a reader that is not a service account, or any other
+  role on it; the module refuses a reader that is not a service account. The audit lists its bindings (above, The hub's
+  audit: registries).
+- **Until build publishes here:** the releases are still in jody1-328023, which the publish job's `BUILD_REGISTRY` and
+  `GCP_WIF_PROVIDER` name; switching a release's publish to this registry and `release-publish` is
+  tacplus-dev/looper's half. fleet-seatrials takes the registry from each release record's `image`, so it follows.
 
 ## The cluster pipeline
 

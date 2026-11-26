@@ -1,0 +1,10 @@
+[
+ {
+  "name": "projects/exposed/locations/us/repositories/hand-public",
+  "format": "DOCKER"
+ },
+ {
+  "name": "projects/exposed/locations/us-central1/repositories/hand-empty",
+  "format": "MAVEN"
+ }
+]

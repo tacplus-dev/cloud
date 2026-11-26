@@ -1,0 +1,7 @@
+{
+ "bindings": [
+  {"role": "roles/artifactregistry.writer", "members": ["serviceAccount:build-cache@audit-ci.iam.gserviceaccount.com"]}
+ ],
+ "etag": "BwYAAAAAAAA=",
+ "version": 1
+}

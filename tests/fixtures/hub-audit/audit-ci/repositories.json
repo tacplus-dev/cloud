@@ -1,0 +1,12 @@
+[
+ {
+  "name": "projects/audit-ci/locations/us-central1/repositories/build-cache",
+  "format": "DOCKER",
+  "labels": {"managed-by": "tacplus-dev-cloud"}
+ },
+ {
+  "name": "projects/audit-ci/locations/us/repositories/releases",
+  "format": "DOCKER",
+  "labels": {"managed-by": "tacplus-dev-cloud"}
+ }
+]

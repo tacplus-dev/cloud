@@ -111,6 +111,16 @@ module "ci" {
   looper_vms         = module.settings.looper_vms
   # The reserved machines (#111): the rolling check's and the merger's, on the same OS and cloud-init.
   reserved_vms = module.settings.reserved_vms
+  # The release registry (#115): its readers are the deployments' identities, in the dev project, written out.
+  releases = {
+    repository     = module.settings.releases.repository
+    location       = module.settings.releases.location
+    account_id     = module.settings.releases.account_id
+    gitlab_project = module.settings.releases.gitlab_project
+    environment    = module.settings.releases.environment
+    wif_provider   = module.settings.releases.publish_provider
+    readers        = [for d in module.settings.releases.readers : "serviceAccount:${module.settings.deployments[d].account_id}@${module.settings.projects.dev.project}.iam.gserviceaccount.com"]
+  }
   # The audit job's account (#77): read roles on both projects, which only this repository's protected main becomes,
   # through the pipeline's own pool (bootstrap/bootstrap.sh's provider admits nothing else of gitlab.com).
   hub_audit = {
@@ -159,6 +169,12 @@ output "app_accounts" {
 # The audit job's account (#77): the CI file's GCP_AUDIT_SA.
 output "hub_audit" {
   value = module.ci.hub_audit
+}
+
+# The release registry (#115): tacplus-dev/build's BUILD_REGISTRY for a release, and the publish account and provider it
+# federates as.
+output "releases" {
+  value = module.ci.releases
 }
 
 # The Admiral's Config (#84; tacplus-dev/admiral#5): what it federates through and the names it signs and reads with,

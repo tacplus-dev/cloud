@@ -148,6 +148,29 @@ output "admiral" {
   }
 }
 
+output "releases" {
+  description = <<-EOT
+    The release registry (#115; Jody's approval of its design B, 2026-11-26): the Docker repository repository of the
+    ci project in location (us, multi-region, as the releases' first home us-docker.pkg.dev/jody1-328023/tacplus was),
+    no cleanup policy, where tacplus-dev/build's release builds publish <repo>:<branch>-<commit, 12 hex> by digest
+    (tacplus-dev/looper#252). Its one writer, the ci project's account account_id, which only gitlab_project's jobs on
+    its protected main in its GitLab environment environment (the publish jobs) become, through the ci project's
+    gitlab-com pool and its provider publish_provider (not wif_provider, the bootstrap's name alone here:
+    tests/settings_test.sh). Its readers, by deployment: each one's identity (deployments'
+    account_id, in the dev project), which copies a release by digest into its own deploy registry
+    (tacplus-dev/fleet-seatrials#82: seatrials' releases job, as seatrials-deploy). Nobody else reads it.
+  EOT
+  value = {
+    repository       = "releases"
+    location         = "us"
+    account_id       = "release-publish"
+    gitlab_project   = "tacplus-dev/build"
+    environment      = "registry"
+    publish_provider = "tacplus-dev-build-release"
+    readers          = ["seatrials"]
+  }
+}
+
 output "deployments" {
   description = <<-EOT
     The deployments whose pipelines own their TLS certificates (decisions/certificates-by-pipeline-2026-11-03.md,

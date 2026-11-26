@@ -72,6 +72,12 @@ run "stack" {
     condition     = output.hub_audit == "hub-audit@tacplus-ci.iam.gserviceaccount.com"
     error_message = "The stack does not give the audit's account hub-audit."
   }
+  # The release registry (#115): tacplus-dev/build's BUILD_REGISTRY for a release, the publish account and provider it
+  # federates as, and its one reader, seatrials' deploy identity in the dev project.
+  assert {
+    condition     = output.releases.registry == "us-docker.pkg.dev/tacplus-ci/releases" && output.releases.service_account == "release-publish@tacplus-ci.iam.gserviceaccount.com" && output.releases.wif_provider == "projects/333/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release" && output.releases.readers == tolist(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "The stack does not give the release registry us-docker.pkg.dev/tacplus-ci/releases, its publish account and provider, and seatrials-deploy@tacplus-dev as its one reader."
+  }
   # The Admiral's Config (#84): the dev project's provider for its fleet kernel and its audience, its account, its
   # App's key and IDs, and its secret, none of them secret.
   assert {
@@ -123,6 +129,14 @@ run "stack" {
   override_resource {
     target = module.ci.google_kms_key_ring.looper
     values = { id = "projects/tacplus-ci/locations/us-central1/keyRings/looper" }
+  }
+  override_resource {
+    target = module.ci.google_service_account.release_publish
+    values = { email = "release-publish@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/release-publish@tacplus-ci.iam.gserviceaccount.com" }
+  }
+  override_resource {
+    target = module.ci.google_iam_workload_identity_pool_provider.release
+    values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release" }
   }
 }
 
@@ -281,6 +295,11 @@ run "ci" {
     }
     # As GCP_KMS_KEY_IMPORTERS gives it: an account of the host's directory, which no file here names.
     kms_key_importers = ["user:jody@example.com"]
+    releases          = { repository = "releases", location = "us", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"] }
+  }
+  override_resource {
+    target = google_service_account.release_publish
+    values = { email = "release-publish@tacplus-ci.iam.gserviceaccount.com", member = "serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com", name = "projects/tacplus-ci/serviceAccounts/release-publish@tacplus-ci.iam.gserviceaccount.com" }
   }
   # Computed at apply: the pool's name, as Google gives it.
   override_resource {
@@ -642,6 +661,44 @@ run "ci" {
     condition     = { for k, m in google_project_iam_member.hub_audit : k => [m.project, m.role, m.member] } == { for g in setproduct(["tacplus-ci", "tacplus-dev"], ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"]) : "${g[0]}:${g[1]}" => [g[0], g[1], "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com"] }
     error_message = "hub-audit does not hold exactly its six read roles on tacplus-ci and tacplus-dev."
   }
+  # The registries' IAM (#115): on each project, hub-audit's own role, which lists the repositories and reads their
+  # policies and nothing else (no image), granted as written out.
+  assert {
+    condition     = toset(keys(google_project_iam_custom_role.hub_audit_registries)) == toset(["tacplus-ci", "tacplus-dev"]) && alltrue([for k, r in google_project_iam_custom_role.hub_audit_registries : r.project == k && r.role_id == "hubAuditRegistries" && toset(r.permissions) == toset(["artifactregistry.locations.list", "artifactregistry.repositories.get", "artifactregistry.repositories.getIamPolicy", "artifactregistry.repositories.list"])])
+    error_message = "hub-audit's registries role is not, on each project, list and getIamPolicy alone."
+  }
+  assert {
+    condition     = { for k, m in google_project_iam_member.hub_audit_registries : k => [m.project, m.role, m.member, length(m.condition)] } == { for p in ["tacplus-ci", "tacplus-dev"] : p => [p, "projects/${p}/roles/hubAuditRegistries", "serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com", 0] }
+    error_message = "hub-audit does not hold its registries role on each project, as written out."
+  }
+  # The release registry (#115): DOCKER in us, no cleanup policy (a pinned release is never deleted), labelled; one
+  # writer, release-publish, which only tacplus-dev/build's protected main, in its environment registry, becomes,
+  # through a provider of its own in the build cache's pool (not the build cache's, which admits any ref); one reader,
+  # seatrials' deploy identity. Every binding authoritative.
+  assert {
+    condition     = google_artifact_registry_repository.releases[0].repository_id == "releases" && google_artifact_registry_repository.releases[0].location == "us" && google_artifact_registry_repository.releases[0].format == "DOCKER" && length(google_artifact_registry_repository.releases[0].cleanup_policies) == 0 && length(google_artifact_registry_repository.releases[0].labels) == 1 && google_artifact_registry_repository.releases[0].labels["managed-by"] == "tacplus-dev-cloud"
+    error_message = "The release registry is not releases, DOCKER in us, labelled, with no cleanup policy."
+  }
+  assert {
+    condition     = google_service_account.release_publish[0].account_id == "release-publish" && google_service_account.release_publish[0].project == "tacplus-ci"
+    error_message = "The release publish account is not release-publish in tacplus-ci."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.release[0].workload_identity_pool_id == "gitlab-com" && google_iam_workload_identity_pool_provider.release[0].workload_identity_pool_provider_id == "tacplus-dev-build-release" && google_iam_workload_identity_pool_provider.release[0].attribute_condition == "assertion.project_path == 'tacplus-dev/build' && assertion.ref_type == 'branch' && assertion.ref == 'main' && assertion.ref_protected == 'true'" && google_iam_workload_identity_pool_provider.release[0].attribute_mapping["attribute.project_environment"] == "assertion.project_path + ':' + (has(assertion.environment) ? assertion.environment : '')" && google_iam_workload_identity_pool_provider.release[0].oidc[0].issuer_uri == "https://gitlab.com"
+    error_message = "The release provider does not admit tacplus-dev/build's protected main alone, or does not map its project and environment."
+  }
+  assert {
+    condition     = google_service_account_iam_binding.release_publish[0].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_binding.release_publish[0].members == toset(["principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-com/attribute.project_environment/tacplus-dev/build:registry"]) && google_service_account_iam_binding.release_publish[0].service_account_id == google_service_account.release_publish[0].name
+    error_message = "Something other than tacplus-dev/build's jobs in its environment registry may become release-publish."
+  }
+  assert {
+    condition     = google_artifact_registry_repository_iam_binding.releases_writer[0].role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_binding.releases_writer[0].members == toset(["serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_writer[0].location == "us" && google_artifact_registry_repository_iam_binding.releases_writer[0].repository == "releases"
+    error_message = "The release registry's writer is not release-publish alone."
+  }
+  assert {
+    condition     = google_artifact_registry_repository_iam_binding.releases_reader[0].role == "roles/artifactregistry.reader" && google_artifact_registry_repository_iam_binding.releases_reader[0].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_reader[0].location == "us" && google_artifact_registry_repository_iam_binding.releases_reader[0].repository == "releases"
+    error_message = "The release registry's reader is not seatrials-deploy@tacplus-dev alone."
+  }
   # The cluster autoscaler's log (#85): no view and no grant on one until autoscaler_log is true, which waits for the
   # host's roles/logging.configWriter (the stack's input, modules/settings' autoscaler_log, is false).
   assert {
@@ -778,6 +835,44 @@ run "hub_audit_write_refused" {
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
   }
   expect_failures = [var.hub_audit]
+}
+
+# Only a deployment's service account reads the release registry (#115): a user, a group or anyone else is refused.
+run "release_reader_not_service_account_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin = "../../bin/manager"
+    pools = {
+      swap = {
+        machine_type = "t2a-standard-8", disk_type = "pd-balanced", os_disk_gb = 50, capacity = 2, max_instances = 1, idle_count = 1, idle_time = "30m"
+        job          = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }, service_account = false
+      }
+    }
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    releases    = { repository = "releases", location = "us", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["user:someone@example.com"] }
+  }
+  expect_failures = [var.releases]
 }
 
 # A pool spread over a zone outside the region, or over one zone (which is the stack's zone's job), is refused (#49).

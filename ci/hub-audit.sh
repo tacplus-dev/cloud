@@ -18,6 +18,10 @@
 #   - utilization, over the last hour, the maximum of 10-minute windows (Cloud Monitoring): each VM's CPU, each GKE
 #     node's CPU (of its allocatable), and each container's CPU and memory used against its requests in namespace ci;
 #   - secrets: their names and their versions' states, never a value;
+#   - registries (#115): every Artifact Registry repository, in every location, its format, and each role's members on
+#     its own policy (the release repository's readers and writer among them), read through hub-audit's custom role
+#     hubAuditRegistries (list and getIamPolicy, never an image); a member allUsers or allAuthenticatedUsers is an
+#     exposure finding;
 #   - scheduling (#85), through each cluster's API (container.viewer; the job runs in the cluster, which alone reaches
 #     its private endpoint): each spot node (of a pool with spot, or labelled so), its allocatable CPU and memory, and
 #     the pods on it, each with its phase, creation, owner (its owner references, or the GitLab job of a runner's pod)
@@ -31,10 +35,10 @@
 #     pool, zone and reason (a pool rejected or skipped, or none), with its count, first and last times and the pods it
 #     left, and each scale-up error, joined to the pools its decision tried. False, until the host grants what the
 #     views need, its log is noted as not read.
-# It only reads: lists and describes, Monitoring's timeSeries.list, Logging's entries.list of that view, Cloud Quotas'
+# It only reads: lists and describes, the registries' IAM policies, Monitoring's timeSeries.list, Logging's entries.list of that view, Cloud Quotas'
 # quotaInfos and quotaPreferences, and the cluster's nodes, pods and autoscaler events. An API not enabled in a project
 # is noted, its list empty (none can exist there). It fails, both files written, on an exposure finding (an ingress rule
-# open to 0.0.0.0/0 or ::/0, a VM with an external IP) or a read it could not make, so the job shows red. AUDIT_NOW
+# open to 0.0.0.0/0 or ::/0, a VM with an external IP, a public registry) or a read it could not make, so the job shows red. AUDIT_NOW
 # (epoch seconds, default now) ends the hour and the autoscaler's hours, and MONITORING_API, LOGGING_API and
 # CLOUDQUOTAS_API are Monitoring's, Logging's and Cloud Quotas' endpoints, for tests/hub_audit_test.sh.
 #
@@ -239,6 +243,18 @@ for p in "$@"; do
       jq -c --arg s "$s" '{name: $s, versions: [.[] | {version: (.name | split("/") | last), state}]}' "$d/versions.json" >> "$d/secrets.jsonl"
     done
   fi
+  # Each repository's policy, in its own location (#115): the list is every location's.
+  : > "$d/registries.jsonl"
+  if read_json "$p" "$d/repositories.json" '[]' "registries" artifacts repositories list; then
+    jq -r '.[].name | split("/") | "\(.[3]) \(.[5])"' "$d/repositories.json" | while read -r loc r; do
+      read_json "$p" "$d/iam.json" '{}' "the registry $loc/$r's IAM policy" artifacts repositories get-iam-policy "$r" --location="$loc"
+      jq -c --slurpfile repos "$d/repositories.json" --arg l "$loc" --arg r "$r" \
+        '($repos[0][] | select(.name | split("/") | .[3] == $l and .[5] == $r)) as $repo
+         | {location: $l, repository: $r, format: $repo.format,
+            bindings: [.bindings[]? | {role, members: (.members // [] | sort)}] | sort_by(.role)}' "$d/iam.json" >> "$d/registries.jsonl"
+    done
+  fi
+  rm -f "$d/iam.json"
   ns='resource.labels.namespace_name = "ci"'
   series "$p" "$d/m-vm-cpu.json" "the VMs' CPU" ALIGN_MAX 'metric.type = "compute.googleapis.com/instance/cpu/utilization"'
   series "$p" "$d/m-node-cpu.json" "the nodes' CPU" ALIGN_MAX 'metric.type = "kubernetes.io/node/cpu/allocatable_utilization"'
@@ -255,11 +271,13 @@ for p in "$@"; do
   args=(--arg project "$p")
   for f in "$d"/*.json; do
     k=$(basename "$f" .json)
-    case $k in secrets | versions) continue ;; esac
+    case $k in secrets | versions | repositories) continue ;; esac
     args+=(--slurpfile "${k//-/_}" "$f")
   done
   jq -n "${args[@]}" --slurpfile secrets <(jq -s . "$d/secrets.jsonl") --slurpfile kube <(jq -s . "$d/kube.jsonl") \
-    '$ARGS.named | with_entries(.value |= if type == "array" then .[0] else . end) | .secrets = $secrets[0] | .kube = $kube[0]' > "$tmp/p/$p.json" ||
+    --slurpfile registries <(jq -s . "$d/registries.jsonl") \
+    '$ARGS.named | with_entries(.value |= if type == "array" then .[0] else . end) | .secrets = $secrets[0] | .kube = $kube[0]
+     | .registries = $registries[0]' > "$tmp/p/$p.json" ||
     jq -nc --arg p "$p" '{project: $p, what: "its lists", error: "cannot read them"}' >> "$tmp/errors"
 done
 
@@ -272,7 +290,7 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
   def ref: split("/") | .[-2:] | join("/");
   def scope: if .region then (.region | base) elif .zone then (.zone | base) else "global" end;
   def maxv: [.points[]?.value | (.doubleValue // (.int64Value | tonumber?)) // empty] | max;
-  def world: IN("0.0.0.0/0", "::/0");
+  def world: IN("0.0.0.0/0", "::/0", "allUsers", "allAuthenticatedUsers");
   # An autoscaler message: its ID and parameters.
   def msg: .messageId + (if (.parameters // []) | length > 0 then ": " + (.parameters | join(", ")) else "" end);
   $ps[0] as $ps
@@ -281,6 +299,7 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
       | {project: $p, name, network: ((.network // "") | base), sources: [.sourceRanges[] | select(world)],
          allowed: [.allowed[] | .IPProtocol + (if .ports then ":" + (.ports | join(",")) else "" end)],
          target_tags: (.targetTags // []), disabled: (.disabled // false)}]) as $open
+  | [$ps[] | .project as $p | .registries[] | {project: $p} + .] as $registries
   | ([$ps[] | .project as $p | .instances[]
       | [.networkInterfaces[]? | (.accessConfigs // [])[], (.ipv6AccessConfigs // [])[]] as $ac
       | select($ac | length > 0)
@@ -394,9 +413,12 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
         | {project: $p, time: $t, event_id: .eventId, error: (.errorMsg | msg), pools: ($tried[.eventId] // [])}]
     },
     secrets: [$ps[] | .project as $p | .secrets[] | {project: $p} + .],
+    registries: $registries,
     findings: ([$open[] | select(.disabled | not)
         | "\(.project): firewall rule \(.name) allows ingress from \(.sources | join(" and ")) (\(.allowed | join(" ")))"]
-      + [$external[] | "\(.project): VM \(.vm) has an external IP (\(.ips | join(", ")))"]),
+      + [$external[] | "\(.project): VM \(.vm) has an external IP (\(.ips | join(", ")))"]
+      + [$registries[] | . as $r | .bindings[] | .role as $role | .members[] | select(world)
+        | "\($r.project): registry \($r.location)/\($r.repository) grants \($role) to \(.)"]),
     unavailable: $unavailable[0],
     errors: $errors[0]
   }' > "$out/audit.json" || { echo "audit: cannot write its report" >&2; exit 1; }
@@ -453,7 +475,10 @@ jq -r '
   "### Scale-up errors", "", table(["project", "time", "event", "error", "pools tried"];
     [.autoscaler.scale_up_errors[] | [.project, .time, .event_id, .error, [.pools[] | "\(.pool) \(.zone) +\(.requested)"]]]),
   "## Secrets (names and version states only)", "", table(["project", "secret", "versions"];
-    [.secrets[] | [.project, .name, [.versions[] | "\(.version) \(.state)"]]])
+    [.secrets[] | [.project, .name, [.versions[] | "\(.version) \(.state)"]]]),
+  "## Registries (each role'"'"'s members on the repository'"'"'s own policy)", "", table(["project", "repository", "location", "format", "role", "members"];
+    [.registries[] | . as $r | if (.bindings | length) == 0 then [.project, .repository, .location, .format, null, null]
+      else .bindings[] | [$r.project, $r.repository, $r.location, $r.format, .role, .members] end])
   ' "$out/audit.json" > "$out/audit.md" || { echo "audit: cannot write its summary" >&2; exit 1; }
 
 cat "$out/audit.md"

@@ -1,0 +1,7 @@
+{
+ "bindings": [
+  {"role": "roles/artifactregistry.reader", "members": ["allUsers", "user:someone@example.com"]}
+ ],
+ "etag": "BwYAAAAAAAD=",
+ "version": 1
+}

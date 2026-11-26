@@ -202,6 +202,28 @@ variable "admiral" {
   }
 }
 
+variable "releases" {
+  description = "The release registry (releases.tf, #115): a Docker repository named repository in location (us: multi-region), with no cleanup policy, which only the service account account_id writes, and only the jobs of gitlab_project on its protected main, in its GitLab environment environment, become it, through the build cache's pool (build_cache.wif_pool) and a provider of its own, wif_provider; readers, the members (serviceAccount:, written out) who alone read it, each deployment's that copies the releases into its own registry. Null: none."
+  type = object({
+    repository     = string
+    location       = string
+    account_id     = string
+    gitlab_project = string
+    environment    = string
+    wif_provider   = string
+    readers        = list(string)
+  })
+  default = null
+  validation {
+    condition     = var.releases == null ? true : (can(regex("^[a-z][a-z0-9-]{0,62}$", var.releases.repository)) && can(regex("^[a-z][a-z0-9-]*$", var.releases.location)) && can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.releases.account_id)) && can(regex("^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)+$", var.releases.gitlab_project)) && can(regex("^[A-Za-z0-9_-]+$", var.releases.environment)) && can(regex("^[a-z0-9-]{4,32}$", var.releases.wif_provider)))
+    error_message = "The release registry's repository, location, account ID, GitLab project, environment or provider is not of its form."
+  }
+  validation {
+    condition     = var.releases == null ? true : alltrue([for m in var.releases.readers : can(regex("^serviceAccount:[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", m))])
+    error_message = "A release reader is not a service account (serviceAccount:<id>@<project>.iam.gserviceaccount.com): only a deployment's account copies the releases."
+  }
+}
+
 variable "admiral_secret_adders" {
   description = "Who adds the Admiral's secret's versions by hand (admiral.tf): secretVersionAdder on it, which adds versions and reads none. Members as IAM writes them (user:, group:, serviceAccount:), of a domain the host organization's iam.allowedPolicyMemberDomains admits. Empty: nobody."
   type        = list(string)

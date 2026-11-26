@@ -1,0 +1,7 @@
+[
+ {
+  "name": "projects/audit-dev/locations/us-central1/repositories/seatrials",
+  "format": "DOCKER",
+  "labels": {"managed-by": "tacplus-dev-cloud", "deployment": "seatrials"}
+ }
+]

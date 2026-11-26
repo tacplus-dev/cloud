@@ -10,14 +10,16 @@
 # (one not listed is null), C4A's CPUs and Hyperdisk Balanced's GB from a stub Cloud Quotas (#88): the region's limit or
 # the default, the project's preference and its state (every page read), the inventory's usage, its API not enabled
 # noted; the hour's CPU and the ci namespace's containers' use against their requests (every page read), the secrets'
-# names and version states; the spot nodes (#85), each with the pods on it, their requests and owner, against its
+# names and version states; the registries (#115): every Artifact Registry repository, in every location, and each
+# role's members on its own policy (the release repository's readers among them), a public member an exposure finding;
+# the spot nodes (#85), each with the pods on it, their requests and owner, against its
 # allocatable, and the pods not scheduled, from a stub cluster API (tests/fixtures/hub-audit/kube), no pod's spec
 # written out; the cluster autoscaler's events on the cluster's objects, from that API, read whatever autoscaler_log
 # says; its log of the last 6 hours through the log view hub-audit-autoscaler alone (every page read): its no-scale-ups
 # by pool, zone and reason, and its scale-up errors joined to the pools they tried, or, while AUDIT_AUTOSCALER_LOG is
 # false (modules/settings autoscaler_log), none read and that noted; an API not enabled is noted, not an error. It exits
 # 0 on projects with no exposure, and 1, both files written, on an ingress rule open to 0.0.0.0/0 or ::/0, a VM with an
-# external IP, or a read it cannot make; it only lists and describes, and never reads a secret's value. The job's
+# external IP, a registry readable by allUsers or allAuthenticatedUsers, or a read it cannot make; it only lists and describes, and never reads a secret's value. The job's
 # arguments: the region and the projects modules/settings names. Needs bash, jq and date.
 #
 #   tests/hub_audit_test.sh
@@ -56,7 +58,7 @@ audit audit-ci audit-dev
 cmp -s "$work/stdout" "$work/out/audit.md" && ok "the job's log shows audit.md" || fail "stdout is not audit.md"
 
 # The shape: the hub reads these keys.
-is "audit.json's sections" 'keys' '["autoscaler","commit","errors","exposure","findings","generated","inventory","job","pipeline","projects","quotas","region","scheduling","secrets","unavailable","utilization"]'
+is "audit.json's sections" 'keys' '["autoscaler","commit","errors","exposure","findings","generated","inventory","job","pipeline","projects","quotas","region","registries","scheduling","secrets","unavailable","utilization"]'
 is "the exposure's" '.exposure | keys' '["external_addresses","external_ips","load_balancers","open_ingress"]'
 is "the inventory's" '.inventory | keys' '["disks","negs","node_pools","vms"]'
 is "the utilization's" '.utilization | keys' '["containers","nodes","vms","window"]'
@@ -139,11 +141,17 @@ grep -qx 'curl audit-dev autoscaler p2' "$STUB_LOG" && grep -qx 'curl audit-ci a
 # Secrets: names and version states, never a value.
 is "the secrets: names and version states" '.secrets' \
   '[{"project":"audit-ci","name":"runner-token-shared","versions":[{"version":"2","state":"ENABLED"},{"version":"1","state":"DESTROYED"}]},{"project":"audit-ci","name":"gitlab-runner-control","versions":[]},{"project":"audit-dev","name":"gitlab-runner-infra","versions":[{"version":"1","state":"ENABLED"}]}]'
+# The registries (#115): each repository, wherever it is, and its policy's bindings; the release repository's readers
+# with them, as the hub checks them.
+is "the registries: each repository, its location and format, each role's members" '.registries' \
+  '[{"project":"audit-ci","location":"us-central1","repository":"build-cache","format":"DOCKER","bindings":[{"role":"roles/artifactregistry.writer","members":["serviceAccount:build-cache@audit-ci.iam.gserviceaccount.com"]}]},{"project":"audit-ci","location":"us","repository":"releases","format":"DOCKER","bindings":[{"role":"roles/artifactregistry.reader","members":["serviceAccount:seatrials-deploy@audit-dev.iam.gserviceaccount.com"]},{"role":"roles/artifactregistry.writer","members":["serviceAccount:release-publish@audit-ci.iam.gserviceaccount.com"]}]},{"project":"audit-dev","location":"us-central1","repository":"seatrials","format":"DOCKER","bindings":[{"role":"roles/artifactregistry.reader","members":["serviceAccount:gke-nodes@audit-dev.iam.gserviceaccount.com","serviceAccount:seatrials-deploy@audit-dev.iam.gserviceaccount.com"]},{"role":"roles/artifactregistry.writer","members":["serviceAccount:seatrials-build@audit-dev.iam.gserviceaccount.com"]}]}]'
+grep -qx 'gcloud artifacts repositories get-iam-policy releases --location=us --project=audit-ci --format=json' "$STUB_LOG" &&
+  ok "a repository's policy is read in its own location" || fail "the registries' policies: $(grep artifacts "$STUB_LOG")"
 is "an API not enabled: noted, not an error" '.unavailable' '[{"project":"audit-ci","what":"clusters","why":"its API is not enabled"}]'
 
 # The one read-only path: lists and describes, the token for Monitoring, and its timeSeries.list.
-grep -vE '^curl [a-z-]+ autoscaler [a-z0-9]+$|^curl kube [0-9.]+ (nodes|pods|events)$|^gcloud (auth print-access-token|compute (firewall-rules|instances|addresses|forwarding-rules|network-endpoint-groups|disks) list --project=[a-z-]+ --format=json|container clusters list --project=[a-z-]+ --format=json|compute (project-info describe|regions describe us-central1) --project=[a-z-]+ --format=json|secrets list --project=[a-z-]+ --format=json|secrets versions list [a-z-]+ --project=[a-z-]+ --format=json)$|^curl [a-z-]+ [a-z-]+ ALIGN_(MAX|RATE) [a-z0-9]+$|^curl [a-z-]+ quotaInfos (CPUS-PER-VM-FAMILY|HDB-TOTAL-GB)-per-project-region$|^curl [a-z-]+ quotaPreferences [a-z0-9]+$' "$STUB_LOG" &&
-  fail "the audit runs more than its reads" || ok "the audit only lists, describes and reads Monitoring, the autoscaler's view, Cloud Quotas and the cluster's nodes and pods: no secret's value"
+grep -vE '^curl [a-z-]+ autoscaler [a-z0-9]+$|^curl kube [0-9.]+ (nodes|pods|events)$|^gcloud (auth print-access-token|compute (firewall-rules|instances|addresses|forwarding-rules|network-endpoint-groups|disks) list --project=[a-z-]+ --format=json|container clusters list --project=[a-z-]+ --format=json|compute (project-info describe|regions describe us-central1) --project=[a-z-]+ --format=json|secrets list --project=[a-z-]+ --format=json|secrets versions list [a-z-]+ --project=[a-z-]+ --format=json|artifacts repositories list --project=[a-z-]+ --format=json|artifacts repositories get-iam-policy [a-z-]+ --location=[a-z0-9-]+ --project=[a-z-]+ --format=json)$|^curl [a-z-]+ [a-z-]+ ALIGN_(MAX|RATE) [a-z0-9]+$|^curl [a-z-]+ quotaInfos (CPUS-PER-VM-FAMILY|HDB-TOTAL-GB)-per-project-region$|^curl [a-z-]+ quotaPreferences [a-z0-9]+$' "$STUB_LOG" &&
+  fail "the audit runs more than its reads" || ok "the audit only lists, describes and reads Monitoring, the autoscaler's view, Cloud Quotas, the registries' policies and the cluster's nodes and pods: no secret's value, no image"
 [ "$(grep -c '^gcloud auth print-access-token$' "$STUB_LOG")" = 1 ] && ! grep -rq stub-token "$work/out" "$work/stdout" "$work/err" &&
   ok "one Monitoring token, never written out" || fail "the token: $(grep -c print-access-token "$STUB_LOG") reads, or in the report"
 
@@ -155,7 +163,7 @@ for h in "# Cloud audit, 2026-11-23T12:00:00Z" "No exposure finding." "## Exposu
   "### Spot nodes: requested against allocatable" "### Pods on the spot nodes" "### Pods not scheduled" \
   "## Cluster autoscaler, 2026-11-23T06:00:00Z to 2026-11-23T12:00:00Z" \
   "### Its events on the cluster's objects (as Kubernetes keeps them, about an hour)" "### No scale-up, by pool, zone and reason" "### Scale-up errors" \
-  "## Secrets (names and version states only)"; do
+  "## Secrets (names and version states only)" "## Registries (each role's members on the repository's own policy)"; do
   grep -qxF -- "$h" "$work/out/audit.md" || fail "audit.md has no [$h]"
 done
 grep -qxF '| audit-dev | dev | spot | c4a-standard-4 | true | 0 | 3 | 1 |' "$work/out/audit.md" &&
@@ -164,6 +172,8 @@ grep -qxF '| audit-dev | dev | spot | c4a-standard-4 | true | 0 | 3 | 1 |' "$wor
   grep -qxF '| audit-dev | dev | runner-job-1 | build | 3.25 | 2 | 4096 MiB | 2048 MiB |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | seatrials-gateway | us-central1-a | 1 | GCE_VM_IP_PORT | seatrials/gateway:8443 |' "$work/out/audit.md" &&
   grep -qxF '| audit-ci | runner-token-shared | 2 ENABLED, 1 DESTROYED |' "$work/out/audit.md" &&
+  grep -qxF '| audit-ci | releases | us | DOCKER | roles/artifactregistry.reader | serviceAccount:seatrials-deploy@audit-dev.iam.gserviceaccount.com |' "$work/out/audit.md" &&
+  grep -qxF '| audit-dev | seatrials | us-central1 | DOCKER | roles/artifactregistry.reader | serviceAccount:gke-nodes@audit-dev.iam.gserviceaccount.com, serviceAccount:seatrials-deploy@audit-dev.iam.gserviceaccount.com |' "$work/out/audit.md" &&
   grep -qxF '| audit-ci | us-central1 | CPUS | 10.0 | 24.0 | - | - | - |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | us-central1 | CPUS_PER_VM_FAMILY (C4A) | 18 | 48 | 96 | 48 | true |' "$work/out/audit.md" &&
   grep -qxF '| audit-dev | dev | spot | gke-dev-spot-1 | us-central1-a | 2026-11-20T18:52:00Z | 2.2 of 3.92 | 6472 of 13141 MiB | 2 |' "$work/out/audit.md" &&
@@ -178,8 +188,10 @@ grep -qxF '| audit-dev | dev | spot | c4a-standard-4 | true | 0 | 3 | 1 |' "$wor
 # Exposure fails the job, the report written.
 audit exposed
 [ "$rc" = 1 ] && [ -s "$work/out/audit.json" ] && [ -s "$work/out/audit.md" ] && ok "an exposure finding fails the audit, its report written" || fail "exposed: exit $rc, $(ls "$work/out" 2>&1)"
-is "the findings: ingress open to 0.0.0.0/0 and ::/0, a VM's external IP" '.findings' \
-  '["exposed: firewall rule hand-https allows ingress from 0.0.0.0/0 (tcp:443)","exposed: firewall rule hand-v6 allows ingress from ::/0 (all)","exposed: VM hand-vm has an external IP (35.9.9.9)"]'
+is "the findings: ingress open to 0.0.0.0/0 and ::/0, a VM's external IP, a registry anyone reads" '.findings' \
+  '["exposed: firewall rule hand-https allows ingress from 0.0.0.0/0 (tcp:443)","exposed: firewall rule hand-v6 allows ingress from ::/0 (all)","exposed: VM hand-vm has an external IP (35.9.9.9)","exposed: registry us/hand-public grants roles/artifactregistry.reader to allUsers"]'
+is "a repository with no binding: listed, its bindings none" '[.registries[] | select(.repository == "hand-empty") | [.location, .format, .bindings]]' '[["us-central1","MAVEN",[]]]'
+grep -qxF '| exposed | hand-empty | us-central1 | MAVEN | - | - |' "$work/out/audit.md" && ok "audit.md: a repository with no binding, a row of its own" || fail "audit.md: $(grep hand- "$work/out/audit.md")"
 is "the VM's external IP, and its address's user" '[.exposure.external_ips, .exposure.external_addresses[0].users, .inventory.vms[0].provisioning]' \
   '[[{"project":"exposed","vm":"hand-vm","zone":"us-central1-c","ips":["35.9.9.9"]}],["instances/hand-vm"],"PREEMPTIBLE"]'
 grep -qF -- '- exposed: VM hand-vm has an external IP (35.9.9.9)' "$work/out/audit.md" && grep -q 'exposure finding' "$work/err" &&
@@ -191,7 +203,7 @@ is "Cloud Quotas not enabled: noted, not an error, its limits unknown" '[.unavai
 audit audit-ci missing
 [ "$rc" = 1 ] && ok "a read it cannot make fails the audit" || fail "missing: exit $rc"
 is "each read that failed is an error" '[.errors[] | select(.project == "missing") | .what]' \
-  '["firewall rules","VMs","addresses","forwarding rules","network endpoint groups","disks","clusters","the project'"'"'s quotas","the quotas of us-central1","the C4A CPU quota","secrets","the VMs'"'"' CPU","the nodes'"'"' CPU","the containers'"'"' CPU","the containers'"'"' CPU requests","the containers'"'"' memory","the containers'"'"' memory requests","the cluster autoscaler'"'"'s log"]'
+  '["firewall rules","VMs","addresses","forwarding rules","network endpoint groups","disks","clusters","the project'"'"'s quotas","the quotas of us-central1","the C4A CPU quota","secrets","registries","the VMs'"'"' CPU","the nodes'"'"' CPU","the containers'"'"' CPU","the containers'"'"' CPU requests","the containers'"'"' memory","the containers'"'"' memory requests","the cluster autoscaler'"'"'s log"]'
 is "the other project is still reported" '[.inventory.vms[] | .project] | unique' '["audit-ci"]'
 
 # Until the host grants the log views (modules/settings autoscaler_log false), the autoscaler is not read, and that is noted.

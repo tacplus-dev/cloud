@@ -746,21 +746,18 @@ the looper then marks it `promoted` or `declined` here with the date.
   where tacplus-dev/build's `build`-tagged release builds (#112) run once the spot pool goes, where infra runs
   (peered VM, a VM in dev's node subnet, or kept in-cluster), the node size floor and a roll's outage, and when the
   quota preferences come down.
-- **The release images in tacplus-dev, readable by the deployments that copy them** (looper, #115, 2026-11-26;
-  tacplus-dev/fleet-seatrials#82, tacplus-dev/looper#252). What: a DOCKER repository `releases` in `tacplus-ci`
-  (multi-region `us`, no cleanup policy) made by the ci stack. Its one writer is a `release-publish` account that only
-  tacplus-dev/build's protected `main` jobs in the environment `registry` can become, through a new provider in the ci
-  pool (the build cache's admits every ref). Its readers are a settings list `release_readers` (for seatrials, the
-  account its `releases` job copies as), both bindings authoritative. `ci/hub-audit.sh` gains a registries section
-  listing each repository's IAM members (hub-audit through a custom role with `getIamPolicy` and `list` only), and
-  `ci/policy.sh` refuses other members on `releases`. looper#252 then publishes there; fleet-seatrials follows the
-  record's `image`. Alternative: a hand grant of `artifactregistry.reader` on jody1-328023's `tacplus` as a bridge
-  (README, Interim), which ties dev to the project #15 is deleting and may be refused by thescottsweb.com's
-  domain-restricted sharing. Why: fleet-seatrials#82's `releases` job copies each green main release by digest into
-  seatrials' own registry, so the dev nodes never pull across organizations. Today the releases are in jody1-328023,
-  which this repository does not manage. Open (#115's design): B, A or A then B; which account copies
-  (`seatrials-deploy` is only a reader of `seatrials`, `seatrials-build` its writer); the registry's project, name
-  and location; retention; whether `registry` is a protected environment on build (also #112).
+- **The release registry's follow-ups** (looper, #115, 2026-11-26; built as design B: README, The release registry).
+  What is left of the design: (1) the audit flags a member of `releases` that `modules/settings`' `releases.readers`
+  does not name (today it lists every binding, and fails only on a public one; the policy check and the authoritative
+  bindings refuse the rest in a plan, and the drift sees a hand-made binding of their roles, not one of another role);
+  (2) the provider also requires `assertion.environment_protected == 'true'` once `registry` is a protected
+  environment of tacplus-dev/build (#112's open question 3): today it admits any `registry` job on build's protected
+  `main`; (3) retention: none today (every release kept); later, keep the last N per repository plus anything a
+  record names; (4) which account copies: seatrials-deploy reads `releases` (Jody's decision) but only reads its own
+  registry `seatrials`, whose one writer is `seatrials-build` (Cloud Build): fleet-seatrials#82's copy either runs
+  on Cloud Build as `seatrials-build` (which then needs the read too: one more reader here) or needs
+  `artifactregistry.writer` on `seatrials` for `seatrials-deploy` (`deploy.tf`'s `registry_roles`). Why: the design's
+  rest, and the copy's write side, which the issue left to fleet-seatrials.
 - **The in-cluster nightly runner and its token secret** (looper, #116, 2026-11-26; tacplus-dev/cluster#46, option A,
   hub's decision on Jody's standing authority). What: a dev-stack secret `gitlab-runner-nightly` (`runner_tokens`,
   read by `cluster-admin-pipeline` alone, the same bindings as the others) and a gitlab-stack group runner of

@@ -60,3 +60,13 @@ output "reserved_vms" {
   description = "Each reserved machine's group (#111), by name: its name and zone, and its account's email."
   value       = { for k, g in google_compute_instance_group_manager.reserved_vm : k => { group = g.name, zone = g.zone, service_account = google_service_account.reserved_vm[k].email } }
 }
+
+output "releases" {
+  description = "The release registry (#115): its address (<location>-docker.pkg.dev/<project>/<repository>, the build's BUILD_REGISTRY for a release), the publish account's email and its provider (projects/N/locations/global/workloadIdentityPools/P/providers/R), for tacplus-dev/build's variables, and its readers; null without releases."
+  value = var.releases == null ? null : {
+    registry        = "${google_artifact_registry_repository.releases[0].location}-docker.pkg.dev/${google_project.ci.project_id}/${google_artifact_registry_repository.releases[0].repository_id}"
+    service_account = google_service_account.release_publish[0].email
+    wif_provider    = google_iam_workload_identity_pool_provider.release[0].name
+    readers         = var.releases.readers
+  }
+}

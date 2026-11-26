@@ -1,0 +1,8 @@
+{
+ "bindings": [
+  {"role": "roles/artifactregistry.writer", "members": ["serviceAccount:release-publish@audit-ci.iam.gserviceaccount.com"]},
+  {"role": "roles/artifactregistry.reader", "members": ["serviceAccount:seatrials-deploy@audit-dev.iam.gserviceaccount.com"]}
+ ],
+ "etag": "BwYAAAAAAAB=",
+ "version": 1
+}

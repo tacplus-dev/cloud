@@ -39,7 +39,13 @@
 #     resource is the view hub-audit-autoscaler of the member's own project's _Default bucket (in a member list or a
 #     policy document, or unconditioned, or on another view, it is refused), and that view, wherever it is planned,
 #     filters exactly the autoscaler's visibility log: never logging.viewer nor any other log, as a job's output may
-#     hold a secret;
+#     hold a secret; and its registries role (#115), projects/<P>/roles/hubAuditRegistries, granted on P alone, a role
+#     that lists the repositories and reads their IAM policies and nothing else (no image): wherever it is planned, a
+#     permission but those is refused;
+#   - in a plan, the release registry (#115, modules/projects/ci/releases.tf: the ci project's repository releases):
+#     roles/artifactregistry.writer to any member but release-publish, roles/artifactregistry.reader to any member but
+#     a service account (a deployment's, which copies the releases), or any other role on it, in a member or a member
+#     list, or to a member known only after apply;
 #   - in a plan, the Anthropic organization (#34): an identity adopted (imported) with a change, as a live deployment
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
@@ -81,6 +87,13 @@ audit_roles=(roles/compute.viewer roles/container.viewer roles/monitoring.viewer
 # filter exactly this, which hub-audit reads by roles/logging.viewAccessor conditioned on that view alone.
 audit_view=hub-audit-autoscaler
 audit_view_filter='LOG_ID("container.googleapis.com/cluster-autoscaler-visibility")'
+# And the registries' IAM (#115): its role of each project's own, which lists the repositories and reads their policies.
+audit_registries_role=hubAuditRegistries
+audit_registries_permissions='["artifactregistry.locations.list","artifactregistry.repositories.get","artifactregistry.repositories.getIamPolicy","artifactregistry.repositories.list"]'
+# The release registry (#115): the ci project's repository, and its one writer.
+release_repository=releases
+release_project=tacplus-ci
+release_publisher=serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com
 # The most a gates job may request (#87), in millicores and bytes: what a c4a-standard-4 spot node (stacks/dev) has
 # left after GKE's DaemonSets (metadata server, logging, Dataplane V2, CSI, metrics) and the build's helper (50m 64Mi).
 gates_request_cpu=3000
@@ -245,7 +258,28 @@ plan_check() {
                 or ($after.condition // [] | map(.expression)) != ["resource.name == \"projects/\($after.project)/locations/global/buckets/_Default/views/\($audit_view)\""])
             | "\($a) grants \($b.role) to \(.) but on the view \($audit_view) of its project alone (a google_project_iam_member, its condition resource.name == \"projects/\($after.project // "PROJECT")/locations/global/buckets/_Default/views/\($audit_view)\"): the audit'"'"'s account reads the cluster autoscaler'"'"'s log alone (#85)"),
            (select($b.role | IN($audit_roles[], "roles/logging.viewAccessor") | not) | $b.members[] | select(. == $audit)
-            | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")), and roles/logging.viewAccessor on the view \($audit_view) alone; never logging.viewer, as a job'"'"'s output may hold a secret)")),
+            # Its registries role (#115), on its own project alone, in a member.
+            | select(($rc.type == "google_project_iam_member" and $b.role == "projects/\($after.project)/roles/\($audit_registries_role)") | not)
+            | "\($a) grants \($b.role) to \(.): the audit'"'"'s account reads only (\($audit_roles | join(", ")), roles/logging.viewAccessor on the view \($audit_view) alone, and its own project'"'"'s \($audit_registries_role); never logging.viewer, as a job'"'"'s output may hold a secret)"),
+           # The release registry (#115): release-publish writes, service accounts read, nothing else.
+           (select($rc.type | test("^google_artifact_registry_repository_iam_(member|binding)$"))
+            | select(($after.repository // "" | split("/") | last) == $release_repository and ($after.project // $release_project) == $release_project)
+            | if any($unknown[]; test("^(member|members)($|\\.)")) then
+                "\($a) grants \($b.role) on the release registry to a member known only after apply: each is written out"
+              elif $b.role == "roles/artifactregistry.writer" then
+                ($b.members[] | select(. != $release_publisher)
+                 | "\($a) grants \($b.role) on the release registry to \(.): release-publish alone writes it")
+              elif $b.role == "roles/artifactregistry.reader" then
+                ($b.members[] | select(startswith("serviceAccount:") | not)
+                 | "\($a) grants \($b.role) on the release registry to \(.): only a deployment'"'"'s service account reads it")
+              else
+                "\($a) grants \($b.role) on the release registry: its roles are writer (release-publish) and reader alone"
+              end)),
+        # hub-audit'"'"'s registries role (#115) lists the repositories and reads their policies, never an image.
+        (select(.type == "google_project_iam_custom_role" and $after.role_id == $audit_registries_role)
+         | ($after.permissions // [] | map(select(IN($audit_registries_permissions[]) | not))) as $extra
+         | select($extra | length > 0)
+         | "\($a): the role \($audit_registries_role) holds \($extra | join(", ")): hub-audit lists the repositories and reads their policies alone (\($audit_registries_permissions | join(", ")))"),
         # The view hub-audit reads (#85) holds the cluster autoscaler'"'"'s visibility log alone.
         (select(.type == "google_logging_log_view" and $after.name == $audit_view and $after.filter != $audit_view_filter)
          | "\($a): the view \($audit_view) filters \($after.filter // "a value known only after apply" | tojson), not exactly \($audit_view_filter): hub-audit reads the cluster autoscaler'"'"'s log alone, never a job'"'"'s output (#85)"),
@@ -296,6 +330,8 @@ plan_check() {
            (select($after.node_config[0].image_type != "COS_CONTAINERD")
             | "\($a) does not run Container-Optimized OS (node_config.image_type is not COS_CONTAINERD)")))' --arg pipeline "serviceAccount:$pipeline_sa" \
       --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" \
+      --arg audit_registries_role "$audit_registries_role" --argjson audit_registries_permissions "$audit_registries_permissions" \
+      --arg release_repository "$release_repository" --arg release_project "$release_project" --arg release_publisher "$release_publisher" \
       --argjson gates_cpu "$gates_request_cpu" --argjson gates_memory "$gates_request_memory" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"

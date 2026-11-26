@@ -24,7 +24,9 @@
 # and the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false, and
 # in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
 # deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself); and hub-audit
-# (#77), the audit job's account, granted any role but its read roles; and a gates job's request (#87), a
+# (#77), the audit job's account, granted any role but its read roles (its registries role, #115, on its own project,
+# and that role with any permission but listing the repositories and reading their policies); the release registry
+# (#115) written by any account but release-publish, read by any member but a service account, or another role on it; and a gates job's request (#87), a
 # BUILD_GATES_REQUESTS_<repo> requesting more than 3 CPU or 10Gi, or one it cannot read; and the node pools' quotas
 # (#88), a plan whose C4A pools its Cloud Quotas preferences do not cover (none, another region's, or fewer CPUs or
 # Hyperdisk Balanced GB than the pools need at their maximum with a node being replaced), or one without a contact.
@@ -162,6 +164,16 @@ refuses "a plan granting hub-audit viewAccessor on another project's view (#85)"
 refuses "a plan with hub-audit in a viewAccessor binding, conditioned or not (#85)" "google_project_iam_binding.view_accessors grants roles/logging.viewAccessor to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com" plan "$fx/plans/hub-audit-accessor-binding.json"
 refuses "a plan granting hub-audit logging.viewer (#85)" "grants roles/logging.viewer to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/hub-audit-logging-viewer.json"
 refuses "a plan widening the view hub-audit-autoscaler's filter (#85)" "the view hub-audit-autoscaler filters" plan "$fx/plans/hub-audit-autoscaler-wide.json"
+# The registries' IAM (#115): hub-audit's own role on each project lists the repositories and reads their policies,
+# never an image; granted on its own project alone. The release registry: release-publish alone writes, service
+# accounts alone read, no other role.
+passes "a plan with hub-audit's registries role on both projects and the release registry's writer and reader (#115)" plan "$fx/plans/registries-clean.json"
+refuses "a plan giving hub-audit's registries role a download (#115)" "the role hubAuditRegistries holds artifactregistry.repositories.downloadArtifacts" plan "$fx/plans/registries-role-download.json"
+refuses "a plan granting hub-audit another project's registries role (#115)" "grants projects/tacplus-dev/roles/hubAuditRegistries to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/registries-grant-other-project.json"
+refuses "a plan granting hub-audit another custom role (#115)" "grants projects/tacplus-ci/roles/kmsKeyVersionImporter to serviceAccount:hub-audit@tacplus-ci.iam.gserviceaccount.com: the audit's account reads only" plan "$fx/plans/registries-grant-other-role.json"
+refuses "a plan with another writer of the release registry (#115)" "grants roles/artifactregistry.writer on the release registry to serviceAccount:build-cache@tacplus-ci.iam.gserviceaccount.com: release-publish alone writes it" plan "$fx/plans/releases-writer-other.json"
+refuses "a plan with a user reading the release registry (#115)" "grants roles/artifactregistry.reader on the release registry to user:someone@example.com: only a deployment's service account reads it" plan "$fx/plans/releases-reader-user.json"
+refuses "a plan with another role on the release registry (#115)" "grants roles/artifactregistry.repoAdmin on the release registry: its roles are writer (release-publish) and reader alone" plan "$fx/plans/releases-other-role.json"
 # A gates job's requests (#87): BUILD_GATES_REQUESTS_<repo>'s request fits a c4a-standard-4 spot node after its
 # DaemonSets, at most 3 CPU and 10Gi; only its limits may be the runner's ceilings (3500m 12Gi).
 refuses "a plan requesting 3500m for a gates job (#87)" "BUILD_GATES_REQUESTS_tacplus requests 3500m CPU, more than 3 CPU" plan "$fx/plans/gates-requests-cpu.json"

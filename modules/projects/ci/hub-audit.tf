@@ -70,3 +70,29 @@ resource "google_project_iam_member" "hub_audit_autoscaler" {
   }
   depends_on = [google_service_account.hub_audit, google_logging_log_view.hub_audit_autoscaler]
 }
+
+# The registries' IAM (#115): on each project it reads, a role of the project's own (a custom role is one project's)
+# that lists the repositories and reads their policies, never an image: no predefined role does only that
+# (artifactregistry.reader downloads). ci/policy.sh refuses the role any other permission. Its grant names it as written
+# out, so that every plan shows what hub-audit holds.
+locals {
+  hub_audit_registries_permissions = ["artifactregistry.locations.list", "artifactregistry.repositories.get", "artifactregistry.repositories.getIamPolicy", "artifactregistry.repositories.list"]
+}
+
+resource "google_project_iam_custom_role" "hub_audit_registries" {
+  for_each    = toset(var.hub_audit.projects)
+  project     = each.key
+  role_id     = "hubAuditRegistries"
+  title       = "hub-audit: registries' IAM"
+  description = "Lists the Artifact Registry repositories and reads their IAM policies, never an image: the hub's audit (tacplus-dev/cloud #115)."
+  permissions = local.hub_audit_registries_permissions
+  depends_on  = [terraform_data.iam_ready]
+}
+
+resource "google_project_iam_member" "hub_audit_registries" {
+  for_each   = toset(var.hub_audit.projects)
+  project    = each.key
+  role       = "projects/${each.key}/roles/${google_project_iam_custom_role.hub_audit_registries[each.key].role_id}"
+  member     = local.hub_audit_member
+  depends_on = [google_service_account.hub_audit]
+}
