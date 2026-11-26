@@ -592,6 +592,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   plan tests (output `build_runners`) and the stub-API plan (adopted with no change at the hand-set value; with group
   runners off, the plan turns them on and nothing else); not applied yet: `apply:gitlab` on main, and a build job
   taken by the shared pool, show there.
+- **fleet-seatrials reads tacplus-dev/build's release records (#117; tacplus-dev/looper#262, fleet-seatrials#82):**
+  the gitlab stack's `build.job_token_readers` admits tacplus-dev/fleet-seatrials to build's job token allowlist (one
+  `gitlab_project_job_token_scope`, not authoritative: the hub's hand entries stay); no `members` entry, as the triggered
+  pipelines' user, the group bot, is a Reporter of build by inheritance. The module's `build.downstream_triggers` (a
+  trigger of the project it starts, rotated by `rotate_by`, its token build's protected, masked variable scoped to one
+  protected environment, never `*`) is in place, the stack's map empty. Tested with the stack's plan tests and the
+  stub-API plan; not applied yet. **Left:** the stack's `seatrials` entry (`BUILD_SEATRIALS_TRIGGER_TOKEN`, scope
+  `seatrials-trigger`) once fleet-seatrials#82 is live; fleet-seatrials' daily schedule, still the hub's to make, owned
+  by a member of tacplus-dev (else a `members` entry); the acceptance (a fleet-seatrials job's 200 on
+  `release-<repo>/main/record`, `seatrials: pipeline <url> started`) is on GitLab, after the apply.
 - **The Anthropic organization (#34; Jody's option A, 2026-11-10):** the stack `anthropic` owns each llmproxy
   deployment's workload identity (issuer, service account and its workspace membership, rule) from `modules/settings`
   (`deployments`, `llmproxy`), and adopts seatrials' hand-made ones by their IDs (`fdis_01JKxG3CyMXqfgcG8HoqorvT`,
