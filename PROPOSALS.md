@@ -711,3 +711,17 @@ the looper then marks it `promoted` or `declined` here with the date.
   tacplus-dev/build's protected `main`. Today the provider admits only `<repo>/vX.Y.Z` tags, so their publish would be
   refused. Open (#112's design): the hours, the hub's change and whether it is attribute-scoped, whether `registry`
   becomes a protected environment, and which slots the branch releases use.
+- **Retire tacplus-ci's runner pools and their manager** (looper, #113, 2026-11-26). What: first confirm from GitLab
+  that nothing ran for a day on the four pools' runners (shared 58534919, build 58928680, deploy, cluster) and that each
+  tag they carry is served elsewhere. Then two applies. The gitlab stack's commit drops the pools' registrations and
+  token versions. The ci stack's commit then drops the pools, the manager (a plain destroy, with its `destroy = false`
+  and `ci/policy.sh`'s manager and runner-SSH rules), `runner-token-<pool>`, `tacplus-ci-runner-bin`, the SSH firewall
+  rule, `ci/runner.sh` and its scans and exceptions, the `handoff` job, the settings `runner_pools` and the manager's
+  quota lines. The quota tests then count the looper VMs and the reserved machines alone. A check for `runner-*`
+  strays outside the state follows (managers forgotten before #46). Kept: the `runners` network and its NAT, used by
+  the looper VMs; the COS pin; `ci/pools.sh`. README and STATE say what runs where. Why: the always-on shared VM and the
+  manager bill around the clock with nothing on them (the audit of 2026-11-26; Jody, 2026-11-25: "I dont want a large
+  bill"). Open (#113's design): `build-docker`, the host-Docker publish's tag, is the VM build pool's alone (already
+  at 0 and paused), so is the build pool removed now or kept until `BUILD_BUILDER_IMAGE` is pinned; the plain destroy
+  of the manager; deleting strays; jody1-328023's `gitlab-runner-mgr` and runners 57939705 and 58307468, outside this
+  repository; the quota raise's size.
