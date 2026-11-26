@@ -230,10 +230,10 @@ run "settings" {
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
   # The reserved machines (#111; decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8, Jody's yes of
-  # 2026-11-25): tacplus's rolling check on more than 8 CPUs, the org's, and the merger's small machine, none spot, with
+  # 2026-11-25): tacplus's rolling check (8 CPUs until the full gates are measured on it), the org's, and the merger's small machine, none spot, with
   # no image until tacplus-dev/looper#249 and #251 run them (their groups at 0), each signing with its role's key.
   assert {
-    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } } && tonumber(regex("^c4a-standard-([0-9]+)$", output.reserved_vms.check-tacplus.machine_type)[0]) > 8
+    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } }
     error_message = "The reserved machines are not tacplus's check (c4a-standard-8 until measured), the org's (c4a-standard-4) and the merger's (c4a-standard-1), with no image yet."
   }
 }

@@ -1183,7 +1183,7 @@ no version and no adder: Jody adds its value out of band (`gcloud secrets versio
 
 #111; `decisions/agentic-dev-flow-2026-11-25.md` (tacplus-dev/roadmap, the panel's items 4, 5 and 8; capacity approved
 by Jody 2026-11-25). In `tacplus-ci` (`modules/projects/ci/reserved-vms.tf`; `modules/settings`' `reserved_vms`):
-`check-tacplus`, the rolling check of tacplus's main (c4a-standard-16: more than 8 CPUs, so its gate groups run side
+`check-tacplus`, the rolling check of tacplus's main (c4a-standard-8 until the full gates are measured on it; more only if they need it, so its gate groups run side
 by side), `check-tacplus-dev`, the org's other repositories' (c4a-standard-4), and `merger`, the merger's control
 machine (c4a-standard-1). Each is a zonal instance group of its own name, of one on-demand VM (never spot), its boot
 disk its own cache; not a looper VM (no model token, not the reports' key, no kicker) and not the GitLab build project.
