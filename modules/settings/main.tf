@@ -465,7 +465,7 @@ output "looper_vms" {
   description = "The looper VMs (the ci module's looper_vms): per repository, its machine type (C4A), its Hyperdisk Balanced disk in GB, spot or not, and its image by digest (empty: none yet)."
   value = {
     tacplus     = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:bd4c7d2ba4f7fb0e870ac197ba0bf2a3576984707d76ece18a2be81c54db2b71" }
-    tacplus-dev = { machine_type = "c4a-standard-4", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:bd4c7d2ba4f7fb0e870ac197ba0bf2a3576984707d76ece18a2be81c54db2b71", org = "tacplus-dev" }
+    tacplus-dev = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:bd4c7d2ba4f7fb0e870ac197ba0bf2a3576984707d76ece18a2be81c54db2b71", org = "tacplus-dev" }
   }
 }
 
@@ -493,7 +493,7 @@ output "ci_cpus" {
     request to Google, then this line); the manager's machine type, and how many managers run at once at most (a
     handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
     CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
-    Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 4: 28 (Jody, 2026-11-25:
+    Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 8: 32 (Jody, 2026-11-25:
     "Lower the pools by 12", for the looper VMs). The reserved machines (#111) count once they have an image (their
     group is at 0 until then): 8 + 4 + 1 more. No quota is raised for them (Jody, 2026-11-25: "why do we need a CPU
     quota request??"): the pools retire with the merge train (#113: 16 CPUs back), and check-tacplus is 8 CPUs until a
