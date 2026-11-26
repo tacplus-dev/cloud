@@ -111,6 +111,13 @@ output "github_apps" {
       # every repository of tacplus-dev, no webhook). No GitLab job signs with it: its one signer is the account admiral
       # (below, admiral), on the key alone.
       tacplus-admiral = { app_id = "5853599", installation_id = "184144753", import = true, namespace = false, environments = [], accounts = {}, projects = [] }
+      # The rolling check's and the merger's (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the
+      # panel's 4, 5 and 8). No GitLab job signs with either: tacplus-check's signers are the rolling check's machines
+      # alone (reserved_vms), so its status of main and its main-green are what a report cannot mint; tacplus-merger's
+      # is the merger's machine alone, which runs no project code, and once the managers retire it is the only identity
+      # that accepts and merges. Jody creates both apps (their IDs here then) and imports their keys (import true then).
+      tacplus-check  = { app_id = "", installation_id = "", import = false, namespace = false, environments = [], accounts = {}, projects = [] }
+      tacplus-merger = { app_id = "", installation_id = "", import = false, namespace = false, environments = [], accounts = {}, projects = [] }
     }
   }
 }
@@ -458,6 +465,24 @@ output "looper_vms" {
   }
 }
 
+# The reserved machines of the ci project (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the
+# panel's items 4, 5 and 8; capacity approved by Jody 2026-11-25, "go with what you all agreed with"), by name: the
+# rolling check of main for tacplus, the heavy project, on more than 8 CPUs so that its gate groups run side by side,
+# and one for the org's other repositories; and the merger's small control machine, for every org repository. On
+# demand, never spot; none is a looper VM (no model token, not the reports' key, no kicker) nor the GitLab build
+# project; each its own cache (its boot disk). The sizes are the panel's start and are right-sized from the rolling
+# check's measurement (tacplus-dev/looper#249). image is the looper image by digest once it runs looper-vm check and
+# merger (tacplus-dev/looper#249, #251): until then empty, and the group is at 0. key is the GitHub App key its
+# account alone signs with (github_apps).
+output "reserved_vms" {
+  description = "The reserved machines (the ci module's reserved_vms): per name, its role (check, the rolling check of main; merger, the merger), the tacplus-dev repository (repo) or org (org) it serves, its machine type (C4A), its Hyperdisk Balanced disk in GB, its image by digest (empty: none yet, and no VM), and its GitHub App key."
+  value = {
+    check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "", key = "tacplus-check" }
+    check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
+    merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" }
+  }
+}
+
 output "ci_cpus" {
   description = <<-EOT
     tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it; a raise is a
@@ -465,7 +490,8 @@ output "ci_cpus" {
     handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
     CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
     Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 4: 28 (Jody, 2026-11-25:
-    "Lower the pools by 12", for the looper VMs).
+    "Lower the pools by 12", for the looper VMs). The reserved machines (#111) count once they have an image (their
+    group is at 0 until then): 16 + 4 + 1 more, 49, so the quota is raised before their images are pinned (PROPOSALS.md).
   EOT
   value = {
     quota                = 32

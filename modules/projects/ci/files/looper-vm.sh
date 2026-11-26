@@ -7,13 +7,18 @@
 # no work. What differs between projects is only the VM's metadata, which the ci stack writes from looper_vms:
 # looper-repo (the tacplus-dev repository), or for an org's shared VM (decision point 12) looper-org and looper-except
 # (the repositories with a VM of their own, NAME,...), looper-image (the looper-vm image, by digest; empty, nothing
-# runs) and looper-group (the VM's own instance group, by resource name). No secret is in the metadata or here: the container
-# fetches its own credentials as the VM's service account.
+# runs) and looper-group (the VM's own instance group, by resource name); and for a reserved machine (#111,
+# reserved-vms.tf) looper-role: check, the rolling check of main (looper-vm check), or merger, the merger (looper-vm
+# merger), which runs no project code and so gets no container socket; neither is ever idle. No secret is in the
+# metadata or here: the container fetches its own credentials as the VM's service account.
 #
 #   looper-vm.sh run    ExecStart: the cache directory, made usable or made again, never waited on (point 3); the
+#                       containers the main one starts through the socket (its builds, on Docker's bridge) cut off
+#                       from the VM's metadata server, and so from the VM's account (#111), or nothing starts; the
 #                       image pulled by its digest, bounded retries; then the main container, with the project's name,
 #                       the cache and the VM's container socket (point 5), in the foreground. Its exit is the unit's:
-#                       non-zero, systemd starts it again (Restart=on-failure); 0, it found no work, and the VM is idle.
+#                       non-zero, systemd starts it again (Restart=on-failure); 0, it found no work, and the VM is idle;
+#                       a reserved machine's 0 is a failure, started again.
 #   looper-vm.sh stop   ExecStop: a stop asked of the unit (a spot preemption's shutdown, about 30 s): marks it, so
 #                       that the container's exit is not taken for idle, and gives the container 25 s after its SIGTERM
 #                       to push its checkpoints (TimeoutStopSec=30).
@@ -45,6 +50,16 @@ cache_ready() {
   log "the cache $cache cannot be made: the container starts cold"
 }
 
+# The build containers never reach the metadata server (#111; the panel's finding 5): it hands out the VM's account's
+# tokens, which sign with its GitHub App's key and read its secrets. They run on Docker's bridge, so their packets
+# to it are forwarded through DOCKER-USER, where one rule refuses every TCP port of it but DNS's (it is their
+# resolver too); the main container, on the host's network, still reaches it. Made once a boot (a restart's run
+# finds it); if it cannot be made, nothing starts.
+metadata_cutoff() {
+  local rule=(DOCKER-USER -d 169.254.169.254/32 -p tcp ! --dport 53 -j REJECT --reject-with tcp-reset)
+  iptables -w -C "${rule[@]}" 2>/dev/null || iptables -w -I "${rule[@]}"
+}
+
 # COS mounts /var noexec, and the build containers run what they cache there (Go keeps each `go run` binary in its
 # GOCACHE, looper#245): the cache is bind-mounted on itself, once a boot, and that mount remounted exec. If that
 # fails it says so; the container still starts.
@@ -55,9 +70,10 @@ cache_exec() {
 }
 
 run() {
-  local repo org except image try work
+  local repo org except image role try work socket=(-v /var/run/docker.sock:/var/run/docker.sock)
   mkdir -p "$state" && rm -f "$state/stopping" "$state/idle"
   repo=$(metadata looper-repo) org=$(metadata looper-org) except=$(metadata looper-except) image=$(metadata looper-image)
+  role=$(metadata looper-role)
   if [ -z "$image" ]; then
     log "no looper-image in the metadata: nothing to run (the group stays as the kicker sized it)"
     return 0
@@ -78,7 +94,17 @@ run() {
     log "looper-repo [$repo] is not a repository's name: nothing runs"
     return 0
   fi
+  case $role in
+    '') ;;
+    check) work=(check "${work[@]}") ;;
+    merger) work=(merger "${work[@]}") socket=() ;;
+    *) log "looper-role [$role] is none of check and merger: nothing runs"; return 0 ;;
+  esac
   cache_ready
+  if ! metadata_cutoff; then
+    log "the build containers could not be cut off from the metadata server: nothing starts, systemd tries again"
+    return 1
+  fi
   for try in 1 2 3 4 5; do
     timeout 600 docker pull "$image" && break
     [ "$try" = 5 ] && { log "cannot pull $image after $try tries: systemd tries again"; return 1; }
@@ -90,12 +116,15 @@ run() {
   # Docker's gcplogs driver sends the container's output to Cloud Logging as it is written (the VM's account is a
   # logWriter): with --rm, a container that dies at once took its log with it before the agent read it.
   docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false \
-    -v /var/run/docker.sock:/var/run/docker.sock \
+    "${socket[@]}" \
     -v "$cache:/var/lib/looper-cache" \
     -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST="$cache" -e LOOPER_VM_REPO="${repo:-$org}" \
     "$image" looper-vm "${work[@]}"
   local rc=$?
-  if [ "$rc" = 0 ] && [ ! -f "$state/stopping" ]; then
+  if [ "$rc" = 0 ] && [ -n "$role" ] && [ ! -f "$state/stopping" ]; then
+    log "the container exited 0: a reserved machine ($role) is never idle, systemd starts it again"
+    return 1
+  elif [ "$rc" = 0 ] && [ ! -f "$state/stopping" ]; then
     log "the container exited 0: idle"
     : > "$state/idle"
   else

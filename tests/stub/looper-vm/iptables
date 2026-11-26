@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Jody Scott
+# SPDX-License-Identifier: Apache-2.0
+#
+# A stub iptables for tests/looper_vm_test.sh: logs its arguments to STUB_LOOPER_VM/iptables. A check (-C) finds the
+# rule once an insert (-I) made it (STUB_LOOPER_VM/iptables-rule), or STUB_LOOPER_VM/iptables-rule already exists (a
+# restart's run); an insert fails while STUB_LOOPER_VM/iptables-fails exists.
+echo "iptables $*" >> "$STUB_LOOPER_VM/iptables"
+case " $* " in
+  *" -C "*) [ -f "$STUB_LOOPER_VM/iptables-rule" ] ;;
+  *" -I "*) [ ! -f "$STUB_LOOPER_VM/iptables-fails" ] && : > "$STUB_LOOPER_VM/iptables-rule" ;;
+  *) exit 2 ;;
+esac

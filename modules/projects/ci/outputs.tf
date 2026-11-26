@@ -55,3 +55,8 @@ output "looper_vms" {
   description = "Each looper VM's group (#108), by repository: its name and zone, which the kicker resizes, and its account's email."
   value       = { for k, g in google_compute_instance_group_manager.looper_vm : k => { group = g.name, zone = g.zone, service_account = google_service_account.looper_vm[k].email } }
 }
+
+output "reserved_vms" {
+  description = "Each reserved machine's group (#111), by name: its name and zone, and its account's email."
+  value       = { for k, g in google_compute_instance_group_manager.reserved_vm : k => { group = g.name, zone = g.zone, service_account = google_service_account.reserved_vm[k].email } }
+}

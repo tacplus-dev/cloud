@@ -58,7 +58,7 @@ run "stack" {
     error_message = "The looper project's variables are not its provider, its key ring and the apps' IDs."
   }
   assert {
-    condition     = output.app_keys == { for k in ["tacplus-reader", "tacplus-manager", "tacplus-looper", "tacplus-admiral"] : k => "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/${k}" }
+    condition     = output.app_keys == { for k in ["tacplus-reader", "tacplus-manager", "tacplus-looper", "tacplus-admiral", "tacplus-check", "tacplus-merger"] : k => "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/${k}" }
     error_message = "The stack does not give each app's key."
   }
   # The reader's account and its pools (#30): the dev project's, which plan:ci reads after apply:dev made it, and
@@ -93,6 +93,11 @@ run "stack" {
     # The accounts' emails are the override's below, one for every VM: the module's run checks each its own.
     condition     = { for k, g in output.looper_vms : k => [g.group, g.zone] } == { tacplus = ["looper-vm-tacplus", "us-central1-b"], tacplus-dev = ["looper-vm-tacplus-dev", "us-central1-b"] } && output.looper_vms.tacplus.service_account == "looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"
     error_message = "The stack does not give tacplus's and the org's looper VM groups (looper-vm-tacplus, looper-vm-tacplus-dev) in us-central1-b and its account."
+  }
+  # The reserved machines (#111): tacplus's rolling check, the org's, and the merger's.
+  assert {
+    condition     = { for k, g in output.reserved_vms : k => [g.group, g.zone] } == { check-tacplus = ["check-tacplus", "us-central1-b"], check-tacplus-dev = ["check-tacplus-dev", "us-central1-b"], merger = ["merger", "us-central1-b"] }
+    error_message = "The stack does not give the reserved machines' groups (check-tacplus, check-tacplus-dev, merger) in us-central1-b."
   }
   override_resource {
     target = module.ci.google_service_account.looper_vm
@@ -148,10 +153,11 @@ run "settings" {
   }
   # Every pool at its peak fits tacplus-ci's CPU quota (#55): each pool's max_instances VMs, and two managers (a
   # handoff), never more CPUs than CPUS_ALL_REGIONS, or a pool's VM fails QUOTA_EXCEEDED (the second build VM,
-  # 2026-11-13). The looper VMs (0..1 each) count too. A t2a-standard-N and a c4a-standard-N have N CPUs.
+  # 2026-11-13). The looper VMs (0..1 each) count too, and the reserved machines with an image (#111: one VM each; none
+  # without). A t2a-standard-N and a c4a-standard-N have N CPUs.
   assert {
-    condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])], [for v in values(output.looper_vms) : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])])) <= output.ci_cpus.quota
-    error_message = "The pools' VMs at their max_instances, two managers and the looper VMs need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N or c4a-standard-N."
+    condition     = output.ci_cpus.quota == 32 && output.ci_cpus.managers == 2 && sum(concat([for p in values(output.runner_pools) : p.max_instances * tonumber(regex("^t2a-standard-([0-9]+)$", p.machine_type)[0])], [output.ci_cpus.managers * tonumber(regex("^t2a-standard-([0-9]+)$", output.ci_cpus.manager_machine_type)[0])], [for v in values(output.looper_vms) : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])], [for v in values(output.reserved_vms) : v.image == "" ? 0 : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])])) <= output.ci_cpus.quota
+    error_message = "The pools' VMs at their max_instances, two managers, the looper VMs and the reserved machines with an image need more CPUs than tacplus-ci's CPUS_ALL_REGIONS quota (32), or a machine type is no t2a-standard-N or c4a-standard-N."
   }
   # Every pool's SSD-backed disks at its peak fit tacplus-ci's SSD quota (#63): each pool on pd-balanced, pd-ssd or
   # pd-extreme, its max_instances VMs' disks (capacity times a job's share, plus the OS's), and the managers' boot
@@ -201,8 +207,11 @@ run "settings" {
       tacplus-looper  = ["5632122", "179024135", true, false, toset(["looper-report", "looper-scan", "looper-plan", "kicker"]), {}, []]
       tacplus-reader  = ["5531358", "176655068", true, true, toset([]), { fleet-seatrials-reader = { pool = "dev", gitlab_project = "tacplus-dev/fleet-seatrials" } }, [{ pool = "bootstrap", gitlab_project = "tacplus-dev/cloud" }, { pool = "dev", gitlab_project = "tacplus-dev/cluster" }]]
       tacplus-admiral = ["5853599", "184144753", true, false, toset([]), {}, []]
+      # #111: no GitLab job signs with either (their machines do), and they wait for Jody's apps and imports.
+      tacplus-check  = ["", "", false, false, toset([]), {}, []]
+      tacplus-merger = ["", "", false, false, toset([]), {}, []]
     }
-    error_message = "The apps, their IDs or their signers are not the ones #19, #30 and #84 list."
+    error_message = "The apps, their IDs or their signers are not the ones #19, #30, #84 and #111 list."
   }
   # The Admiral's (#84; tacplus-dev/admiral#5): the seatrials fleet's kernel, by its one issuer URL, for the Admiral's
   # SPIFFE ID alone; its account, its App's key (no GitLab job signs with it, above) and its secret.
@@ -219,6 +228,13 @@ run "settings" {
   assert {
     condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:bd0b9fa432dc3981db909e6e44e0bdfb345379bd85ee8c654bd6ab9ad1a85649" }, tacplus-dev = { machine_type = "c4a-standard-4", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:bd0b9fa432dc3981db909e6e44e0bdfb345379bd85ee8c654bd6ab9ad1a85649", org = "tacplus-dev" } }
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
+  }
+  # The reserved machines (#111; decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8, Jody's yes of
+  # 2026-11-25): tacplus's rolling check on more than 8 CPUs, the org's, and the merger's small machine, none spot, with
+  # no image until tacplus-dev/looper#249 and #251 run them (their groups at 0), each signing with its role's key.
+  assert {
+    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } } && tonumber(regex("^c4a-standard-([0-9]+)$", output.reserved_vms.check-tacplus.machine_type)[0]) > 8
+    error_message = "The reserved machines are not tacplus's check (c4a-standard-16, more than 8 CPUs), the org's (c4a-standard-4) and the merger's (c4a-standard-1), with no image yet."
   }
 }
 
@@ -1665,4 +1681,318 @@ run "looper_vm_not_c4a_refused" {
     looper_vms  = { tacplus = { machine_type = "t2a-standard-8", disk_gb = 200, spot = true, image = "" } }
   }
   expect_failures = [var.looper_vms]
+}
+
+# The reserved machines (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8):
+# the rolling check of tacplus, the org's, and the merger's machine, each a zonal group of one on-demand C4A VM while
+# it has an image (none without), on the looper VMs' OS and cloud-init with its role as metadata, no external address
+# and no SSH; its own account, which writes logs and signs with its role's key alone.
+run "reserved_vms" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  override_resource {
+    target = google_iam_workload_identity_pool.loopers
+    values = { name = "projects/333/locations/global/workloadIdentityPools/gitlab-loopers" }
+  }
+  assert {
+    condition     = { for k, a in google_service_account.reserved_vm : k => [a.account_id, a.project] } == { check-tacplus = ["check-tacplus", "tacplus-ci"], check-tacplus-dev = ["check-tacplus-dev", "tacplus-ci"], merger = ["merger", "tacplus-ci"] }
+    error_message = "Each reserved machine does not run as its own account, <name>, in tacplus-ci."
+  }
+  # Never spot (the panel's 8): on demand, restarted after a host event.
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : t.scheduling[0].provisioning_model == "STANDARD" && !t.scheduling[0].preemptible && t.scheduling[0].automatic_restart])
+    error_message = "A reserved machine is spot, or is not restarted after a host event."
+  }
+  # The looper VMs' OS and disk, no external address, tagged looper-vm (no SSH in any form, ci/policy.sh).
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : t.disk[0].source_image == "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12" && t.disk[0].disk_type == "hyperdisk-balanced" && t.disk[0].boot && t.disk[0].auto_delete && length(t.network_interface) == 1 && length(t.network_interface[0].access_config) == 0 && length(t.network_interface[0].ipv6_access_config) == 0 && t.tags == toset(["looper-vm"]) && t.labels == tomap({ managed-by = "tacplus-dev-cloud", reserved-vm = k }) && length(t.service_account) == 1 && endswith(one(one(t.service_account).scopes), "cloud-platform")]) && google_compute_instance_template.reserved_vm["check-tacplus"].machine_type == "c4a-standard-16" && google_compute_instance_template.reserved_vm["merger"].disk[0].disk_size_gb == 10
+    error_message = "A reserved machine is not its C4A machine on the pinned Container-Optimized OS with its Hyperdisk Balanced disk, has an external address, or is not tagged looper-vm."
+  }
+  # Its role, repository or org and image as metadata alone, the looper VMs' cloud-init, no SSH key; the org's check
+  # leaves the repositories with a check of their own.
+  assert {
+    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-except looper-image looper-org looper-repo looper-role user-data" && t.metadata["block-project-ssh-keys"] == "true" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled" && t.metadata["user-data"] == google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"]]) && [for k in ["check-tacplus", "check-tacplus-dev", "merger"] : [for m in ["looper-role", "looper-repo", "looper-org", "looper-except", "looper-image"] : google_compute_instance_template.reserved_vm[k].metadata[m]]] == [["check", "tacplus", "", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222"], ["check", "", "tacplus-dev", "tacplus", ""], ["merger", "", "tacplus-dev", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222"]]
+    error_message = "A reserved machine's metadata is not its role, repository or org, image, the looper VMs' cloud-init and logging, or it has an SSH key."
+  }
+  # One VM with an image, none without; the plan alone sizes it.
+  assert {
+    condition     = { for k, g in google_compute_instance_group_manager.reserved_vm : k => [g.name, g.base_instance_name, g.zone, g.target_size] } == { check-tacplus = ["check-tacplus", "check-tacplus", "us-central1-b", 1], check-tacplus-dev = ["check-tacplus-dev", "check-tacplus-dev", "us-central1-b", 0], merger = ["merger", "merger", "us-central1-b", 1] } && alltrue([for g in google_compute_instance_group_manager.reserved_vm : g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0])
+    error_message = "A reserved machine's group is not <name> in the stack's zone, at 1 with an image and 0 without, replacing its VM with no surge."
+  }
+  # Its key alone (the panel's 5): tacplus-check the checks', tacplus-merger the merger's and nobody else's; neither
+  # signs with the reports' or the managers' key.
+  assert {
+    condition     = google_kms_crypto_key_iam_binding.signer["tacplus-check"].members == toset(["serviceAccount:check-tacplus-dev@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:check-tacplus@tacplus-ci.iam.gserviceaccount.com"]) && google_kms_crypto_key_iam_binding.signer["tacplus-merger"].members == toset(["serviceAccount:merger@tacplus-ci.iam.gserviceaccount.com"])
+    error_message = "tacplus-check is signed by more than the rolling check's machines, or tacplus-merger by more than the merger's."
+  }
+  assert {
+    condition     = !anytrue([for k in ["tacplus-looper", "tacplus-manager"] : anytrue([for m in google_kms_crypto_key_iam_binding.signer[k].members : contains([for k in ["check-tacplus", "check-tacplus-dev", "merger"] : "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com"], m)])])
+    error_message = "A reserved machine's account signs with the reports' or the managers' key."
+  }
+  # It writes logs and nothing else: no model token, no resize.
+  assert {
+    condition     = { for k, m in google_project_iam_member.reserved_vm_log : k => [m.role, m.member] } == { for k in ["check-tacplus", "check-tacplus-dev", "merger"] : k => ["roles/logging.logWriter", "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com"] } && google_secret_manager_secret_iam_binding.looper_model_token[0].members == toset(["serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"])
+    error_message = "A reserved machine's account holds another role than logWriter, or reads looper-model-token."
+  }
+  assert {
+    condition     = { for k, g in output.reserved_vms : k => [g.group, g.zone] } == { check-tacplus = ["check-tacplus", "us-central1-b"], check-tacplus-dev = ["check-tacplus-dev", "us-central1-b"], merger = ["merger", "us-central1-b"] }
+    error_message = "The module does not give each reserved machine's group and zone."
+  }
+}
+
+# The merger's key is the merger's machine's alone: a GitLab job that signs with it too is refused.
+run "reserved_vm_merger_key_shared_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = ["looper-manager"] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
+}
+
+# A reserved machine never signs with the reports' key: a report would mint the rolling check's status.
+run "reserved_vm_reports_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-looper" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
+}
+
+# Nor with the managers' key (the bypass of main's ruleset), nor does a check share the merger's.
+run "reserved_vm_manager_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-manager" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
+}
+
+run "reserved_vm_check_merger_key_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
+}
+
+# A reserved machine serves a repository or an org, not both, in a role it knows, on C4A.
+run "reserved_vm_repo_and_org_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", org = "tacplus-dev", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
+}
+
+run "reserved_vm_role_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id           = "tacplus-ci"
+    name                 = "tacplus ci"
+    folder               = "folders/222"
+    billing_account      = "000000-111111-222222"
+    region               = "us-central1"
+    zone                 = "us-central1-b"
+    subnet_cidr          = "10.10.0.0/20"
+    image                = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
+    pool_image           = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
+    manager_machine_type = "t2a-standard-1"
+    runner = {
+      version        = "v19.6.0", branch = "19-6-stable", commit = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0", runner_sha256 = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
+      plugin_version = "v1.3.1", plugin_commit = "31ea56d71b16c75e37999262293b273be509f13d", plugin_sha256 = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
+      helper_image   = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
+      default_image  = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
+    }
+    runner_bin  = "../../bin/manager"
+    pools       = {}
+    build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
+    looper_vms   = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
+    reserved_vms = {
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
+      merger            = { role = "build", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+    }
+  }
+  expect_failures = [var.reserved_vms]
 }

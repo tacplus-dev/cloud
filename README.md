@@ -19,10 +19,12 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     bootstrap script, below);
   - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
     containers, one always on: below, The runners' image), the build cache (below, The build cache), and the
-    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader` and `tacplus-admiral`, import-only),
+    GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader`, `tacplus-admiral`, `tacplus-check`
+    and `tacplus-merger`, import-only),
     their import jobs, the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The
     GitHub Apps' keys), the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
-    Admiral's credentials), and the looper VMs, one instance group of 0..1 per project (below, The looper VMs);
+    Admiral's credentials), the looper VMs, one instance group of 0..1 per project (below, The looper VMs), and the
+    reserved machines of the rolling check and the merger (below, The reserved machines);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, a spot build pool of c4a-standard-4 from 0 to 8 over the region's zones
     with c4a, for build pods only, and a looper pool of c4a-standard-2 on demand from 0 to 4 (#107), for the looper runs'
@@ -1165,7 +1167,10 @@ stock Container-Optimized OS for arm64 (the pools' pin). The VM has no external 
 project's keys blocked and no firewall rule to it; its window is Cloud Logging. One cloud-init for every project
 (`files/looper-vm-cloud-init.yaml`, `files/looper-vm.sh`, tested by `tests/looper_vm_test.sh`) reads the repository,
 the image (by digest; empty: nothing runs) and the VM's group from the metadata, pulls the image and runs it with the
-cache and the container socket; when the container exits 0 (idle), the VM sizes its own group to 0.
+cache and the container socket; when the container exits 0 (idle), the VM sizes its own group to 0. Before the
+container starts, the containers it starts through the socket (the builds, on Docker's bridge) are cut off from the
+VM's metadata server, and so from its account's tokens (#111; the panel's finding 5): one rule in `DOCKER-USER` refuses
+every TCP port of 169.254.169.254 but DNS's; if it cannot be made, nothing starts.
 
 The VM's account `looper-vm-<repo>`, keyless, writes logs, reads the secret `looper-model-token` and no other, signs
 with `tacplus-looper`'s key (never `tacplus-manager`'s), and resizes its own group alone (the custom role
@@ -1173,6 +1178,28 @@ with `tacplus-looper`'s key (never `tacplus-manager`'s), and resizes its own gro
 project's environment `kicker`) hold the same role on the `looper-vm-` groups alone. `looper-model-token` is made with
 no version and no adder: Jody adds its value out of band (`gcloud secrets versions add looper-model-token
 --project=tacplus-ci --data-file=-`).
+
+## The reserved machines
+
+#111; `decisions/agentic-dev-flow-2026-11-25.md` (tacplus-dev/roadmap, the panel's items 4, 5 and 8; capacity approved
+by Jody 2026-11-25). In `tacplus-ci` (`modules/projects/ci/reserved-vms.tf`; `modules/settings`' `reserved_vms`):
+`check-tacplus`, the rolling check of tacplus's main (c4a-standard-16: more than 8 CPUs, so its gate groups run side
+by side), `check-tacplus-dev`, the org's other repositories' (c4a-standard-4), and `merger`, the merger's control
+machine (c4a-standard-1). Each is a zonal instance group of its own name, of one on-demand VM (never spot), its boot
+disk its own cache; not a looper VM (no model token, not the reports' key, no kicker) and not the GitLab build project.
+The sizes are the panel's start, right-sized from the rolling check's measurement (tacplus-dev/looper#249). The OS, the
+network, the SSH rules and the cloud-init are the looper VMs'; the metadata's `looper-role` makes it run `looper-vm
+check` (with the container socket, its builds cut off from the metadata server) or `looper-vm merger` (no container
+socket: it runs no project code). A reserved machine is never idle: its group is at 1 while it has an image, sized by
+the plan alone, and at 0 while its image is empty, as all three are until the looper image runs them
+(tacplus-dev/looper#249, #251). The CPU quota is raised before an image is pinned: the ci stack's test counts them
+then (`ci_cpus`).
+
+Each machine's account, its own name, keyless, writes logs and signs with its role's GitHub App key alone:
+`tacplus-check` (the checks', so the status of main and `main-green` are what no report can mint) or `tacplus-merger`
+(the merger's alone, which no job, account or other machine may sign with: the module refuses it; once the managers
+retire, the only identity that accepts and merges). Jody creates both apps, their IDs go into `github_apps`, and their
+keys are imported as the others (`import` true then).
 
 ## Certificates
 
