@@ -84,7 +84,12 @@ variable "build" {
     YYYY-MM-DD in the commit, never computed) changes, its token the protected, masked variable key of the project
     variable_project (a path or ID). schedules: by name, a schedule on main, its cron (UTC) and its inputs; at most 10,
     GitLab's limit for a project. variables: the project's settings by key, no secret (unprotected, unmasked), as
-    tacplus-dev/looper's looper-build reads them (BUILD_GATES_REQUESTS_<repo>, #82).
+    tacplus-dev/looper's looper-build reads them (BUILD_GATES_REQUESTS_<repo>, #82). job_token_readers: the projects,
+    by path, whose CI/CD job tokens its job token allowlist admits, one entry each (not the whole list: an entry made
+    by hand stays), as fleet-seatrials reads its release records (#117). downstream_triggers: by name, a pipeline
+    trigger of the project it starts, rotated as trigger is, its token build's protected, masked variable
+    variable_key, scoped to environment_scope alone (never *: an unscoped variable reaches the gates job, which runs a
+    repository's own code), and that environment protected, Maintainers deploying (#117; tacplus-dev/looper#262).
   EOT
   type = object({
     project = string
@@ -102,7 +107,15 @@ variable "build" {
       cron   = string
       inputs = map(string)
     }))
-    variables = optional(map(string), {})
+    variables         = optional(map(string), {})
+    job_token_readers = optional(list(string), [])
+    downstream_triggers = optional(map(object({
+      project           = string
+      description       = string
+      rotate_by         = string
+      variable_key      = string
+      environment_scope = string
+    })), {})
   })
   default = null
   validation {
@@ -118,5 +131,10 @@ variable "build" {
   validation {
     condition     = var.build == null || length(var.build.schedules) <= 10
     error_message = "More than 10 build schedules: GitLab allows a project 10 (#65)."
+  }
+  validation {
+    condition = var.build == null || alltrue([for t in values(var.build.downstream_triggers) :
+    can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", t.rotate_by)) && can(regex("^[a-z][a-z0-9-]*$", t.environment_scope))])
+    error_message = "A downstream trigger's rotate_by is a date YYYY-MM-DD, and its token is scoped to one environment (a-z, 0-9, -), never * (#117)."
   }
 }

@@ -783,6 +783,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   fleet-seatrials#82 is live. Why: fleet-seatrials' `JOB-TOKEN` reads `release-<repo>/main/record` only if build's
   allowlist admits it and its user can read build; `release-report` starts seatrials only with a token, which a
   pipeline makes and nobody sees (decisions/secrets-by-pipeline-2026-11-05.md); the scope keeps the token from the gates
-  job, which runs a repository's code. Open (#117's design): who owns fleet-seatrials' daily schedule; the group bot as
-  the trigger's owner (its triggered deploys then run as a group Owner) or a dedicated bot; `seatrials-trigger` as a
-  protected environment (it can fail the record job); an authoritative allowlist; one commit or two.
+  job, which runs a repository's code. Decided (the hub, 2026-11-26): as designed, `seatrials-trigger` a protected
+  environment, two commits. The first is landed: the allowlist entry and the module's `downstream_triggers` (with the
+  protected environment), the stack's map empty; no `members` entry, as the triggered pipelines' user, the group bot,
+  inherits Reporter. Left: the stack's `seatrials` entry (its `rotate_by` 90 days from the day it lands) once
+  fleet-seatrials#82 is live; the hub makes fleet-seatrials' daily schedule as a member of tacplus-dev, or a
+  `members` entry here for its owner.
+- **An authoritative job token allowlist of tacplus-dev/build** (looper, #117, 2026-11-26). What: once the hub has
+  listed build's allowlist (`GET /projects/88268985/job_token_scope/allowlist`), `gitlab_project_job_token_scopes` with
+  the whole list in place of one `gitlab_project_job_token_scope` per reader, and each hand entry adopted or removed.
+  Why: an entry made by hand stays today, and the nightly drift never sees it.

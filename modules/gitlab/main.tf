@@ -14,8 +14,10 @@ locals {
     { for path, p in data.gitlab_project.existing : path => p.id },
     { for path, p in gitlab_project.created : path => p.id },
   )
-  # The projects a project runner is registered to, managed here or not; those of the memberships and the build's.
-  member_projects = toset([for p in concat([for k in keys(var.members) : split(":", k)[0]], var.build == null ? [] : [var.build.project]) : p if !contains(keys(var.projects), p)])
+  # The projects a project runner is registered to, managed here or not; those of the memberships and the build's (the
+  # build project, its job token readers and the projects its downstream triggers start).
+  build_projects  = var.build == null ? [] : concat([var.build.project], var.build.job_token_readers, [for t in values(var.build.downstream_triggers) : t.project])
+  member_projects = toset([for p in concat([for k in keys(var.members) : split(":", k)[0]], local.build_projects) : p if !contains(keys(var.projects), p)])
   runner_projects = setsubtract(toset([for r in values(var.runners) : r.project if r.project != null && !contains(keys(var.projects), coalesce(r.project, "-"))]), local.member_projects)
   other_project_id = merge(
     { for path, p in data.gitlab_project.runner : path => p.id },
