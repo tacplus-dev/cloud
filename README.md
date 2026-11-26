@@ -1498,7 +1498,8 @@ carries the deployment's name (`<deployment>-<what>`).
 **`ready`.** A backend service whose backend names a NEG that does not exist is refused by the API, and the NEG exists
 only once its Service is rendered in the dev cluster. So a listener starts with `ready = false`: its forwarding rule,
 proxy and backend service exist, with no backend (a connection to its port is closed). Once GKE has made the NEG
-(`gcloud compute network-endpoint-groups list --project=tacplus-dev`), a commit sets `ready = true` and `apply:dev` adds it.
+(`gcloud compute network-endpoint-groups list --project=tacplus-dev`), a commit sets `ready = true` and `apply:dev` adds it. `test-idp` is ready (its NEG made by fleet-seatrials' first
+test-idp run, 2026-11-17; #42); `gateway` is not yet.
 
 **The nodes' firewall.** GKE makes no firewall rule for a standalone NEG. The rule `allow-google-proxies` admits the
 endpoints' ports (tcp:8443) to the nodes (by their service account, `gke-nodes`) from Google's proxy and health-check

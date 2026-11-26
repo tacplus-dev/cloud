@@ -272,8 +272,8 @@ output "load_balancer" {
     # The test IdP (idp.test.tacplus.dev, tacplus-dev/fleet-seatrials#27), on a port of its own of the same address:
     # https://idp.test.tacplus.dev:8443, Keycloak's own TLS on its default HTTPS port, rendered by fleet-seatrials'
     # test-idp/ with this NEG. Test only: a second address would be a second public IP, and SNI routing in the
-    # gateway is a gateway change (#21).
-    test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
+    # gateway is a gateway change (#21). Its NEG exists since fleet-seatrials' first test-idp run (2026-11-17, #42).
+    test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = true }
   }
 }
 

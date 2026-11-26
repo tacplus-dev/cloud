@@ -216,10 +216,10 @@ run "dev" {
     }
     runner_token_adders  = ["user:jody@example.com"]
     google_signin_adders = ["user:jody@example.com"]
-    # The gateway's NEG made, the test IdP's not yet.
+    # Both NEGs made (the test IdP's since its first run, #42).
     load_balancer = {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
-      test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = false }
+      test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = true }
     }
     admiral = { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral" }
     # As the stack gives GCP_QUOTA_CONTACT (#88).
@@ -663,8 +663,8 @@ run "dev" {
     error_message = "The gateway's backend is not the zonal NEG seatrials-gateway in the cluster's zone, balanced by connection."
   }
   assert {
-    condition     = length(google_compute_backend_service.lb["test-idp"].backend) == 0
-    error_message = "The test IdP's backend service names a NEG that does not exist yet (ready = false)."
+    condition     = length(google_compute_backend_service.lb["test-idp"].backend) == 1 && one(google_compute_backend_service.lb["test-idp"].backend[*].group) == "projects/tacplus-dev/zones/us-central1-a/networkEndpointGroups/seatrials-test-idp" && one(google_compute_backend_service.lb["test-idp"].backend[*].balancing_mode) == "CONNECTION"
+    error_message = "The test IdP's backend is not the zonal NEG seatrials-test-idp in the cluster's zone, balanced by connection."
   }
   assert {
     condition     = alltrue([for h in google_compute_health_check.lb : h.tcp_health_check[0].port == 8443 && length(h.http_health_check) == 0 && length(h.https_health_check) == 0 && length(h.ssl_health_check) == 0])

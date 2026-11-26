@@ -222,8 +222,8 @@ the looper then marks it `promoted` or `declined` here with the date.
   address is a second public IP, SNI routing would be the gateway's, and no L7 path is allowed (#21). A
   fleet-seatrials change, with its retarget to the new cluster.
 - **`ready` when the NEGs exist** (looper, #21, 2026-11-06). What: a commit setting `ready = true` for `gateway` once
-  tacplus-dev/operator#22 renders seatrials' gateway Service in the dev cluster and GKE has made `seatrials-gateway`, and
-  for `test-idp` once fleet-seatrials does. Why: the API refuses a backend naming a missing NEG, so the backends wait for
+  tacplus-dev/operator#22 renders seatrials' gateway Service in the dev cluster and GKE has made `seatrials-gateway`
+  (`test-idp`'s is set: #42). Why: the API refuses a backend naming a missing NEG, so the backends wait for
   the Services; until then the address answers nothing on those ports.
 - **The client's address through the TCP proxy** (looper, #21, 2026-11-06). What: `proxy_header = "PROXY_V1"` on the
   gateway's target TCP proxy once the tacplus gateway reads the PROXY protocol (a tacplus-dev/gateway change first: with
