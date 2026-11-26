@@ -113,12 +113,16 @@ run() {
   done
   docker rm -f looper-vm >/dev/null 2>&1
   log "starting $image for ${work[*]}"
+  # LOOPER_VM_MR=0: a report's --land still queues with the manager. The looper's merge requests (looper#250) are
+  # merged by nobody until the merger and the rolling check are live together (tacplus-dev/roadmap
+  # decisions/agentic-dev-flow-2026-11-25.md); this goes when they are.
   # Docker's gcplogs driver sends the container's output to Cloud Logging as it is written (the VM's account is a
   # logWriter): with --rm, a container that dies at once took its log with it before the agent read it.
   docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false \
     "${socket[@]}" \
     -v "$cache:/var/lib/looper-cache" \
     -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST="$cache" -e LOOPER_VM_REPO="${repo:-$org}" \
+    -e LOOPER_VM_MR=0 \
     "$image" looper-vm "${work[@]}"
   local rc=$?
   if [ "$rc" = 0 ] && [ -n "$role" ] && [ ! -f "$state/stopping" ]; then

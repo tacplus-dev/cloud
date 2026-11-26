@@ -63,7 +63,7 @@ looper run
 # The image runs: pulled by digest, the container with the repo, the cache and the socket; exit 0 is idle.
 world "$image"
 looper run
-expected="docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus $image looper-vm --repo tacplus"
+expected="docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus -e LOOPER_VM_MR=0 $image looper-vm --repo tacplus"
 [ "$rc" = 0 ] && grep -qxF "docker pull $image" "$stub/docker" && grep -qxF "$expected" "$stub/docker" &&
   ok "the image is pulled by digest and runs with the repo, the cache and the container socket" || fail "the run: exit $rc, docker: $(cat "$stub/docker")"
 [ -d "$root/var/lib/looper-cache" ] && ok "the cache directory is made" || fail "no cache directory"
@@ -98,7 +98,7 @@ looper post
 world "$image"
 printf %s check > "$stub/attributes/looper-role"
 looper run
-grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus $image looper-vm check --repo tacplus" "$stub/docker" &&
+grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus -e LOOPER_VM_MR=0 $image looper-vm check --repo tacplus" "$stub/docker" &&
   grep -qxF "iptables $cutoff" "$stub/iptables" && ok "a rolling check's machine runs looper-vm check, its builds cut off from the metadata server" || fail "the check: exit $rc, docker: $(cat "$stub/docker")"
 [ "$rc" != 0 ] && ok "a reserved machine's exit 0 is not idle: systemd starts it again" || fail "a reserved machine's exit 0 ended the unit"
 looper post
@@ -108,7 +108,7 @@ looper post
 world "$image"
 printf '' > "$stub/attributes/looper-repo"; printf %s tacplus-dev > "$stub/attributes/looper-org"; printf %s merger > "$stub/attributes/looper-role"
 looper run
-grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus-dev $image looper-vm merger --org tacplus-dev" "$stub/docker" &&
+grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus-dev -e LOOPER_VM_MR=0 $image looper-vm merger --org tacplus-dev" "$stub/docker" &&
   ok "the merger's machine runs looper-vm merger, with no container socket" || fail "the merger: exit $rc, docker: $(cat "$stub/docker")"
 looper post
 ! resized && ok "the merger's machine never sizes itself down" || fail "the merger resized"
@@ -124,7 +124,7 @@ looper run
 world "$image"
 printf '' > "$stub/attributes/looper-repo"; printf %s tacplus-dev > "$stub/attributes/looper-org"; printf %s tacplus > "$stub/attributes/looper-except"
 looper run
-grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus-dev $image looper-vm --org tacplus-dev --except tacplus" "$stub/docker" &&
+grep -qxF "docker run --rm --name looper-vm --network host --log-driver=gcplogs --log-opt gcp-log-cmd=false -v /var/run/docker.sock:/var/run/docker.sock -v $root/var/lib/looper-cache:/var/lib/looper-cache -e LOOPER_CACHE=/var/lib/looper-cache -e LOOPER_CACHE_HOST=$root/var/lib/looper-cache -e LOOPER_VM_REPO=tacplus-dev -e LOOPER_VM_MR=0 $image looper-vm --org tacplus-dev --except tacplus" "$stub/docker" &&
   ok "an org's shared VM runs looper-vm --org, less the repositories with their own VM" || fail "the org VM: exit $rc, docker: $(cat "$stub/docker")"
 world "$image"
 printf %s tacplus-dev > "$stub/attributes/looper-org"
