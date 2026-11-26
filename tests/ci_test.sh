@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Tests ci/gitlab-project.gitlab-ci.yml and ci/pin.sh: the file parses; every job runs on the project's runner (tag
-# cloud), in the pinned image (by digest). The pipelines GitLab makes of it, by its workflow and its jobs' rules
+# cloud), in the pinned image (a dated build tag by digest, never a floating one, #102). The pipelines GitLab makes of it, by its workflow and its jobs' rules
 # (`extends` resolved): fmt, validate, tflint, shellcheck, policy and test in every pipeline, so every push and
 # merge request, with security on the nightly schedule too; plan and apply of each stack on main only, never from a merge request or a schedule; no job is
 # manual (production is not built: nothing waits for Jody); the nightly schedule has drift and no plan or apply.
@@ -49,7 +49,21 @@ for j in "${jobs[@]}"; do
   [ "$(q ".[\"$j\"].image // \"\"")" = "" ] || fail "$j: sets its own image"
 done
 [ "$(q '.default.tags | join(",")')" = cloud ] && ok "every job runs on the runner tagged cloud" || fail "default tags: $(q '.default.tags')"
-[[ $(q '.default.image') =~ ^[^@]+:[0-9.]+@sha256:[0-9a-f]{64}$ ]] && ok "the image is pinned by digest" || fail "the image: $(q '.default.image')"
+# pinned REF: whether REF is a tacplus line's dated build tag at its digest, build:<YYYYMMDD>-<commit>@sha256:<digest>,
+# the one form looper#226's nightly re-pin writes (#102): never a floating build:X.Y, which moves on every rebuild
+# (cluster#54), nor a release or other tag, nor a tag with no digest.
+pinned() { [[ $1 =~ ^ghcr\.io/tacplus-dev/tacplus/build:[0-9]{8}-[0-9a-f]{7,40}@sha256:[0-9a-f]{64}$ ]]; }
+image=$(q '.default.image')
+if pinned "$image"; then ok "the image is pinned at a dated build tag, by digest"
+elif [[ $image =~ :[0-9]+\.[0-9]+@ ]]; then fail "the image is at a floating tag: $image"
+else fail "the image is not a dated build tag at its digest: $image"; fi
+b=ghcr.io/tacplus-dev/tacplus/build d=@sha256:$(printf '%064d' 0)
+for ref in "$b:20261126-57a6521" "$b:2.6$d" "$b:2.6.14$d" "$b:latest$d" "$b:20261126$d" "$b:20261126-57a6521@sha256:0" \
+  "ghcr.io/other/build:20261126-57a6521$d"; do
+  pinned "$ref" && fail "the pin check accepts $ref"
+done
+pinned "$b:20261126-57a6521$d" && ok "the pin check refuses no digest, a floating, release or other tag, another image" ||
+  fail "the pin check refuses a dated build tag"
 # build.lock pins tacplus-dev/build's builds to that same image (#25), read as its plan reads it, and gates.yaml
 # gives them the gates to run in it: its full set, the local gate's command.
 lock=$(sed -n 's/^build_image:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$here/build.lock" 2>/dev/null | head -1)

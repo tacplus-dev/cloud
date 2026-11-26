@@ -664,13 +664,20 @@ the looper then marks it `promoted` or `declined` here with the date.
   "CI tooling (reported, never failing)". Why: since #101 they no longer gate a land, but an expired one still fails the
   job (2026-12-03, 12-04, 12-06, 12-08, 12-23), so each would stop the applies again unless the nightly fixer renews it
   (decision item 3).
-- **The CI image pinned at a dated build tag, a floating one refused** (looper, #102, 2026-11-23; looper#226). What:
+- **The CI image pinned at a dated build tag, a floating one refused** (looper, #102, 2026-11-23; looper#226): `promoted`
+  2026-11-26 (ROADMAP.md) and built in #102 (README, How a change flows; the pin moved to build:20261126-57a6521). What:
   `tests/ci_test.sh` requires `default.image` (and `build.lock`, the same ref) at a tacplus line's dated build tag,
   `build:<YYYYMMDD>-<commit>@sha256:…`, and fails a floating `build:X.Y` one, which its `[0-9.]+` accepts today; in the
   same commit both pins move off `build:2.6@sha256:8cf5ff08…` to the 2.6 line's newest dated tag at its digest
   (`20261123-ef62327`'s, the same digest if it still resolves to it). Why: looper#226's nightly re-pin writes a dated tag,
   which the test refuses, so every such land here would come back red; and `2.6` moves on every rebuild, so the label
   stops naming what runs (cluster#54).
+- **The GitHub gates' container at the CI image's dated tag** (looper, #102, 2026-11-26). What:
+  `.github/workflows/gates.yml`'s `container.image` still names `build:2.6@sha256:72fcd044…` (build:20261123-57a6521's
+  digest) while `build.lock` and `default.image` moved to `build:20261126-57a6521@sha256:cd01058d…` in #102; a person
+  (or a credential with the workflows permission) moves it to the same ref, and `tests/ci_test.sh` could check it
+  matches `build.lock` too. Why: the looper's credential may not push under `.github/workflows/`, so #102 left it, and
+  looper#226's nightly re-pin, which moves every file naming the ref, hits the same refusal here.
 - **The looper pool to 4** (looper, #107, 2026-11-24): `promoted` 2026-11-24 (tacplus-dev/roadmap ROADMAP.md) and
   built in #107 (README, The node pools; the module test's fixtures stay at 2). What: `stacks/dev/main.tf`'s `looper` `max_nodes` 2 -> 4
   (c4a-standard-2, on demand, from 0), with a comment line recording Jody's yes of 2026-11-24. The quota preferences

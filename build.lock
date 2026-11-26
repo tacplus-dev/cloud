@@ -1,7 +1,9 @@
 # The build image of tacplus-dev/cloud, by digest (#25; looper#71): the CI image, ci/gitlab-project.gitlab-ci.yml's
-# default.image (tacplus build:2.6 at its digest of 2026-11-24, build:20261123-57a6521's, #104; build:20261123-ef62327's before it, #97: krb5
+# default.image, at the 2.6 line's dated build tag (#102: never the floating build:2.6, which moves on every rebuild, cluster#54; the
+# nightly scan re-pins it, looper#226): build:20261126-57a6521 (build:2.6's rebuild of 2026-11-26; build:20261123-57a6521's digest before it, #104;
+# build:20261123-ef62327's, #97: krb5
 # 1.21.3-5+deb13u2 and the other Debian fixes of that day; 2.6.13's before it, #91; since 2.6.12, rebuilt with linux-libc-dev 6.12.117-1, DSA-6628-1, tacplus-dev/tacplus#711, #59; without
 # OpenEXR since 2.6.10, tacplus-dev/tacplus#554, #43; with go1.27.4, #39), in which this repository's gates (gates.yaml) already run. It
 # is no tacplus project, so it has no tacplus.lock; the build pipeline reads this pin the way it reads one. Moved
 # with the CI image, never alone (tests/ci_test.sh): a new digest is a change like any other, landed on the full gates.
-build_image: ghcr.io/tacplus-dev/tacplus/build:2.6@sha256:72fcd0448dc768bc3fc709c14b17acbc3470e94cf5b03b7d65520cae07e6f121
+build_image: ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521@sha256:cd01058d9001c4257df43581fca0976fd939f1350b6a71da882d40319b21c5de

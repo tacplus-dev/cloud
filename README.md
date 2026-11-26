@@ -252,7 +252,8 @@ moves to the first upstream release with the fix (#3):
 - **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
   klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has a Go vulndb entry; the runner is v19.6.0 (#99), built
   with OpenTelemetry v1.47.0, the plugin v1.3.1 is under GHSA-q7gw-24fr-5p69's exception (its latest release, otel v1.45.0); the jobs' helper image, upstream's, is not scanned here.
-- **The CI image is build:2.6 by digest, rebuilt 2026-11-23** (#97: build:20261123-ef62327, from Debian's fixes of that day,
+- **The CI image is the 2.6 line's build:20261126-57a6521 by digest** (#102; build:2.6's rebuild of 2026-11-26; before it
+  build:20261123-57a6521, #104; build:20261123-ef62327, #97, from Debian's fixes of that day,
   krb5 1.21.3-5+deb13u2 among them, after 159 HIGH advisories in 2.6.13's packages turned the security job red; 2.6.13, #91;
   2.6.12, #59): its `linux-libc-dev` is 6.12.117-1 (DSA-6628-1: six HIGH kernel
   CVEs in 6.12.116-1 turned the security job red on 2026-11-14; tacplus-dev/tacplus#711 rebuilt the image, as #554
@@ -301,7 +302,9 @@ the scanners that need a database.
 1. A pull request here; the tests run as its gates (the looper's land, or `ci/tools.sh && ci/lint.sh all && ci/checks.sh`,
    `gates.yaml`'s `full`). They run in the image `build.lock` pins by digest, the CI image, with no Docker: tacplus-dev/build
    builds a commit only from that pin (looper#71). To move it, change `build.lock` and the CI file's `default.image`
-   together (`tests/ci_test.sh` refuses them apart): a new digest is a change like any other, landed on the full gates.
+   together (`tests/ci_test.sh` refuses them apart): a new digest is a change like any other, landed on the full gates. The pin is a tacplus line's dated build tag at its digest,
+   `build:<YYYYMMDD>-<commit>@sha256:…`, never a floating `build:X.Y`, which moves on every rebuild (#102, cluster#54):
+   the nightly scan moves it to its line's newest (looper#226).
 2. Merged, a merge request in the GitLab project setting `.gitlab-ci.yml` to `ci/pin.sh <commit>`'s output, for that commit
    of main: the checks run on it.
 3. Merged there, the pipeline on main: checks → `plan:folder` → `apply:folder` → `plan:dev` → `apply:dev` → `plan:ci` →
