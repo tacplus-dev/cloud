@@ -1,0 +1,400 @@
+Script side works. Checkpointing, then the Terraform.
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 111 --checkpoint "looper-vm.sh: check role idle exit stops its own VM (stopInstances, cache kept); merger runs the orchestrator (kick: looper-check needed, startInstances/resize 1); looper-env settings; tests green. Left: TF (tacplus-manager signers, c...
+< 'git <command> [<revision>...] -- [<file>...]' [2026-11-27T10:04:45Z] checkpoint of #111 (a step) pushed to looper/cloud-111:
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Now the Terraform: variables.
+> Bash python3 - <<'EOF' p='modules/projects/ci/variables.tf' s=open(p).read() start=s.index('variable "reserved_vms" {') end=s.index('\n}\n',start)+3 new='''variable "reserved_vms" {   description = "The reserved machines (reserved-vms.tf, #111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md...
+< 227-  validation { 228-    condition     = alltrue([for k, v in var.reserved_vms : contains(keys(var.github_apps.keys), v.key) && v.key != var.looper_vm_app_key && (v.role != "merger" || v.key == "tacplus-manager" || (length(var.github_apps.keys[v.key].environments) == 0 && !var.github_apps.keys[v.k...
+= thinking_tokens
+= thinking_tokens
+Now `reserved-vms.tf`.
+> Write /var/lib/looper-cache/work/cloud/issues/111/modules/projects/ci/reserved-vms.tf
+< The file /var/lib/looper-cache/work/cloud/issues/111/modules/projects/ci/reserved-vms.tf has been updated successfully. (file state is current in your context — no need to Read it back)
+> Bash python3 - <<'EOF' import re p='modules/projects/ci/outputs.tf' s=open(p).read() old='''  description = "Each reserved machine's group (#111), by name: its name and zone, and its account's email."   value       = { for k, g in google_compute_instance_group_manager.reserved_vm : k => { group = g.name,...
+< 102:vm_admitted_names='looper_vm|reserved_vm|reserved_vm_check' 103:vm_why="no standalone VM in any stack, and no instance template or group but the ci module's looper_vm, reserved_vm and reserved_vm_check (#11): a new kind is a change to ci/policy.sh's admitted list" tests/policy_test.sh:64:# No VM...
+= thinking_tokens
+= thinking_tokens
+Now settings and the stack wiring.
+> Bash python3 - <<'EOF' p='modules/settings/main.tf' s=open(p).read() def rep(old,new):     global s     assert s.count(old)==1, old[:70]     s=s.replace(old,new) rep('''# The reserved machines of the ci project (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the # panel's items 4, 5 ...
+< output "ci_disks" {   description = <<-EOT     tacplus-ci's Hyperdisk Balanced GB in us-central1 (#113; the audit's Quotas table: the region's limit, 500, as     Google set it; a raise is a request to Google, then this line), which every looper VM's and reserved machine's boot     disk counts agains...
+= thinking_tokens
+= thinking_tokens
+> Bash grep -rn "SSD_TOTAL_GB" -A2 tests/fixtures STATE.md | head; grep -rn "SSD_TOTAL" README.md | head -3
+< tests/fixtures/hub-audit/audit-ci/region-us-central1.json:10:   "metric": "SSD_TOTAL_GB", tests/fixtures/hub-audit/audit-ci/region-us-central1.json-11-   "limit": 500.0, tests/fixtures/hub-audit/audit-ci/region-us-central1.json-12-   "usage": 174.0 511:  - **quotas:** `CPUS_ALL_REGIONS`, and the reg...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='modules/settings/main.tf' s=open(p).read() old=s[s.index('    tacplus-ci\'s Hyperdisk Balanced GB in us-central1 (#113;'):s.index('    hyperdisk_balanced_quota_gb = 500\n  }')+len('    hyperdisk_balanced_quota_gb = 500\n  }')] new='''    tacplus-ci's disk GB in us-central1 (#113...
+< 88:  reserved_vms = { for k, v in module.settings.reserved_vms : k => merge(v, { app_id = module.settings.github_apps.apps[v.key].app_id, installation_id = module.settings.github_apps.apps[v.key].installation_id }) } 127:output "reserved_vms" { 128:  value = module.ci.reserved_vms
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Now the plan tests.
+> Bash grep -n "looper_vm_app_key\|^run \"" stacks/ci/tests/plan.tftest.hcl | head -40
+< 35:run "stack" { 142:run "settings" { 201:run "ci" { 443:run "hub_audit_autoscaler_log" { 475:run "hub_audit_write_refused" { 496:run "release_reader_not_service_account_refused" { 519:run "release_location_outside_region_refused" { 542:run "family_refused" { 566:run "no_importers" { 595:run "manage...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='stacks/ci/tests/plan.tftest.hcl' s=open(p).read() def rep(old,new,count=1):     global s     assert s.count(old)==count, (s.count(old), old[:80])     s=s.replace(old,new) # settings run rep('''# tacplus-ci's quotas (#55, #63), with no runner pool and no manager since #113: what ...
+< 20:1131-      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-manager" }
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Now `ci/pools.sh`: a check machine's intended stopped VM must not be reported as a finding.
+> Bash sed -n 40,50p ci/pools.sh; ls tests/fixtures/pools/; ls tests/fixtures/pools/clean; grep -n "clean\|stalled" tests/pools_test.sh | head -20
+<         | "group \($g): VM \($vm.n) in \($vm.z) is \(.currentAction // "NONE")\(if $s != "" then " (\($s))" else "" end)\(if $e then ": \($e.code): \($e.message)" else "" end)"' \         "$tmp/vms.json" | while IFS= read -r line; do say "$line"; done     fi     if read_json "list the errors of $gro...
+> Bash cat tests/fixtures/pools/clean/groups.json; ls tests/fixtures/pools/clean tests/fixtures/pools/stalled; sed -n 1,35p tests/pools_test.sh; ls tests/stub
+< [{"name": "runner-build-region", "region": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/regions/us-central1", "targetSize": 1}] tests/fixtures/pools/clean: errors-runner-build-region.json groups.json instances-runner-build-region.json project.json region-us-central1.json  tests/fixture...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cat tests/stub/pools/gcloud | sed -n 1,40p; cat tests/fixtures/pools/stalled/instances-runner-shared.json
+< #!/usr/bin/env bash # A stub gcloud for tests/pools_test.sh: it answers what ci/pools.sh runs, each from STUB_POOLS/<project>/: the # groups (groups.json), a group's instances and errors (instances-<group>.json, errors-<group>.json, the group named # with --region or --zone as groups.json places it)...
+> Bash python3 - <<'EOF' p='ci/pools.sh' s=open(p).read() old='''        | select($e != null or ($s | IN("STOPPED", "TERMINATED", "SUSPENDED")))''' new='''        | select($e != null or (($s | IN("STOPPED", "TERMINATED", "SUSPENDED")) and ((.targetStatus // "") | IN("STOPPED", "SUSPENDED") | not)))''' asse...
+< [{"name": "runner-build-region", "region": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/regions/us-central1", "targetSize": 1}, {"name": "check-tacplus", "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b", "targetSize": 0, "targetStoppedSize": 1}] o...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n "tacplus-manager\|reserved\|looperVmResizer\|standby\|instanceGroupManagers" ci/*.sh | grep -v "^ci/pools.sh\|^ci/policy.sh:1[0-3][0-9]" | head -20
+< ci/policy.sh:98:# build environment): what makes a VM; of them, the ci module's looper VMs (#108) and reserved machines (#111) alone, ci/policy.sh:199:        # No VM outside GKE (#11): the ci module'"'"'s looper VMs and reserved machines alone, and they boot pinned COS. ci/policy.sh:206:           ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash for t in tests/policy_test.sh tests/looper_vm_test.sh tests/pools_test.sh; do bash $t > /tmp/t111.log 2>&1; echo "$t rc=$? $(grep -c '^FAIL' /tmp/t111.log)"; done; git status --short
+= task_started
+= task_notification
+< tests/policy_test.sh rc=0 0 tests/looper_vm_test.sh rc=0 0 tests/pools_test.sh rc=0 0  M ci/policy.sh  M ci/pools.sh  M modules/projects/ci/files/looper-vm.sh  M modules/projects/ci/looper-vms.tf  M modules/projects/ci/outputs.tf  M modules/projects/ci/reserved-vms.tf  M modules/projects/ci/variable...
+Local tests green. Committing and starting a full build (tofu tests run there) while I write the docs.
+> Bash git add -A && git commit -q -F - <<'EOF' ci: the reserved machines live: tacplus-manager's signers, check machines run only while needed (#111)  The hub, for Jody (2026-11-25): no new GitHub App and no quota raise to go live, and builders run only while used. So the three machines sign as tacplus-ma...
+< Author identity unknown  *** Please tell me who you are.  Run    git config --global user.email "you@example.com"   git config --global user.name "Your Name"  to set your account's default identity. Omit --global to set the identity only in this repository.  fatal: empty ident name (for <looper-111@...
+> Bash kill 132126 2>/dev/null; sleep 1; cat /tmp/b111-1.log | tail -3; git log -3 --format='%an <%ae>'
+< [2026-11-27T10:09:02Z] FATAL uncommitted changes: commit them first; --build builds your HEAD as committed Jody Scott <jody@aporeto.com> jodydadescott <jody@thescottsweb.com> jodydadescott <jody@thescottsweb.com>
+> Bash git log -8 --format='%an <%ae> | %s' | head; git log --format='%an <%ae>' --grep='(#111)' | sort | uniq -c
+< Jody Scott <jody@aporeto.com> | ROADMAP: #121, on the hub's recommendation jodydadescott <jody@thescottsweb.com> | HISTORY.md: #120 (looper) jodydadescott <jody@thescottsweb.com> | HISTORY.md: #11 (looper) tacplus-looper[bot] <tacplus-looper[bot]@users.noreply.github.com> | PROPOSALS: build's CI cop...
+> Bash git config user.name 'tacplus-looper[bot]' && git config user.email 'tacplus-looper[bot]@users.noreply.github.com' && git add -A && git commit -q -F - <<'EOF' ci: the reserved machines live: tacplus-manager's signers, check machines run only while needed (#111)  The hub, for Jody (2026-11-25): no ne...
+< 7f47cf0 ci: the reserved machines live: tacplus-manager's signers, check machines run only while needed (#111) pid 133043
+= thinking_tokens
+= thinking_tokens
+While it builds: the docs. Reading the PROPOSALS and STATE entries for #111.
+> Bash sed -n 686,712p PROPOSALS.md; echo ====; sed -n 325,350p STATE.md; echo ===; sed -n 1,8p STATE.md; sed -n 60,70p STATE.md
+<   new monthly ceiling (about $260 at most, against #95's $130), whether the module test's fixture moves too, and   whether tacplus-dev/cluster's `gitlab-runner/pool.yaml` mirror waits for Google to grant the quotas and not only for   cloud's apply. Why: on 2026-11-24 at 19:59Z the control runner was...
+Updating PROPOSALS.md.
+> Bash python3 - <<'EOF' p='PROPOSALS.md' s=open(p).read() start=s.index('- **tacplus-ci\'s quota for the reserved machines** (looper, #111, 2026-11-26).') end=s.index('- **The model\'s own containers cut off from the metadata server too**') new='''- **The reserved machines' own apps** (looper, #111, 2026-...
+< 470:  CPUs, which needs CPUS_ALL_REGIONS raised from 32 to 40 at least (#55: the pools use all 32), and `ci_cpus.quota` 479:  test refusing pools over it). What: CPUS_ALL_REGIONS raised from 32 (read by the hub on 2026-11-13; the settings 482:  sat `CREATING` on `QUOTA_EXCEEDED`; the drift's pool ch...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='PROPOSALS.md' s=open(p).read() old='''What: when Jody chooses, he creates   the GitHub Apps `tacplus-check` and `tacplus-merger`''' new='''What: when Jody chooses to, Jody creates   the GitHub Apps `tacplus-check` and `tacplus-merger`''' assert old in s; s=s.replace(old,new); op...
+< [2026-11-27T10:09:16Z] checkpoint of #111 (a build) pushed to looper/cloud-111:  20 files changed, 1155 insertions(+), 161 deletions(-) [2026-11-27T10:09:16Z] build requested: cloud 7f47cf0, the gates full (ci/policy.sh matches no gate set) the local build of cloud 7f47cf0, the gates full on base c8...
+Now the README's reserved-machines section and admitted list.
+> Bash sed -n 150,158p README.md; grep -n "never idle\|reserved machine" README.md | head -20
+< - **No VM outside GKE** (#11; `decisions/only-vms-are-k8s-nodes-2026-11-04.md`, and for the build environment   `looper-build-vms-2026-11-24.md`, tacplus-dev/roadmap): a standalone VM (`google_compute_instance`,   `google_compute_instance_from_template` or `_from_machine_image`) created or updated i...
+> Bash python3 - <<'EOF' p='README.md' s=open(p).read() old='''  `google_compute_instance_group_manager`, `looper_vm` and `reserved_vm`), whose templates must boot Container-Optimized   OS pinned by name (`modules/settings`' `cos_arm64_image`) and are held to the rules above and below like any VM. The   so...
+< (Bash completed with no output)
+= thinking_tokens
+= thinking_tokens
+Now STATE.md (it'll be its own last commit).
+> Bash python3 - <<'EOF' p='STATE.md' s=open(p).read() def rep(old,new):     global s     assert s.count(old)==1, old[:60]     s=s.replace(old,new) rep('Last updated: 2026-11-27 by the looper (#114).','Last updated: 2026-11-27 by the looper (#111).') rep('''The quota tests count the looper VMs and the rese...
+< [2026-11-27T10:09:16Z] build requested: cloud 7f47cf0, the gates full (ci/policy.sh matches no gate set) the local build of cloud 7f47cf0, the gates full on base c81cdce, in the build image it pins, on this looper VM: its full log is /var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/b...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Checking whether `tacplus-manager` already has the statuses/pull-requests permissions the check role asks for (otherwise its token request would fail):
+> Bash gh api orgs/tacplus-dev/installations --jq '.installations[] | {app_slug, permissions}' 2>&1 | head -40
+< {"message":"Resource not accessible by integration","documentation_url":"https://docs.github.com/rest/orgs/orgs#list-app-installations-for-an-organization","status":"403"}gh: Resource not accessible by integration (HTTP 403)
+> Bash cd /tmp/lp/src && git pull -q 2>/dev/null; grep -n -i "statuses" README.md STATE.md PROPOSALS.md | grep -i "manager" | head -10
+< Shell cwd was reset to /var/lib/looper-cache/work/cloud/issues/111
+> Bash cd /tmp/lp/src && grep -rn -i "tacplus-manager" README.md | grep -i "permission\|statuses\|pull" | head -10; grep -n -i "Commit statuses" README.md | head
+< 2389:   - `tacplus-manager`: Repository permissions Contents read and write, Issues read and write, Workflows read and write (to push a change under `.github/workflows/`, looper#106; once it holds it, set the project variable `LOOPER_MANAGER_WORKFLOWS=write`, looper#112), Metadata read. 2396:     ma...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash grep -n 'return 1\|return "\$rc"\|log "the container exited' modules/projects/ci/files/looper-vm.sh
+< 135:    return 1 139:    [ "$try" = 5 ] && { log "cannot pull $image after $try tries: systemd tries again"; return 1; } 163:    log "the container exited 0: the merger's machine is never idle, systemd starts it again" 164:    return 1 166:    log "the container exited 0: idle" 169:    log "the cont...
+> Read /var/lib/looper-cache/work/cloud/issues/111/modules/projects/ci/files/looper-vm.sh
+< 128	    merger) work=(merger "${work[@]}") socket=() ;; 129	    *) log "looper-role [$role] is none of check and merger: nothing runs"; return 0 ;; 130	  esac 131	  [ -z "$role" ] || envs 132	  cache_ready 133	  if ! metadata_cutoff; then 134	    log "the build containers could not be cut off from t...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='modules/projects/ci/files/looper-vm.sh' s=open(p).read() def rep(old,new):     global s     assert s.count(old)==1, old[:60]     s=s.replace(old,new) rep('''    log "the build containers could not be cut off from the metadata server: nothing starts, systemd tries again"     retu...
+< ok
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='modules/projects/ci/files/looper-vm.sh' s=open(p).read() old='''        fails=$((fails + 1))       else''' new='''        [ "$fails" -ge 5 ] || fails=$((fails + 1))       else''' assert old in s; s=s.replace(old,new); open(p,'w').write(s) p='tests/looper_vm_test.sh' s=open(p).re...
+< ok   a rolling check's machine runs looper-vm check with its app's IDs alone, its builds cut off from the metadata server ok   a check machine's exit 0 is idle (every check ended idle) ok   idle, a check machine's group stops it, its cache disk kept ok   idle, its stop refused: a check machine power...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash d=$(mktemp -d) && mkdir -p $d/s/attributes $d/r && cd $d && printf %s tacplus > s/attributes/looper-repo && printf %s "ghcr.io/x@sha256:$(printf '%064d' 1)" > s/attributes/looper-image && printf check > s/attributes/looper-role && echo 3 > s/exit && touch s/calls s/docker s/iptables s/mount s/system...
+< ++ '[' -f /var/lib/looper-cache/work/cloud/homes/looper-111/tmp/tmp.GwPQHxDvAK/r/run/looper-vm/stopping ']' + log 'the container exited 3' + echo 'looper-vm: the container exited 3' looper-vm: the container exited 3 + failed 3 + local n + '[' check = check ']' + '[' '!' -f /var/lib/looper-cache/work...
+= thinking_tokens
+= thinking_tokens
+> Bash python3 - <<'EOF' p='tests/looper_vm_test.sh' s=open(p).read() old='''for n in 1 2 3 4; do looper run; looper post; [ "$rc" = 3 ] || break; done [ "$rc" = 3 ] && ! grep -q stopInstances "$stub/calls" && ok "a check machine's four failures in a row are systemd's to start again" || fail "four failures...
+< fails: 1 [2026-11-27T10:11:56Z] verdict: FAIL: the gates full (gates.yaml) exited 1: Success! 11 passed, 0 failed.; checks failed verdict: failure: fail: the gates full (gates.yaml) exited 1: Success! 11 passed, 0 failed.; checks failed
+Script tests all pass now. The first build failed in checks; reading its log.
+> Bash L=/var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/builds/20261127T100916Z-2824018234.log; grep -n -E "FAIL|Error|error:|✗|fail" $L | grep -v "^.*ok " | head -40
+< 750:Success! 3 passed, 0 failed. 752:tests/plan.tftest.hcl... fail 755:  run "ci"... fail 757:Error: Invalid template interpolation value 790:Failure! 2 passed, 1 failed, 23 skipped. 1030:Success! 20 passed, 0 failed. 1039:Success! 5 passed, 0 failed. 1054:Success! 11 passed, 0 failed. 1055:checks f...
+> Bash L=/var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/builds/20261127T100916Z-2824018234.log; sed -n 745,792p $L
+< tests/plan.tftest.hcl... pass   run "stack"... pass   run "admin"... pass   run "admin_changed"... pass  Success! 3 passed, 0 failed. == tofu test stacks/ci/ tests/plan.tftest.hcl... fail   run "stack"... pass   run "settings"... pass   run "ci"... fail  Error: Invalid template interpolation value  ...
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+`one()` of an empty list is null, not an error. Fixing with `coalesce`.
+> Bash sed -i 's|reserved_vm_check_login = "${try(one(distinct(\[for k, v in local.reserved_vm_checks : v.key\])), "tacplus-check")}\[bot\]"|reserved_vm_check_login = "${coalesce(one(distinct([for k, v in local.reserved_vm_checks : v.key])), "tacplus-check")}[bot]"|' modules/projects/ci/reserved-vms.tf && ...
+< 37:  reserved_vm_check_login = "${coalesce(one(distinct([for k, v in local.reserved_vm_checks : v.key])), "tacplus-check")}[bot]"  M STATE.md started
+> Bash sleep 5; tail -3 /tmp/b111-2.log
+= task_started
+= task_notification
+< [2026-11-27T10:12:45Z] FATAL uncommitted changes: commit them first; --build builds your HEAD as committed
+= thinking_tokens
+= thinking_tokens
+> Bash cp STATE.md /tmp/STATE-111.md && git checkout STATE.md && git status --short && nohup /usr/local/bin/repo-looper --repo cloud --issue 111 --build > /tmp/b111-2.log 2>&1 & sleep 20; tail -2 /tmp/b111-2.log
+= task_started
+= task_notification
+< Updated 1 path from the index [2026-11-27T10:13:00Z] build requested: cloud 938ac1c, the gates full (README.md matches no gate set) the local build of cloud 938ac1c, the gates full on base c81cdce, in the build image it pins, on this looper VM: its full log is /var/lib/looper-cache/work/cloud/runs/2...
+= thinking_tokens
+= thinking_tokens
+While it builds: the trace floor (rule 13).
+> Bash /usr/local/bin/looper-trace check 2>&1 | tail -5
+< looper-trace: /var/lib/looper-cache/work/cloud/issues/111 verdict: pass (0 handlers, 0 findings)
+> Bash L=/var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/builds/20261127T101300Z-222671568.log; for i in $(seq 1 40); do grep -q "^verdict:" /tmp/b111-2.log && break; sleep 15; done; tail -2 /tmp/b111-2.log; grep -n -E "\.\.\. fail|^Error|Failure!" -A12 $L | head -60
+= task_started
+= task_notification
+< [2026-11-27T10:14:02Z] verdict: FAIL: the gates full (gates.yaml) exited 1: policy: source: 2 checked, nothing refused; lint: all failed verdict: failure: fail: the gates full (gates.yaml) exited 1: policy: source: 2 checked, nothing refused; lint: all failed
+> Bash L=/var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/builds/20261127T101300Z-222671568.log; grep -n -i -E "SC[0-9]{4}|error|fmt|lint" $L | head -30
+< 8:bin/: tofu v1.13.2, tflint 0.66.0 (google 0.41.0), shellcheck 0.11.0, yq v4.54.1, gitleaks v8.30.1, and the gitlab, kubernetes, google and anthropic providers (providers/), all built with go1.27.4 9:== tofu fmt 32:== tflint stacks/anthropic 33:== tflint stacks/ci 34:== tflint stacks/dev 35:== tfli...
+> Bash L=/var/lib/looper-cache/work/cloud/runs/20261127T095514Z-issue-111/builds/20261127T101300Z-222671568.log; sed -n 9,31p $L; sed -n 42,50p $L
+< == tofu fmt == tofu validate stacks/anthropic Success! The configuration is valid. == tofu validate stacks/ci Success! The configuration is valid. == tofu validate stacks/dev  Warning: Argument is deprecated    with module.dev.google_container_cluster.dev,   on ../../modules/projects/dev/main.tf lin...
+> Bash sed -i 's/^for n in 1 2 3 4; do looper run; run_rc=\$rc; looper post; \[ "\$run_rc" = 3 \] || break; done$/for _ in 1 2 3 4; do looper run; run_rc=$rc; looper post; [ "$run_rc" = 3 ] || break; done/' tests/looper_vm_test.sh && grep -n "^for _ in" tests/looper_vm_test.sh && git commit -qam "tests: lo...
+= task_started
+= task_notification
+< 133:for _ in 1 2 3 4; do looper run; run_rc=$rc; looper post; [ "$run_rc" = 3 ] || break; done ok
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash for i in $(seq 1 40); do grep -q "^verdict:" /tmp/b111-3.log && break; sleep 15; done; tail -1 /tmp/b111-3.log; L=$(grep -o '/var/lib[^ ]*\.log' /tmp/b111-3.log | tail -1); grep -n -E "\.\.\. fail|^Error|Failure!|SC[0-9]{4}|FAIL" -A14 $L | head -60
+= task_started
+= task_notification
+< verdict: success: the gates full passed
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Full gates green (`verdict: success: the gates full passed`). Adding the App-permission prerequisite to PROPOSALS, then the STATE commit on its own.
+> Bash python3 - <<'EOF' p='PROPOSALS.md' s=open(p).read() old='''  blocker (the hub, for Jody, 2026-11-25): until then all three machines sign as `tacplus-manager`, beside the   managers' jobs and no looper VM. ''' new='''  blocker (the hub, for Jody, 2026-11-25): until then all three machines sign as `ta...
+< 6c0bc1d STATE: the reserved machines live, the check machines only while needed (#111) f06a835 PROPOSALS: tacplus-manager's statuses and pull requests for the check (#111) ab37147 tests: looper_vm_test's loop variable unused (shellcheck) (#111) 938ac1c ci: a check machine that keeps failing stops, a...
+> Bash git fetch -q origin && git log --oneline HEAD..origin/main | head
+< Exit code 128 error: insufficient permission for adding an object to repository database .git/objects fatal: failed to write object fatal: unpack-objects failed
+> Bash git ls-remote origin refs/heads/main
+< f55ca628a17fb06dd6bcd8bb6578727f3d7b5152	refs/heads/main
+= thinking_tokens
+= thinking_tokens
+> Bash gh api repos/tacplus-dev/cloud/compare/c81cdce...f55ca62 --jq '.commits[] | .sha[0:7] + " " + (.commit.message | split("\n")[0])' ; gh api repos/tacplus-dev/cloud/compare/c81cdce...f55ca62 --jq '.files[] | .filename + " +" + (.additions|tostring) + " -" + (.deletions|tostring)'
+< 0f0472e STATE: Blocked on no longer names #113 and tacplus-dev/cluster#65 (#123) f55ca62 looper VMs on the looper image of main-c0d53ba: a local build's gates get a dockerd of their own (#122) STATE.md +1 -1 modules/settings/main.tf +2 -2 stacks/ci/tests/plan.tftest.hcl +1 -1
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash find .git/objects -maxdepth 1 ! -user looper-111 | head -5; ls -ld .git/objects; id
+< .git/objects/25 .git/objects/75 .git/objects/9c .git/objects/14 drwxr-xr-x 76 looper-111 looper-111 4096 Nov 27 10:17 .git/objects uid=61009(looper-111) gid=61009(looper-111) groups=61009(looper-111)
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+Some `.git/objects` dirs aren't mine (written by another user), so I can't fetch here. Verifying instead in a scratch clone that my commits rebase cleanly onto the new main:
+> Bash rm -rf /tmp/p111 /tmp/c111 && git format-patch -q -o /tmp/p111 c81cdce..HEAD && git clone -q https://github.com/tacplus-dev/cloud.git /tmp/c111 2>&1 | tail -1; cd /tmp/c111 && git -c user.name=x -c user.email=x@x am -q /tmp/p111/*.patch && echo APPLIED && git log --oneline -7
+< APPLIED d182df6 STATE: the reserved machines live, the check machines only while needed (#111) b57ff15 PROPOSALS: tacplus-manager's statuses and pull requests for the check (#111) 47e2dae tests: looper_vm_test's loop variable unused (shellcheck) (#111) 5027adf ci: a check machine that keeps failing ...
+= thinking_tokens
+= thinking_tokens
+Applies cleanly onto the new main. Now the comment the hub asked for on tacplus-dev/looper#249 (who starts the check machine):
+> Bash cat > /tmp/c249.md <<'EOF' From tacplus-dev/cloud#111: who starts the check machines, and how they stop. This is queued to land on cloud's main now. The ci stack's next apply brings it up.  - **Who starts a check machine:** the merger's machine. It is the one always-on machine (t2a-standard-1, at 1 ...
+< https://github.com/tacplus-dev/looper/issues/249#issuecomment-7215718838
+Now landing.
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 111 --land 2>&1 | tail -8
+= task_started
+= task_notification
+< fatal: unpack-objects failed error: insufficient permission for adding an object to repository database .git/objects fatal: failed to write object fatal: unpack-objects failed error: insufficient permission for adding an object to repository database .git/objects fatal: failed to write object fatal:...
+= thinking_tokens
+= thinking_tokens
+The land needs a fetch, which the foreign-owned object dirs block. Those dirs sit in my own `.git/objects`, so I can replace each with a copy I own:
+> Bash cd /var/lib/looper-cache/work/cloud/issues/111/.git/objects && find . -maxdepth 1 -mindepth 1 ! -user looper-111 -exec ls -ld {} \; | head -3; find . -maxdepth 1 -mindepth 1 ! -user looper-111 | wc -l
+< drwxr-xr-x 2 root root 4096 Nov 27 10:05 ./25 drwxr-xr-x 2 root root 4096 Nov 27 10:10 ./75 drwxr-xr-x 2 root root 4096 Nov 27 10:15 ./9c find: 'ls' terminated by signal 13 4
+= thinking_tokens
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/cloud/issues/111/.git && mkdir -p root-owned && for d in $(cd objects && find . -maxdepth 1 -mindepth 1 ! -user looper-111 -printf '%f\n'); do cp -r objects/$d objects/$d.mine && mv objects/$d root-owned/$d && mv objects/$d.mine objects/$d; done; find objects -maxdepth ...
+< Exit code 128 mv: cannot move 'objects/25' to 'root-owned/25': Permission denied mv: cannot move 'objects/75' to 'root-owned/75': Permission denied mv: cannot move 'objects/9c' to 'root-owned/9c': Permission denied mv: cannot move 'objects/14' to 'root-owned/14': Permission denied 4 dangling commit ...
+= thinking_tokens
+= thinking_tokens
+> Bash cd /var/lib/looper-cache/work/cloud/issues/111/.git && rmdir root-owned; for d in 25 75 9c 14; do [ -d objects/$d.mine ] || cp -r objects/$d objects/$d.mine; mv objects/$d objects/root-$d && mv objects/$d.mine objects/$d; done; ls -ld objects/25 objects/root-25; cd .. && git fetch -q origin && git l...
+< drwxr-xr-x 2 looper-111 looper-111 4096 Nov 27 10:18 objects/25 drwxr-xr-x 2 root       root       4096 Nov 27 10:05 objects/root-25 417a5fd HISTORY.md: #123 (looper)
+Fetch works now. Landing:
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 111 --land 2>&1 | tail -8
+= task_started
+= task_notification
+< [2026-11-27T10:18:48Z] your land's own gates (gates.yaml's full) on your commits rebased on main 417a5fd: a local build on this looper VM before the land is queued [2026-11-27T10:21:12Z] your land's own gates (gates.yaml's full) on your commits rebased on main 417a5fd: green fatal: update_ref failed...
+= thinking_tokens
+= thinking_tokens
+Queued, with the land's own full gates green on main 417a5fd. Final checkpoint:
+> Bash /usr/local/bin/repo-looper --repo cloud --issue 111 --checkpoint "Done and queued (7f47cf0, 938ac1c, ab37147, f06a835, 6c0bc1d; full gates green locally and on the land's rebase onto 417a5fd): the reserved machines sign as tacplus-manager (signers test: no looper VM), sized under the quotas (check-t...
+< [2026-11-27T10:21:26Z] checkpoint of #111 (a step) pushed to looper/cloud-111:  24 files changed, 1328 insertions(+), 213 deletions(-)
+I've queued the land with the manager. The full gates passed locally and again on my commits rebased onto main 417a5fd. The machines have not run yet, and once they do, no check can post anything until the `tacplus-manager` App is granted **Commit statuses** and **Pull requests** (read and write). That is a setting only the App's owner can change, not code here.
+
+**What the change does**
+- **Signing (the hub's item 1):** all three reserved machines sign with the existing `tacplus-manager` key until `tacplus-check` and `tacplus-merger` exist. Its signers are now the managers' jobs plus these three accounts. A plan test checks that no looper VM signs for that key. Moving to the two new Apps later is a one-line change to each machine's key.
+- **No quota raise:**
+  - `check-tacplus` is c4a-standard-8 with a 100 GB disk. With the looper VMs that fills both the C4A CPU limit (24 of 24) and the Hyperdisk Balanced limit (500 of 500).
+  - The org's check machine (t2a-standard-4, 100 GB) and the merger (t2a-standard-1, 30 GB) are on T2A with ordinary disks, outside those limits.
+  - In all, 29 of 32 CPUs.
+  - The quota tests now count each machine family against its own limit.
+- **Image:** all three run the looper image `main-c0d53ba`, pinned by digest.
+- **Check machines run only while needed:** the plan never sizes a check machine's group, which has 0 or 1 VMs.
+  - When every check on it has ended idle, the machine has its group stop it. A stopped VM keeps its disk, so the cache survives between runs.
+  - `looper-vm.sh` no longer treats a check machine's normal exit as a failure; for the merger it still does.
+- **The merger's machine starts them:** it is the one always-on machine. Every minute it asks `looper-check needed` about each check machine that isn't running, and starts it if so. Each account can only start or stop its own machines.
+- **Bounds:** a check machine that fails 5 times in a row stops itself. The merger's machine then waits before starting it again: 15 minutes, doubling up to 6 hours. Without this, the missing App permissions above would leave a check machine running and billing forever.
+- **Drift check:** `ci/pools.sh` no longer reports a stopped check machine as a finding.
+
+**Other things you should know**
+- I posted on tacplus-dev/looper#249 who starts the check machine, as the hub asked.
+- `ci/policy.sh` now admits a third resource name, `reserved_vm_check`, alongside the looper VMs and the merger's group. That list is meant to be reviewed when it changes.
+- Looper VM reports still land through the manager (`LOOPER_VM_MR=0`). I left that off until the check has been seen posting its results; turning it on is a follow-up in PROPOSALS.md, with right-sizing from measured use and a lighter `needed` query.
+- Things I couldn't check except against stubs: whether T2A is available in us-central1-b, whether the stop/start calls work with only the resize role, how COS's iptables behaves, and the `needed` check running inside the real image.
+- `looper-trace check` found no service handlers, so there was nothing to trace.
+- To fetch at all, I had to rename four root-owned directories in `.git/objects` to `root-XX`. The repo-looper tool also can't write `.git/refs/looper` as my user; that error didn't stop the land.
+
+The next run of this issue posts the outcome and closes it if the manager merges, or fixes and lands again if it sends the change back.
+= success: I've queued the land with the manager. The full gates passed locally and again on my commits rebased onto main 417a5fd. The machines have not run yet, and once they do, no check can post anything until the `tacplus-manager` App is granted **Commit statuses** and **Pull requests** (read and write). That is a setting only the App's owner can change, not code here.
+
+**What the change does**
+- **Signing (the hub's item 1):** all three reserved machines sign with the existing `tacplus-manager` key until `tacplus-check` and `tacplus-merger` exist. Its signers are now the managers' jobs plus these three accounts. A plan test checks that no looper VM signs for that key. Moving to the two new Apps later is a one-line change to each machine's key.
+- **No quota raise:**
+  - `check-tacplus` is c4a-standard-8 with a 100 GB disk. With the looper VMs that fills both the C4A CPU limit (24 of 24) and the Hyperdisk Balanced limit (500 of 500).
+  - The org's check machine (t2a-standard-4, 100 GB) and the merger (t2a-standard-1, 30 GB) are on T2A with ordinary disks, outside those limits.
+  - In all, 29 of 32 CPUs.
+  - The quota tests now count each machine family against its own limit.
+- **Image:** all three run the looper image `main-c0d53ba`, pinned by digest.
+- **Check machines run only while needed:** the plan never sizes a check machine's group, which has 0 or 1 VMs.
+  - When every check on it has ended idle, the machine has its group stop it. A stopped VM keeps its disk, so the cache survives between runs.
+  - `looper-vm.sh` no longer treats a check machine's normal exit as a failure; for the merger it still does.
+- **The merger's machine starts them:** it is the one always-on machine. Every minute it asks `looper-check needed` about each check machine that isn't running, and starts it if so. Each account can only start or stop its own machines.
+- **Bounds:** a check machine that fails 5 times in a row stops itself. The merger's machine then waits before starting it again: 15 minutes, doubling up to 6 hours. Without this, the missing App permissions above would leave a check machine running and billing forever.
+- **Drift check:** `ci/pools.sh` no longer reports a stopped check machine as a finding.
+
+**Other things you should know**
+- I posted on tacplus-dev/looper#249 who starts the check machine, as the hub asked.
+- `ci/policy.sh` now admits a third resource name, `reserved_vm_check`, alongside the looper VMs and the merger's group. That list is meant to be reviewed when it changes.
+- Looper VM reports still land through the manager (`LOOPER_VM_MR=0`). I left that off until the check has been seen posting its results; turning it on is a follow-up in PROPOSALS.md, with right-sizing from measured use and a lighter `needed` query.
+- Things I couldn't check except against stubs: whether T2A is available in us-central1-b, whether the stop/start calls work with only the resize role, how COS's iptables behaves, and the `needed` check running inside the real image.
+- `looper-trace check` found no service handlers, so there was nothing to trace.
+- To fetch at all, I had to rename four root-owned directories in `.git/objects` to `root-XX`. The repo-looper tool also can't write `.git/refs/looper` as my user; that error didn't stop the land.
+
+The next run of this issue posts the outcome and closes it if the manager merges, or fixes and lands again if it sends the change back.
+= usage: {"claude-opus-5-5":{"inputTokens":212,"outputTokens":110473,"cacheReadInputTokens":19114874,"cacheCreationInputTokens":261057,"webSearchRequests":0,"costUSD":8.1217388,"contextWindow":1000000,"maxOutputTokens":128000,"thinkingTokens":43070,"canonicalModel":"claude-opus-5-5","provider":"firstParty","costBasis":"list"},"claude-haiku-5-5":{"inputTokens":14723,"outputTokens":5113,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":0.0040288,"contextWindow":1000000,"maxOutputTokens":128000,"thinkingTokens":3503,"canonicalModel":"claude-haiku-5-5","provider":"firstParty","costBasis":"list"}}
