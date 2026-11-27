@@ -68,7 +68,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   nowhere now (PROPOSALS.md). tacplus-dev/cluster#65 dropped cluster's check against the ci stack's `runner` block, which this removes. On main: `apply:ci` and `apply:gitlab` run it on the next pin, and the
   audit should list no `runner-*` VM in tacplus-ci. Not verified against real GCP or GitLab: the idle check's first run,
   the destroy, and whether strays exist. jody1-328023's `gitlab-runner-mgr` (runners 57939705, 58307468) is outside
-  this repository: Jody's to check.
+  this repository: Jody's to delete after a green week (README, Moving off jody1-328023; #11).
 - **Certificates by pipeline (#6):** `modules/settings` (`deployments`) lists the deployments whose pipelines own
   their certificates; the dev stack gives each, in `tacplus-dev`, an identity of its own federated from its GitLab
   project's protected main (`seatrials-deploy`, tacplus-dev/fleet-seatrials), the secrets `tls-<deployment>` and
@@ -105,6 +105,14 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   `tacplus-ci` and `tacplus-dev` with the same checks, for what no state holds; GKE's own internal `gke-*` rules are not
   reported for port 22. Tested with plan and live fixtures and the stacks' plan tests, against mocks and a stub gcloud
   only.
+- **No VM outside GKE (#11; decisions/only-vms-are-k8s-nodes-2026-11-04.md, looper-build-vms-2026-11-24.md):**
+  `ci/policy.sh plan` refuses a standalone VM (`google_compute_instance`, `_from_template`, `_from_machine_image`)
+  created or updated in any stack, and any instance template or group manager, zonal or regional, but `module.ci`'s
+  `looper_vm` and `reserved_vm`, admitted by address, whose templates must boot COS pinned by name; the source check
+  refuses the same blocks outside `modules/projects/ci`'s two. The live audit does not report it (a live VM has no
+  address; PROPOSALS.md). The runner VMs themselves went with #113. README, The network rules; jody1-328023's interim
+  runner VMs (`gitlab-runner-mgr`, runners 57939705 and 58307468) are listed in README, Moving off jody1-328023, for
+  Jody to delete after a green week. Tested with the policy's and audit's fixtures and the ci stack's plan test.
 - **No public control plane (#79, Jody, 2026-11-18: only load balancers are public):** the dev cluster has no public
   endpoint (`enable_private_endpoint`), and its master authorized networks, enforced on the private endpoint, Google
   Cloud's public ranges off, are the nodes' `10.20.0.0/20` and pods' `10.24.0.0/14`: the cloud, cluster and deploy
