@@ -418,7 +418,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
 - **The Admiral's credentials (#84; tacplus-dev/admiral#5, Jody's option A, 2026-11-20):** `modules/settings`
   (`admiral`; `github_apps`' fourth app, `tacplus-admiral`, 5853599 / 184144753). The dev stack's `admiral.tf`: the
   pool `fleet-kernels` and its provider `seatrials`, OIDC for the seatrials kernel's issuer `https://seatrials.tacplus.dev`
-  (discovery), admitting `spiffe://local.dev/system/services/admiral` alone, its audience the provider's own. The ci
+  (discovery), admitting `spiffe://tacplus.dev/system/services/admiral` alone (seatrials' trust domain since #119), its audience the provider's own. The ci
   stack's `admiral.tf`: the account `admiral@tacplus-ci`, which only that subject becomes; `signerVerifier` on the
   import-only key `tacplus-admiral` (import job `tacplus-admiral-import`), for it alone (a `github_apps` signer on it is
   refused); the secret `admiral-triage-gitlab`, no version, which it alone reads and `GCP_ADMIRAL_SECRET_ADDERS`'s
@@ -627,7 +627,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   3066773640, job 18022609528) listed them: the account's and the rule's descriptions, the rule's audience and its token
   lifetime (600, not the default 3600), written as the Console holds them. The fourth (pipeline 3067066143, jobs
   18024991251/2, 2026-11-14) adopted with no change: 3 imported, the membership added. seatrials' rule is now narrowed
-  to `workspace:inference` in a commit of its own (an update in place, the same ID), applied by the next pin.
+  to `workspace:inference` in a commit of its own (an update in place, the same ID), applied by the next pin. Its
+  subject is now `spiffe://tacplus.dev/system/services/llmproxy` (#119; fleet-seatrials#16 makes `tacplus.dev`
+  seatrials' trust domain), an update in place too, to apply before seatrials' first deploy on `tacplus.dev`.
 - **The hub's audit (#77; Jody, 2026-11-17):** the hub's read-only gcloud checks run in this pipeline instead of on the
   Mac, with no key anywhere (README, The hub's audit). The ci stack makes `hub-audit@tacplus-ci`
   (`modules/projects/ci/hub-audit.tf`), which only this project's protected main becomes through the pipeline's own
