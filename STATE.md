@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by the looper (#102).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#115).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521` by digest, the 2.6 line's dated build tag, never the floating
@@ -659,6 +659,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   live: `apply:ci` makes the account and its grants, `apply:gitlab` the schedule, once the GitLab project is pinned to the
   commit; then the first scheduled run, which #77 waits on. The hub's download URL answers from `main`'s latest
   successful pipeline only (README; PROPOSALS.md).
+- **The release registry (#115; Jody's approval of design B, 2026-11-26; tacplus-dev/fleet-seatrials#82):** the ci stack
+  makes `us-docker.pkg.dev/tacplus-ci/releases` (`modules/projects/ci/releases.tf`, `modules/settings` `releases`):
+  DOCKER, multi-region `us`, no cleanup policy; one writer, `release-publish@tacplus-ci`, which only tacplus-dev/build's
+  protected `main` in its environment `registry` becomes (provider `tacplus-dev-build-release` of the pool `gitlab-com`);
+  one reader, `seatrials-deploy@tacplus-dev`; both bindings authoritative, and `ci/policy.sh` refuses another writer, a
+  reader not a service account or another role on it. The audit lists every repository's bindings (its registries
+  section, through hub-audit's custom role `hubAuditRegistries`: list and getIamPolicy, never an image), a public one a
+  finding. The ci stack's output `releases` gives build its registry, account and provider. Tested with mock providers,
+  the policy's fixtures and the audit's stubs. Not yet live: `apply:ci`, then build publishing there
+  (tacplus-dev/looper#265: until then the releases are in jody1-328023, which seatrials-deploy cannot read), then the
+  acceptance, `crane manifest` of a release by digest as `seatrials-deploy`.
 - **Released / deployed:** nothing released. The first pipeline (3030204494) applied `folder`, and `ci` and `dev` in part (#16).
 - **Known gaps:** never run against real GCP or GitLab: the plans are tested against mock providers (the gitlab
   stack's also against a stub of gitlab.com's API, #17), so an API's
