@@ -91,7 +91,15 @@ module "dev" {
     # Jody, 2026-11-23 (#96): to 8; on 2026-11-22 it sat at 5 with 18 builds queued, a tacplus batch candidate waiting 1h17m.
     normal = { machine_type = "c4a-standard-2", nodes = 3 }
     spot   = { machine_type = "c4a-standard-4", max_nodes = 8 }
-    # Jody, 2026-11-25 (#114): no looper pool (#95, #107): one pool of 3 small nodes, no autoscaling, once the builds go too.
+    # Jody, 2026-11-22 (#95): the looper runs' overflow on a pool from 0 to X, on demand, X = 2 (at most the $130/month
+    # Jody approved; a larger X needs Jody's yes).
+    # Jody, 2026-11-24 (#107): to 4 (at most about $260/month); at 19:59Z the control runner sat at its 17 (cluster#53)
+    # with 18 jobs pending, 5 of them managers, the looper pool at its 2.
+    # Jody, 2026-11-27: back, from 0 to 2, after #114 step 1 took it away: the looper runs are on their VMs, but the
+    # in-cluster runners' job pods (cloud's, cluster's and the fleets' pipelines, the managers) still land on the 3
+    # normal nodes beside seatrials' pods, and three pipelines that day lost jobs to "Insufficient cpu" (pods Pending
+    # 10 minutes and more). On demand, from 0: it costs only while a pipeline's pods overflow.
+    looper = { machine_type = "c4a-standard-2", max_nodes = 2 }
   }
   network = {
     nodes         = "10.20.0.0/20"

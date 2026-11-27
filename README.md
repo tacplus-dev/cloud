@@ -26,7 +26,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
     reserved machines of the rolling check and the merger (below, The reserved machines);
   - `dev` / `tacplus-dev`: the dev GKE cluster (zonal, arm64 Axion C4A, private Container-Optimized OS nodes: a normal
     pool of 3 x c4a-standard-2 on demand, a spot build pool of c4a-standard-4 from 0 to 8 over the region's zones
-    with c4a, for build pods only (no looper pool since #114), and the quotas they need: below, The network rules), the DNS zone
+    with c4a, for build pods only, and a looper pool of c4a-standard-2 on demand from 0 to 2, for the overflow of
+    the in-cluster runners' job pods only, and the quotas they need: below, The network rules), the DNS zone
     `dev.tacplus.dev`, `cluster-admin-pipeline`, federated from tacplus-dev/cluster's protected main, with its
     cluster-admin in the cluster, the runners' token secrets it reads and its registry `ci-images` (below, The cluster
     pipeline), each deployment's certificate secrets and `_acme-challenge` zone, which only its pipeline writes (below,
@@ -176,17 +177,20 @@ is applied:
   `spot` spreads over every zone of the region that offers its machine type (#85: the provider's machine-type data,
   read at plan): on 2026-11-20 spot c4a ran out in us-central1-a, then its only zone, and gates pods waited Pending at
   2 nodes of 5. Its 8 are the pool's in all zones (`total_max_node_count`), and GKE makes each node in whichever zone
-  has the capacity (location policy `ANY`). The `looper` pool (#95, #107), the looper runs' overflow, is gone (#114;
-  Jody, 2026-11-25: the cluster is one pool of 3 small nodes, no autoscaling, deployments only): the looper runs moved
-  to the looper VMs, and tacplus-dev/cluster#64 stopped counting it in the control runner's room first. `spot` and the
-  in-cluster runners follow when the merge train retires (#114, steps 2 and 3).
+  has the capacity (location policy `ANY`). `looper` (#95, the decision's addendum of 2026-11-22), c4a-standard-2 on
+  demand from 0 to 4 (#107) in the cluster's zone, labelled `looper=true` and tainted `looper=true:NoSchedule`, runs the looper
+  runs that overflow the normal nodes: only the control runner's job pods tolerate the taint
+  (tacplus-dev/cluster#47), so it empties back to 0 when they end. On demand, as a looper run lasts hours and spot
+  would preempt it; 4 is at most the about $260/month Jody approved on 2026-11-24 (#107; 2 and $130/month until then),
+  and a larger maximum needs Jody's yes. The output
+  `cluster` gives its label and taint too.
 - **The node pools' quotas (#88):** on 2026-11-21 `spot` still stopped at 2 nodes of 5, every scale-up refused
   `QUOTA_EXCEEDED`: Hyperdisk Balanced (`HDB_TOTAL_GB`, 500 GB in us-central1, all used by 5 nodes of 100 GB) and C4A
   CPUs (`CPUS_PER_VM_FAMILY`, 24). The dev stack asks Google for what its pools need, as Cloud Quotas preferences of
   `tacplus-dev` in the region, computed from the pools, never typed (its output `quotas`): C4A CPUs, each pool's at
   its maximum and one node's of the largest machine type for a node being replaced, rounded up to a multiple of 8
-  (6 + 32 + 4 = 42: 48, with the build pool's 8 x 4, #96); Hyperdisk Balanced, a
-  disk of `disk_gb` for each of those nodes, rounded up to a multiple of 500 (12 x 100 = 1200: 1500). A plan whose C4A pools its preferences do not cover (none, another
+  (6 + 32 + 8 + 4 = 50: 56, with the build pool's 8 x 4, #96, and the looper pool's 4 x 2, #95, #107); Hyperdisk Balanced, a
+  disk of `disk_gb` for each of those nodes, rounded up to a multiple of 500 (16 x 100 = 1600: 2000). A plan whose C4A pools its preferences do not cover (none, another
   region's, or fewer) is refused (`ci/policy.sh`), as is a preference without a contact. Google asks the contact
   about an increase: the protected GitLab variable `GCP_QUOTA_CONTACT`, an email of the host's directory with quota
   update permission on `tacplus-dev` (`ci/lib.sh` gives it to the dev stack as `quota_contact`). An increase may wait

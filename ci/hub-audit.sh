@@ -324,7 +324,7 @@ jq -n --arg start "$start" --arg end "$end" --arg log_start "$log_start" --arg a
         | .name as $n
         | {project: $p, cluster: $c, location: $l, name: $n, machine_type: .config.machineType, spot: (.config.spot // false),
            autoscaling: (.autoscaling.enabled // false),
-           # A minimum of 0 is left out (proto3 JSON), as the spot pool has (#95).
+           # A minimum of 0 is left out (proto3 JSON), as the spot and looper pools have (#95).
            min: (if .autoscaling.enabled then .autoscaling.minNodeCount // .autoscaling.totalMinNodeCount // 0 else null end),
            max: (if .autoscaling.enabled then .autoscaling.maxNodeCount // .autoscaling.totalMaxNodeCount else null end),
            nodes: ([$vms[] | select(.labels["goog-k8s-cluster-name"] == $c and .labels["goog-k8s-node-pool-name"] == $n)] | length)}],
