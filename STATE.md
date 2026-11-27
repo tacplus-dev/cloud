@@ -545,9 +545,11 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   live: `apply:ci` makes the account and its grants, `apply:gitlab` the schedule, once the GitLab project is pinned to the
   commit; then the first scheduled run, which #77 waits on. The hub's download URL answers from `main`'s latest
   successful pipeline only (README; PROPOSALS.md).
-- **The release registry (#115; Jody's approval of design B, 2026-11-26; tacplus-dev/fleet-seatrials#82):** the ci stack
-  makes `us-docker.pkg.dev/tacplus-ci/releases` (`modules/projects/ci/releases.tf`, `modules/settings` `releases`):
-  DOCKER, multi-region `us`, no cleanup policy; one writer, `release-publish@tacplus-ci`, which only tacplus-dev/build's
+- **The release registry (#115; the hub's approval of design B, on Jody's standing word, 2026-11-26, tacplus-dev/looper#265;
+  tacplus-dev/fleet-seatrials#82):** the ci stack makes `us-central1-docker.pkg.dev/tacplus-ci/releases`
+  (`modules/projects/ci/releases.tf`, `modules/settings` `releases`): DOCKER, in the region (#120: the multi-region `us`
+  failed the first `apply:ci`, 2026-11-27, against the host's `gcp.resourceLocations`, `in:us-central1-locations`; the ci
+  module now refuses any location but its region), no cleanup policy; one writer, `release-publish@tacplus-ci`, which only tacplus-dev/build's
   protected `main` in its environment `registry` becomes (provider `tacplus-dev-build-release` of the pool `gitlab-com`);
   one reader, `seatrials-deploy@tacplus-dev`; both bindings authoritative, and `ci/policy.sh` refuses another writer, a
   reader not a service account or another role on it. The audit lists every repository's bindings (its registries
