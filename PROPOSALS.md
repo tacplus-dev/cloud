@@ -707,17 +707,13 @@ the looper then marks it `promoted` or `declined` here with the date.
   parent needs (the model token's read and the App key's signing). Why: #111 cuts off only the containers started
   through the socket (the panel's finding 5, as asked). Model-written code that the model runs directly in the main
   container can still mint the VM account's tokens, which read `looper-model-token` and sign with `tacplus-looper`.
-- **Release builds by branch on tacplus-dev/build** (looper, #112, 2026-11-26; tacplus-dev/looper#252). What: two
-  more schedules beside the nightly in `stacks/gitlab/main.tf` (`local.nightly_builds`): `release-main`, nightly
-  (proposed 08:00 UTC), with the input `release: main`, and `release-branches`, every 3 h at :30, with the input
-  `release: branches`. Neither has a `repo`. That makes 3 of the 10 schedules. They land with or after the copy of
-  looper's `ci/build.gitlab-ci.yml` that declares `release`, with `depends_on` on it. Also a hub step in jody1-328023
-  (tacplus-dev/tacplus#223's provider, not managed here): widen the provider behind the build project's
-  `GCP_WIF_PROVIDER` to admit protected `main` with the (protected) environment `registry` as well as the protected
-  tags. Why: #252's releases build a repository's `main-green` and its `release/X.Y` branches and publish from
-  tacplus-dev/build's protected `main`. Today the provider admits only `<repo>/vX.Y.Z` tags, so their publish would be
-  refused. Open (#112's design): the hours, the hub's change and whether it is attribute-scoped, whether `registry`
-  becomes a protected environment, and which slots the branch releases use.
+- **tacplus's registry and its publish identity as code** (looper, #112, 2026-11-26). What: a stack here holding the
+  registry `tacplus` the releases publish to, its Workload Identity pool and provider and the `artifactregistry.writer`
+  binding (tacplus-dev/tacplus#223's, made by hand in jody1-328023; #112 has the hub widen the provider by hand to admit the
+  build project's protected `main` in the protected environment `registry`), so the drift job sees them and a change
+  to them is a commit. Why: today the README's commands are their only record. It belongs to moving off jody1-328023
+  (ROADMAP.md, Later), and it changes the published image path that every `tacplus.lock` pins, so it needs its own
+  design.
 - **Retire tacplus-ci's runner pools and their manager** (looper, #113, 2026-11-26). What: first confirm from GitLab
   that nothing ran for a day on the four pools' runners (shared 58534919, build 58928680, deploy, cluster) and that each
   tag they carry is served elsewhere. Then two applies. The gitlab stack's commit drops the pools' registrations and

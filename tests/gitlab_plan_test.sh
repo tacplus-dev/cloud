@@ -9,8 +9,8 @@
 # protection's push_access_level and merge_access_level at plan; and an import by the project's path, whose state
 # then differs from the config's numeric project ID, replaces what it adopts. So: the plan succeeds; it adopts main's
 # protection (Maintainers push and merge, no force push) and GCP_WIF_PROVIDER with no change, and tacplus-dev/build's
-# .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN and one nightly
-# schedule that builds every pinned repository (#67, tacplus-dev/looper#164), and tacplus-dev/cloud's hourly audit
+# .gitlab-ci.yml, made tacplus-dev/looper's (#26); it creates the build trigger, its BUILD_TRIGGER_TOKEN, one nightly
+# schedule that builds every pinned repository (#67, tacplus-dev/looper#164) and the two branch release schedules (#112), and tacplus-dev/cloud's hourly audit
 # schedule, audit, which sets no variable (#77); it adopts tacplus-dev/build itself with no change, group runners on and shared
 # runners off (#35), and with group runners off, as before the hub's hand change, it turns them on and changes nothing
 # else; it creates the in-cluster infra runner, a tacplus-dev group runner of protected refs, unpaused since the
@@ -117,9 +117,20 @@ if plan; then
     .after.description == "nightly" and .after.cron == "0 3 * * *" and .after.cron_timezone == "UTC" and
     ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == ["nightly=true"]' <<< "$schedule" > /dev/null &&
     ok "one nightly schedule on tacplus-dev/build, of every pinned repository: nightly and no repo (#67, tacplus-dev/looper#164)" || fail "the nightly schedule: $schedule"
+  # The branch releases (#112, tacplus-dev/looper#252): every pinned repository's main-green at 08:00 UTC, after the
+  # nightly, and each release/X.Y branch with something new every 3 hours at :30; no repo. Created after the build
+  # file (depends_on), which declares their input.
+  for s in "release-main|0 8 * * *|release=main" "release-branches|30 1-23/3 * * *|release=branches"; do
+    IFS='|' read -r name cron input <<< "$s"
+    schedule=$(change "module.gitlab.gitlab_pipeline_schedule.build[\"$name\"]")
+    jq -e --arg name "$name" --arg cron "$cron" --arg input "$input" '.actions == ["create"] and .after.project == "4003" and
+      .after.ref == "refs/heads/main" and .after.active and .after.description == $name and .after.cron == $cron and
+      .after.cron_timezone == "UTC" and ([.after.inputs[] | "\(.name)=\(.value)"] | sort) == [$input]' <<< "$schedule" > /dev/null &&
+      ok "the schedule $name on tacplus-dev/build: $cron UTC, $input and no repo (#112, tacplus-dev/looper#252)" || fail "the schedule $name: $schedule"
+  done
   schedules=$(jq -c '[.resource_changes[] | select(.type == "gitlab_pipeline_schedule" and .change.actions != ["delete"]) | .change.after.project] | group_by(.) | map({(.[0]): length}) | add' "$work/plan.json")
-  [ "$schedules" = '{"4001":1,"4003":1}' ] &&
-    ok "no other schedule on tacplus-dev/build (#67: #65's ten go), and tacplus-dev/cloud's audit alone (#77)" || fail "the schedules by project: $schedules"
+  [ "$schedules" = '{"4001":1,"4003":3}' ] &&
+    ok "no other schedule on tacplus-dev/build (#67: #65's ten go; #112's two), and tacplus-dev/cloud's audit alone (#77)" || fail "the schedules by project: $schedules"
   # The hub's audit (#77): hourly on tacplus-dev/cloud's main, its pipeline the audit job alone (by its description),
   # with no variable (the project allows pipeline variables to the Owner role only).
   schedule=$(change 'module.gitlab.gitlab_pipeline_schedule.project["tacplus-dev/cloud:audit"]')

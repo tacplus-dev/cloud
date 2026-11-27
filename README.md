@@ -54,7 +54,7 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
   written to its Secret Manager secret by this pipeline, and the read-only memberships of other projects,
   each with an expiry: `tacplus-looper-bot` a Reporter of tacplus-dev/build, for the looper's nightly recap (below,
   Memberships); and tacplus-dev/build's `.gitlab-ci.yml`, its pipeline trigger, whose token is tacplus-dev/looper's
-  `BUILD_TRIGGER_TOKEN`, rotated, and its nightly schedule (below, The build pipeline).
+  `BUILD_TRIGGER_TOKEN`, rotated, and its nightly and release schedules (below, The build pipeline).
 
 ## Layout
 
@@ -643,6 +643,50 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   nothing here. It replaced #33's schedule per pinned repository, of which GitLab's 10 schedules a project kept ten
   (#65): the apply of #67 changed looper's into it and deleted the other nine. The module still refuses more than 10
   at plan.
+- **The release schedules** (#112; tacplus-dev/looper#252, its README, Release builds by branch): two more on main,
+  no `repo` either, so tacplus-dev/build has 3 of its 10. **`release-main`**, at 08:00 UTC, after the nightly, the
+  input `release: main`: every pinned repository's main, each building the commit its `main-green` names (the rolling
+  check's, tacplus-dev/looper#249), never main's head; a main whose `main-green` is its release already, or that has
+  none yet, is skipped. It runs on the nightly's `nightly-slot-<n>` resource groups and `BUILD_NIGHTLY_TAGS`, so a
+  nightly still running at 08:00 queues it rather than fails it. **`release-branches`**, every 3 hours at :30
+  (`30 1-23/3 * * *`, clear of 03:00, 08:00 and the audit's :07), the input `release: branches`: each `release/X.Y`
+  branch whose head is not its release's commit; with nothing new its child pipeline is one job, `nothing-new`. A
+  green release publishes `<repo>:<branch>-<commit, 12 hex>` by digest and its `release-report` moves
+  `release-<repo>/<branch>/record`. **Build main now** is no schedule: the trigger's API run on main with
+  `{"repo": "<repo>", "release": "main"}`. GitLab refuses a pipeline whose input the file does not declare, so the
+  module creates a schedule after the build file (`depends_on`); `release` is declared from looper's b6f80ed on, and
+  `build_ci_commit` is b40b42b, whose looper image (main-7c1dc4d) carries #252's `looper-build`
+  (tacplus-dev/looper#261).
+- **The release's publish identity** (#112, the hub's, by hand: tacplus-dev/tacplus#223's registry
+  `us-docker.pkg.dev/jody1-328023/tacplus`, its pool, provider and `artifactregistry.writer` binding are in
+  jody1-328023 and no stack here holds them). A tag release publishes from the build project's protected tag
+  `<repo>/vX.Y.Z`; a branch release from its protected `main`, in the job's environment `registry` (looper-build's
+  publish refuses any other ref). The provider behind `GCP_WIF_PROVIDER` (one provider: the job's `id_token` audience
+  is built from that one variable) admits both, and on main only `registry`, a protected environment, so no other
+  job on main can exchange its token. The hub's steps (`P=jody1-328023`; `POOL` and `PROVIDER` from the variable's
+  value, `projects/<number>/locations/global/workloadIdentityPools/POOL/providers/PROVIDER`; G and H as in tacplus-dev/
+  looper's README, Credentials):
+
+  ```sh
+  # 1. registry a protected environment of tacplus-dev/build, deployable by Maintainers (the schedules' and the
+  #    trigger's owner is one); GitLab answers 409 if it is already
+  curl -sfH "$H" -X POST "$G/projects/tacplus-dev%2Fbuild/environments" -d name=registry || true
+  curl -sfH "$H" -X POST "$G/projects/tacplus-dev%2Fbuild/protected_environments" -H 'Content-Type: application/json' \
+    -d '{"name": "registry", "deploy_access_levels": [{"access_level": 40}]}'
+  # 2. the condition as it is, kept for the record, then widened
+  gcloud iam workload-identity-pools providers describe PROVIDER --project=$P --location=global \
+    --workload-identity-pool=POOL --format='value(attributeCondition,attributeMapping)'
+  gcloud iam workload-identity-pools providers update-oidc PROVIDER --project=$P --location=global \
+    --workload-identity-pool=POOL --attribute-condition='assertion.project_path == "tacplus-dev/build" &&
+    assertion.ref_protected == "true" && (assertion.ref_type == "tag" || (assertion.ref_type == "branch" &&
+    assertion.ref == "main" && assertion.environment == "registry" && assertion.environment_protected == "true"))'
+  # 3. the writer's binding: a principalSet of the whole pool (.../workloadIdentityPools/POOL/*) needs nothing more;
+  #    one scoped to an attribute of the tags needs the same principal for main's registry jobs
+  gcloud artifacts repositories get-iam-policy tacplus --project=$P --location=us
+  ```
+
+  Step 2's condition keeps whatever the old one required beyond these (fold its other clauses in). Then a
+  "build main now" of a repository with a `main-green` publishes `<repo>:main-<commit, 12 hex>`.
 
 **Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
 which the hub registers for tacplus-dev/looper#84.

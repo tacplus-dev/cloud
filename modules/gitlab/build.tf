@@ -140,6 +140,8 @@ resource "gitlab_project_protected_environment" "downstream" {
   deploy_access_levels_attribute = [{ access_level = "maintainer" }]
 }
 
+# A schedule's inputs must be declared by the build file (GitLab refuses a pipeline with an undeclared input), so a new
+# input's schedule is created after the file that declares it (#112).
 resource "gitlab_pipeline_schedule" "build" {
   for_each      = var.build == null ? {} : var.build.schedules
   project       = local.other_project_id[var.build.project]
@@ -149,4 +151,5 @@ resource "gitlab_pipeline_schedule" "build" {
   cron_timezone = "UTC"
   active        = true
   inputs        = [for name, value in each.value.inputs : { name = name, value = value }]
+  depends_on    = [gitlab_repository_file.build_ci]
 }

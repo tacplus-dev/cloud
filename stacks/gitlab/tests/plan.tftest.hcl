@@ -218,7 +218,9 @@ run "stack" {
   }
   # tacplus-dev/build (#26): its trigger's token is the looper project's (88136765) BUILD_TRIGGER_TOKEN, and one nightly
   # schedule that builds every pinned repository (#67; tacplus-dev/looper#164: the input nightly and no repo, the
-  # pipeline lists them itself), in place of #65's ten, one per repository, of the ten GitLab allows a project.
+  # pipeline lists them itself), in place of #65's ten, one per repository, of the ten GitLab allows a project; and the
+  # branch releases' two (#112; tacplus-dev/looper#252), no repo either: every pinned repository's main-green, nightly,
+  # and each release/X.Y branch with something new, every 3 hours.
   assert {
     condition     = output.build.project == "77" && output.build.variable == { project = "88136765", key = "BUILD_TRIGGER_TOKEN" }
     error_message = "The build trigger's token is not tacplus-dev/looper's (88136765) BUILD_TRIGGER_TOKEN."
@@ -229,8 +231,8 @@ run "stack" {
     error_message = "tacplus-dev/build does not take group runners, or takes gitlab.com's shared runners (#35): no tacplus-dev runner takes its build jobs."
   }
   assert {
-    condition     = output.build.schedules == { nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } } }
-    error_message = "tacplus-dev/build's schedules are not the one nightly of every pinned repository (#67: 03:00 UTC, the input nightly: true and no repo)."
+    condition     = output.build_schedules == { nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } }, release-main = { cron = "0 8 * * *", inputs = { release = "main" } }, release-branches = { cron = "30 1-23/3 * * *", inputs = { release = "branches" } } }
+    error_message = "tacplus-dev/build's schedules are not the nightly of every pinned repository (#67: 03:00 UTC, the input nightly: true and no repo) and the two release schedules (#112: release-main at 08:00 UTC, release: main; release-branches every 3 h at :30, release: branches; no repo)."
   }
   # fleet-seatrials reads tacplus-dev/build's release records with its own JOB-TOKEN (#117; tacplus-dev/looper#262,
   # tacplus-dev/fleet-seatrials#82): build's job token allowlist admits it, and no other project. Its trigger, whose

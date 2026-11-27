@@ -22,7 +22,7 @@ locals {
   cloud   = module.settings.gitlab_project
   secrets = "projects/${module.settings.bootstrap.project}/secrets"
   # The tacplus-dev/looper commit whose ci/build.gitlab-ci.yml files/build.gitlab-ci.yml is (ci/build-ci.sh).
-  build_ci_commit = "3cafa5dc0d090d09fcb82336f0bfd219e23c3f8a"
+  build_ci_commit = "b40b42b0c5fa223003bd5837821c5b482eb746b5"
 }
 
 module "gitlab" {
@@ -68,9 +68,10 @@ module "gitlab" {
   # are tagged build, which only tacplus-dev's group runners take); its .gitlab-ci.yml, tacplus-dev/looper's
   # ci/build.gitlab-ci.yml at local.build_ci_commit (files/, which ci/build-ci.sh checks and lints before every plan);
   # its pipeline trigger, whose token is the looper project's (88136765, tacplus-dev/looper) protected, masked
-  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and one nightly schedule that builds every pinned
-  # repository (local.nightly_builds, #67). The trigger rotates every 90 days: the drift job's expiry check reports its
-  # rotate_by from 30 days before, and a commit of a date 90 days later replaces it.
+  # BUILD_TRIGGER_TOKEN, for its reports' and managers' build jobs; and its schedules (local.nightly_builds): the nightly
+  # that builds every pinned repository (#67) and the branch releases' two (#112). The trigger rotates every 90 days:
+  # the drift job's expiry check reports its rotate_by from 30 days before, and a commit of a date 90 days later
+  # replaces it.
   build = {
     project = "tacplus-dev/build"
     ci_file = {
@@ -210,9 +211,22 @@ locals {
 # own (tacplus-dev/looper ci/build.gitlab-ci.yml): every pinned repository, at 03:00 UTC, with no list here. It replaced
 # #33's schedule per repository, of which GitLab's 10 a project kept ten (#65): the apply that made this one deleted
 # them. The module still refuses more than 10.
+#
+# The branch releases (#112; tacplus-dev/looper#252, its README, Release builds by branch): two more, on main with no
+# repo either. release-main, nightly at 08:00 UTC, after the nightly's 03:00: every pinned repository's main, each
+# building the commit its main-green names (the rolling check's, tacplus-dev/looper#249), skipped when that is its
+# release already or when there is none; it holds the nightly's nightly-slot-<n> resource groups and tags, so an
+# overlap queues rather than fails. release-branches, every 3 hours at :30 (clear of 03:00, 08:00 and the audit's :07):
+# each release/X.Y branch whose head is not its release's, and with nothing new a pipeline of one job, nothing-new. A
+# "build main now" is no schedule: the trigger's API run with {"repo": "<repo>", "release": "main"}. Their input,
+# release, is declared by files/build.gitlab-ci.yml from tacplus-dev/looper's b6f80ed on, and its plan needs the image
+# b40b42b pins (tacplus-dev/looper#261: main-7c1dc4d, with #252's looper-build); the module creates the schedules after
+# the file.
 locals {
   nightly_builds = {
-    nightly = { cron = "0 3 * * *", inputs = { nightly = "true" } }
+    nightly          = { cron = "0 3 * * *", inputs = { nightly = "true" } }
+    release-main     = { cron = "0 8 * * *", inputs = { release = "main" } }
+    release-branches = { cron = "30 1-23/3 * * *", inputs = { release = "branches" } }
   }
 }
 
@@ -300,6 +314,10 @@ output "members" {
 
 output "build" {
   value = module.gitlab.build
+}
+
+output "build_schedules" {
+  value = module.gitlab.build_schedules
 }
 
 output "build_runners" {
