@@ -581,4 +581,4 @@ in jody1-328023 do not carry over: in the new cluster it is on port 8443 of the 
   certificate's versions, no new order) wait for that move (README, Certificates). Follow-ups in PROPOSALS.md.
 - **Blocked on:** the host's grants on the parent folder, Jody's bootstrap run (README, What the host organization
   provides; What Jody runs, in order), the host's grants to `cloud-admin-pipeline`, then the hub's steps (no issue). The move off
-  jody1-328023 is #15. #113's land waits on tacplus-dev/cluster#65 (above).
+  jody1-328023 is #15.
