@@ -7,7 +7,8 @@
 # groups; on 2026-11-13 the build pool made no VM from 10:25Z, every build stalled, and nobody else could see why (a
 # zone out of spot t2a, a quota, a recreation stuck in its zone). So each group of
 # PROJECT, zonal or regional, is read: each VM its group cannot make (a creation or a recreation whose last attempt
-# failed: its action, its status, the error) and each stopped VM it keeps; the group's errors of the last 24 hours
+# failed: its action, its status, the error) and each stopped VM it keeps but one it means to (its target status
+# stopped or suspended: a reserved check machine's VM between checks, #111); the group's errors of the last 24 hours
 # (Compute's own list of them), counted by error and zone, with the last one's time and message; then each quota of
 # REGION and of the project that is 80% used or more. One line per finding, "pools <project>: ...", on stdout; a read
 # it cannot make is a finding too. It only reads, and exits 0 when it finds something: ci/drift.sh files what it
@@ -35,7 +36,7 @@ if read_json "list the groups" "$tmp/groups.json" compute instance-groups manage
   while read -r group where; do
     if read_json "list the VMs of $group" "$tmp/vms.json" compute instance-groups managed list-instances "$group" "$where"; then
       jq -r --arg g "$group" '.[] | (.lastAttempt.errors.errors // [])[0] as $e | (.instanceStatus // "") as $s
-        | select($e != null or ($s | IN("STOPPED", "TERMINATED", "SUSPENDED")))
+        | select($e != null or (($s | IN("STOPPED", "TERMINATED", "SUSPENDED")) and ((.targetStatus // "") | IN("STOPPED", "SUSPENDED") | not)))
         | (.instance | capture("/zones/(?<z>[^/]+)/instances/(?<n>[^/]+)$")) as $vm
         | "group \($g): VM \($vm.n) in \($vm.z) is \(.currentAction // "NONE")\(if $s != "" then " (\($s))" else "" end)\(if $e then ": \($e.code): \($e.message)" else "" end)"' \
         "$tmp/vms.json" | while IFS= read -r line; do say "$line"; done

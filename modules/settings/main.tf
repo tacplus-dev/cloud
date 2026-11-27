@@ -353,50 +353,57 @@ output "looper_vms" {
 
 # The reserved machines of the ci project (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the
 # panel's items 4, 5 and 8; capacity approved by Jody 2026-11-25, "go with what you all agreed with"), by name: the
-# rolling check of main for tacplus, the heavy project, on more than 8 CPUs so that its gate groups run side by side,
-# and one for the org's other repositories; and the merger's small control machine, for every org repository. On
-# demand, never spot; none is a looper VM (no model token, not the reports' key, no kicker) nor the GitLab build
-# project; each its own cache (its boot disk). The sizes are the panel's start and are right-sized from the rolling
-# check's measurement (tacplus-dev/looper#249). image is the looper image by digest once it runs looper-vm check and
-# merger (tacplus-dev/looper#249, #251): until then empty, and the group is at 0. key is the GitHub App key its
-# account alone signs with (github_apps).
+# rolling check of main for tacplus, the heavy project, and one for the org's other repositories, each running only
+# while there is something to check (its VM stopped otherwise, its disk kept: Jody, 2026-11-25); and the merger's small
+# always-on machine, for every org repository, which starts them. On demand, never spot; none is a looper VM (no model
+# token, not the reports' key, no kicker) nor the GitLab build project; each its own cache (its boot disk). Sized by
+# the quotas, none raised (Jody, 2026-11-25: "why do we need a CPU quota request??"; ci_cpus, ci_disks): tacplus's
+# check on C4A, 8 CPUs until the full gates are measured on it (tacplus-dev/looper#249 posts the peaks), the org's
+# check and the merger on T2A (pd-balanced), outside the C4A and Hyperdisk Balanced limits the looper VMs fill. image
+# is the looper image by digest: main-c0d53ba, the first with looper-vm check and merger (tacplus-dev/looper#249,
+# #251; image.yml run 45964797642). key is the GitHub App key its account signs with: tacplus-manager, the identity that
+# merges today, until Jody makes tacplus-check and tacplus-merger (the hub, for Jody, 2026-11-25: a setting, no new App
+# to go live); the ci stack gives each its app's IDs (github_apps).
 output "reserved_vms" {
-  description = "The reserved machines (the ci module's reserved_vms): per name, its role (check, the rolling check of main; merger, the merger), the tacplus-dev repository (repo) or org (org) it serves, its machine type (C4A), its Hyperdisk Balanced disk in GB, its image by digest (empty: none yet, and no VM), and its GitHub App key."
+  description = "The reserved machines (the ci module's reserved_vms): per name, its role (check, the rolling check of main; merger, the merger), the tacplus-dev repository (repo) or org (org) it serves, its machine type (C4A, on Hyperdisk Balanced, or T2A, on pd-balanced), its disk in GB, its image by digest (empty: none yet, and no VM), and its GitHub App key."
   value = {
-    check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }
-    check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
-    merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" }
+    check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 100, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" }
+    check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "t2a-standard-4", disk_gb = 100, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" }
+    merger            = { role = "merger", org = "tacplus-dev", machine_type = "t2a-standard-1", disk_gb = 30, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" }
   }
 }
 
 output "ci_cpus" {
   description = <<-EOT
-    tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it), and c4a_quota,
-    the region's C4A family limit (24, the audit's Quotas table); a raise is a request to Google, then this line. The
-    ci stack's test refuses VMs that need more CPUs than either: a VM over it fails QUOTA_EXCEEDED, as the build pool's
-    second did on 2026-11-13. Every VM is C4A since the runner pools and their manager went (#113, 16 CPUs back): the
-    looper VMs (0..1 each), 8 + 8 = 16 today (Jody, 2026-11-26), and the reserved machines (#111) once they have an
-    image (their group is at 0 until then), 8 + 4 + 1 more: 29, five over the C4A limit. No quota is raised for them
-    (Jody, 2026-11-25: "why do we need a CPU quota request??"): the limits are met by sizing, so the commit that gives
-    them their images sizes them under it (check-tacplus is 8 CPUs until a measurement of the full gates on it says it
-    needs more).
+    tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it); c4a_quota, the
+    region's C4A family limit (24, the audit's Quotas table); and t2a_quota, the region's T2A_CPUS (24, the audit's
+    Quotas table, unused since the runner pools went, #113). A raise is a request to Google, then this line. The ci
+    stack's test refuses VMs that need more CPUs than any of them at their peak: a VM over it fails QUOTA_EXCEEDED, as
+    the build pool's second did on 2026-11-13. The looper VMs (0..1 each), 8 + 8 = 16 C4A CPUs (Jody, 2026-11-26), and
+    the reserved machines (#111) with an image: check-tacplus's 8 more (24 of 24 C4A), the org's check's 4 and the
+    merger's 1 on T2A (5 of 24): 29 of 32 in all. No quota is raised for them (Jody, 2026-11-25: "why do we need a CPU
+    quota request??"): the limits are met by sizing (check-tacplus is 8 CPUs until a measurement of the full gates on
+    it says it needs more).
   EOT
   value = {
     quota     = 32
     c4a_quota = 24
+    t2a_quota = 24
   }
 }
 
 output "ci_disks" {
   description = <<-EOT
-    tacplus-ci's Hyperdisk Balanced GB in us-central1 (#113; the audit's Quotas table: the region's limit, 500, as
-    Google set it; a raise is a request to Google, then this line), which every looper VM's and reserved machine's boot
-    disk counts against. The ci stack's test refuses VMs whose disks need more GB than the quota: a VM over it fails
-    QUOTA_EXCEEDED and never comes. Today: the looper VMs 200 + 200 = 400 of 500; the reserved machines, once they have
-    an image, 200 + 200 + 10 more, met by sizing as their CPUs are (ci_cpus). No disk counts against SSD_TOTAL_GB since
-    the runner pools and their manager went (#113).
+    tacplus-ci's disk GB in us-central1 (#113; the audit's Quotas table: the region's limits, as Google set them; a raise
+    is a request to Google, then this line): hyperdisk_balanced_quota_gb (500), which every C4A VM's boot disk counts
+    against, and ssd_total_quota_gb (SSD_TOTAL_GB, 500, unused since the runner pools and their manager went), which a
+    T2A VM's pd-balanced boot disk does. The ci stack's test refuses VMs whose disks need more GB than either: a VM over
+    it fails QUOTA_EXCEEDED and never comes. Today: the looper VMs 200 + 200 = 400 of 500 Hyperdisk Balanced; the
+    reserved machines (#111) with an image, check-tacplus's 100 more (500 of 500), the org's check's 100 and the
+    merger's 30 of pd-balanced (130 of 500). A stopped check machine keeps its disk, so each counts all the time.
   EOT
   value = {
     hyperdisk_balanced_quota_gb = 500
+    ssd_total_quota_gb          = 500
   }
 }

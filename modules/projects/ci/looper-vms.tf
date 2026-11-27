@@ -87,13 +87,13 @@ resource "google_secret_manager_secret_iam_binding" "looper_model_token_adder" {
 }
 
 # A resize of a looper VM's group, and nothing else: the get its caller reads the group with, and the update a resize
-# is (instanceGroupManagers.resize needs compute.instanceGroupManagers.update alone). Each grant of it is conditioned
-# on the groups' names.
+# is (instanceGroupManagers.resize needs compute.instanceGroupManagers.update alone, as do its stopInstances and
+# startInstances, a reserved check machine's: reserved-vms.tf). Each grant of it is conditioned on the groups' names.
 resource "google_project_iam_custom_role" "looper_vm_resizer" {
   project     = google_project.ci.project_id
   role_id     = "looperVmResizer"
   title       = "Looper VM group resizer"
-  description = "Resizes a looper VM's instance group, conditioned on the group's name (tacplus-dev/cloud #108)."
+  description = "Resizes a looper VM's or a reserved machine's instance group, or stops or starts its VM, conditioned on the group's name (tacplus-dev/cloud #108, #111)."
   permissions = ["compute.instanceGroupManagers.get", "compute.instanceGroupManagers.update"]
   depends_on  = [terraform_data.iam_ready]
 }
