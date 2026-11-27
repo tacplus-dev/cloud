@@ -293,7 +293,9 @@ output "load_balancer" {
   value = {
     # tacplus.dev's gateway: tacplus-dev/operator renders seatrials' gateway Service (port 443, targetPort 8443, every
     # gateway replica) with this NEG (tacplus-dev/operator#22). Its NEG's name is <deployment>-gateway.
-    gateway = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = false }
+    # Its NEG exists since seatrials' first deploy through the operator (the audit of 2026-11-26: seatrials-gateway,
+    # us-central1-a, 1 endpoint), and the gateway is Ready since 2026-11-27 (#94).
+    gateway = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
     # The test IdP (idp.test.tacplus.dev, tacplus-dev/fleet-seatrials#27), on a port of its own of the same address:
     # https://idp.test.tacplus.dev:8443, Keycloak's own TLS on its default HTTPS port, rendered by fleet-seatrials'
     # test-idp/ with this NEG. Test only: a second address would be a second public IP, and SNI routing in the
