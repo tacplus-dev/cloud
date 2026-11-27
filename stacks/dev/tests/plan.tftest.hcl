@@ -236,7 +236,7 @@ run "dev" {
     error_message = "The Hyperdisk Balanced quota preference is not 1000 GB in us-central1 (the pools' 700 rounded up to 500)."
   }
   assert {
-    condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 22, preferred = 24 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 700, preferred = 1000 } }
+    condition     = alltrue([for q in google_cloud_quotas_quota_preference.pools : q.contact_email == "jody@example.com" && q.ignore_safety_checks == "QUOTA_DECREASE_PERCENTAGE_TOO_HIGH"]) && output.quotas == { c4a_cpus = { quota_id = "CPUS-PER-VM-FAMILY-per-project-region", dimensions = { region = "us-central1", vm_family = "C4A" }, need = 22, preferred = 24 }, hdb_gb = { quota_id = "HDB-TOTAL-GB-per-project-region", dimensions = { region = "us-central1" }, need = 700, preferred = 1000 } }
     error_message = "The quota preferences do not name the contact, or the module does not give them."
   }
   # The Cloud Quotas API, in the project the preferences are of, which their calls count against (#90: tests/quotas_plan_test.sh).

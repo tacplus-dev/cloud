@@ -340,7 +340,11 @@ resource "google_cloud_quotas_quota_preference" "pools" {
   quota_config {
     preferred_value = tostring(each.value.preferred)
   }
-  depends_on = [terraform_data.iam_ready]
+  # A pool removed lowers what the pools need by more than a tenth, which Google refuses as unsafe unless told the
+  # decrease is meant (#114 step 1, 2026-11-27: 56 to 48 C4A CPUs and 2000 to 1500 GB failed the apply). Never below
+  # what is in use: that check stays.
+  ignore_safety_checks = "QUOTA_DECREASE_PERCENTAGE_TOO_HIGH"
+  depends_on           = [terraform_data.iam_ready]
 }
 
 # The zone for dev hostnames. Its delegation is an NS record of the domain's zone (dns.tf); in the zone it replaces,
