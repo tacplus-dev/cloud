@@ -100,3 +100,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-27 looper issue Seatrials' trust domain is tacplus.dev: the llmproxy-seatrials rule and the Admiral's provider name spiffe://tacplus.dev/… (#119)
 - 2026-11-27 looper issue The nightly security fan-out needs a runner a land's build preempts: register nightly (arm64, build-nightly) and its token secret gitlab-runner-nightly (cluster#46) (#116)
 - 2026-11-27 looper issue Release builds by branch on tacplus-dev/build: the nightly and release-branch schedules, and publish's GCP identity on the protected main (#112)
+- 2026-11-27 looper issue Retire tacplus-ci's runner pools and their manager: nothing runs on them (#113)
