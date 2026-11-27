@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#114).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#111).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521` by digest, the 2.6 line's dated build tag, never the floating
@@ -63,8 +63,8 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   `ci/idle-runners.sh` with the GitLab token: each pool runner still registered must have no job running and none
   created within 24 hours, else no plan. The live audit (`ci/audit.sh`) names any `runner-*` VM, disk, template or
   group left (managers forgotten before #46). The quota tests count the looper VMs and the reserved machines alone:
-  16 C4A CPUs of 24 (32 all regions) and 400 GB of Hyperdisk Balanced of 500 today; the reserved machines' images
-  (13 CPUs, 410 GB more) need sizing under them. README, What runs where. `build-docker` (a host-Docker publish) runs
+  24 C4A CPUs of 24, 5 T2A of 24 (29 of 32 all regions), 500 GB of Hyperdisk Balanced of 500 and 130 GB pd-balanced
+  of `SSD_TOTAL_GB`'s 500. README, What runs where. `build-docker` (a host-Docker publish) runs
   nowhere now (PROPOSALS.md). tacplus-dev/cluster#65 dropped cluster's check against the ci stack's `runner` block, which this removes. On main: `apply:ci` and `apply:gitlab` run it on the next pin, and the
   audit should list no `runner-*` VM in tacplus-ci. Not verified against real GCP or GitLab: the idle check's first run,
   the destroy, and whether strays exist. jody1-328023's `gitlab-runner-mgr` (runners 57939705, 58307468) is outside
@@ -330,16 +330,25 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   need tacplus-ci's C4A CPU and Hyperdisk Balanced quotas, unread: a raise, or fewer pool CPUs, before the kicker sizes
   it to 1.
 - **The reserved machines and the metadata cut-off (#111; decisions/agentic-dev-flow-2026-11-25.md):**
-  `modules/settings` (`reserved_vms`): `check-tacplus` (c4a-standard-16), `check-tacplus-dev` (c4a-standard-4) and
-  `merger` (c4a-standard-1), on demand, with no image yet (tacplus-dev/looper#249, #251), so their groups are at 0.
-  The ci stack's `reserved-vms.tf` gives each its own group, its own account (logWriter, and a signer of its role's key
-  alone: `tacplus-check` or `tacplus-merger`, neither of which has a version or an app yet), the looper VMs' OS and
-  cloud-init, and `looper-role` in the metadata. `files/looper-vm.sh` runs `looper-vm check` or `looper-vm merger`
-  (the merger with no container socket) and never sizes these machines down. On every VM it cuts the build
-  containers off from the metadata server (a `DOCKER-USER` rule, or nothing starts). Tested with the ci stack's plan
-  tests and `tests/looper_vm_test.sh`. Not applied, not seen live: whether COS's iptables and Docker's
-  `DOCKER-USER` behave as the stubs do. **Before an image is pinned:** Jody's two apps and key imports, and
-  `CPUS_ALL_REGIONS` raised to 49 or more (the stack test counts the machines then; PROPOSALS.md).
+  `modules/settings` (`reserved_vms`): `check-tacplus` (c4a-standard-8, 100 GB Hyperdisk Balanced),
+  `check-tacplus-dev` (t2a-standard-4, 100 GB pd-balanced) and `merger` (t2a-standard-1, 30 GB), on demand, on the
+  looper image `main-c0d53ba` by digest (tacplus-dev/looper#249, #251), sized under the quotas with no raise. The ci
+  stack's `reserved-vms.tf` gives each its own group, its own account (logWriter, and a signer of `tacplus-manager`
+  beside the managers' jobs, no looper VM: the hub's interim until Jody makes `tacplus-check` and `tacplus-merger`),
+  the looper VMs' OS and cloud-init, and `looper-role`, `looper-group` and `looper-env` (its app's IDs) in the
+  metadata. A check machine's group (`reserved_vm_check`, 0..1, a manual standby, never the plan's) stops its VM when
+  every check ended idle, keeping its disk; the merger's (at 1, the plan's) is the orchestrator: `files/looper-vm.sh
+  kick`, every minute, starts a check machine at rest whose `looper-check needed` says so (`looperVmResizer` on the
+  check groups alone; a check machine's on its own). On every VM it cuts the build containers off from the metadata
+  server (a `DOCKER-USER` rule, or nothing starts). `ci/pools.sh` does not report a VM its group means to keep
+  stopped. Tested with the ci stack's plan tests, `tests/looper_vm_test.sh` and `tests/pools_test.sh`. On main: the
+  next `apply:ci` brings the merger up and leaves the check machines at 0 until the merger starts one. Not seen live:
+  COS's iptables and `DOCKER-USER` as the stubs behave, T2A in us-central1-b, `stopInstances`/`startInstances` with
+  `looperVmResizer` alone, `targetStatus` in gcloud's list, and the in-image `looper-check needed` run as the
+  merger's app. **Before a check runs:** `tacplus-manager` needs Commit statuses and Pull requests (read and write)
+  for the check's token (tacplus-dev/looper#249; PROPOSALS.md); until then a started check machine fails, stops after
+  its fifth failure in a row, and the merger's machine backs off (15 minutes, doubled, to 6 hours). Reports still land through the manager (`LOOPER_VM_MR=0`) until the check is seen
+  working (PROPOSALS.md).
 - **The public entry: a TCP proxy, TLS passed through (#21):** the dev stack's `load-balancer.tf` makes Google's global
   external proxy Network Load Balancer on the address `gateway` (decisions/network-exposure-2026-11-03.md, addendum "we
   terminate TLS, not the cloud"): per listener of `modules/settings` `load_balancer`, a forwarding rule
