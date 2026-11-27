@@ -300,9 +300,11 @@ the scanners that need a database.
 ### How a change flows
 
 1. A pull request here; the tests run as its gates (the looper's land, or `ci/tools.sh && ci/lint.sh all && ci/checks.sh`,
-   `gates.yaml`'s `full`). They run in the image `build.lock` pins by digest, the CI image, with no Docker: tacplus-dev/build
-   builds a commit only from that pin (looper#71). To move it, change `build.lock` and the CI file's `default.image`
-   together (`tests/ci_test.sh` refuses them apart): a new digest is a change like any other, landed on the full gates. The pin is a tacplus line's dated build tag at its digest,
+   `gates.yaml`'s `full`; a change to the top-level docs no other test reads, PROPOSALS.md, ROADMAP.md, STATE.md,
+   HISTORY.md and LICENSE, runs its `docs` set alone, `tests/hosting_test.sh`, #118). They run in the image `build.lock`
+   pins by digest, the CI image, with no Docker: tacplus-dev/build builds a commit only from that pin (looper#71). To
+   move it, change `build.lock` and the CI file's `default.image` together (`tests/ci_test.sh` refuses them apart): a new
+   digest is a change like any other, landed on the full gates. The pin is a tacplus line's dated build tag at its digest,
    `build:<YYYYMMDD>-<commit>@sha256:…`, never a floating `build:X.Y`, which moves on every rebuild (#102, cluster#54):
    the nightly scan moves it to its line's newest (looper#226).
 2. Merged, a merge request in the GitLab project setting `.gitlab-ci.yml` to `ci/pin.sh <commit>`'s output, for that commit

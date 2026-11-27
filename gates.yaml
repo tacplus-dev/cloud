@@ -1,6 +1,13 @@
 # The gate map of tacplus-dev/cloud (#25; tacplus-dev/looper README: Gates scaled to the diff): the gates a land
-# and the build pipeline run, in the image build.lock pins, with no Docker and no credential. One set, full: the
-# pinned tools into bin/ (ci/tools.sh), every lint (ci/lint.sh all) and the tests (ci/checks.sh), as CI runs them.
+# and the build pipeline run, in the image build.lock pins, with no Docker and no credential. full: the pinned tools
+# into bin/ (ci/tools.sh), every lint (ci/lint.sh all) and the tests (ci/checks.sh), as CI runs them; a path no set
+# names, and a change to this file, run it.
 full:
   run: ci/tools.sh && ci/lint.sh all && ci/checks.sh
   minutes: 30
+# The top-level docs no other test reads (#118): the one that does, the hosting scan of every tracked file. README.md
+# is full's: the tests read its tables and its hosting note (tests/gates_test.sh).
+docs:
+  run: tests/hosting_test.sh
+  minutes: 1
+  paths: [/PROPOSALS.md, /ROADMAP.md, /STATE.md, /HISTORY.md, /LICENSE]
