@@ -147,6 +147,17 @@ is applied:
 - **No SSH anywhere, not even IAP:** a firewall rule allowing port 22 in either direction (`tcp` or `all` with no ports,
   `22`, or a range covering it) is refused, with no exception: the runners' internal rule
   `runner-manager-to-workers-ssh` went with the runner VMs (#113). Break-glass on a VM is its serial console and its logs.
+- **No VM outside GKE** (#11; `decisions/only-vms-are-k8s-nodes-2026-11-04.md`, and for the build environment
+  `looper-build-vms-2026-11-24.md`, tacplus-dev/roadmap): a standalone VM (`google_compute_instance`,
+  `google_compute_instance_from_template` or `_from_machine_image`) created or updated is refused in every stack, with
+  no exception; so is an instance template or instance group manager, zonal or regional, but the ci module's
+  looper VMs and reserved machines, admitted by address (`module.ci.google_compute_instance_template` and
+  `google_compute_instance_group_manager`, `looper_vm` and `reserved_vm`), whose templates must boot Container-Optimized
+  OS pinned by name (`modules/settings`' `cos_arm64_image`) and are held to the rules above and below like any VM. The
+  source check refuses the same resource blocks outside `modules/projects/ci`'s two. A new kind of VM outside GKE is a
+  change to `ci/policy.sh`'s admitted list, reviewed as such. GKE's own nodes are in no plan; the live audit does not
+  report this one (a live VM has no stack address), and names the runner pools' leftovers instead (below, What runs
+  where).
 - **Private nodes, on Container-Optimized OS:** a cluster without `private_cluster_config.enable_private_nodes`, a node pool
   with public nodes, or one whose `image_type` is not `COS_CONTAINERD`, is refused.
 - **No public control plane** (Jody, 2026-11-18, #79: only load balancers are public; until then it was public, Jody,
@@ -727,9 +738,28 @@ instance group still in a project, which no stack holds: it bills, and goes by h
 and a destroy. The hourly audit's inventory (below, The hub's audit) is the check that none is left: no `runner-*` VM
 in tacplus-ci, its CPU use the looper VMs' alone.
 
-Outside this repository: jody1-328023's `gitlab-runner-mgr` and its runner VMs (runners 57939705 and 58307468, paused)
-are in no stack here and in no audit of this pipeline. If they still exist, they still bill: they are Jody's to check
-and delete (ROADMAP.md, Later: jody1-328023 drained).
+### Moving off jody1-328023: the interim runner VMs, for Jody
+
+#11. Made by hand in jody1-328023 before this pipeline ran, and in no stack here and in no audit of this pipeline, so
+no apply removes them. If they still exist, they still bill. For Jody to delete once the switch has run green for a
+week: since #113's apply (tacplus-ci's pools gone, the jobs on the in-cluster runners, the looper VMs and the reserved
+machines; ROADMAP.md, Later: jody1-328023 drained; `decisions/looper-build-vms-2026-11-24.md`, its migration step 7):
+
+- `gitlab-runner-mgr`, the runner manager VM;
+- the runner managed instance groups it drives, with their instance templates and VMs (runners 57939705 and 58307468,
+  paused);
+- then their GitLab registrations, 57939705 and 58307468.
+
+```sh
+p=jody1-328023
+gcloud compute instances list --project=$p --format='table(name,zone.basename(),status)'
+gcloud compute instance-groups managed list --project=$p --format='table(name,location(),targetSize)'
+gcloud compute instance-templates list --project=$p --format='table(name)'
+# Each runner group, then the manager, then the templates the groups used:
+gcloud compute instance-groups managed delete <group> --zone=<zone> --project=$p
+gcloud compute instances delete gitlab-runner-mgr --zone=<zone> --project=$p
+gcloud compute instance-templates delete <template> --project=$p
+```
 
 ## The build cache
 

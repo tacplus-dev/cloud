@@ -799,3 +799,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   listed build's allowlist (`GET /projects/88268985/job_token_scope/allowlist`), `gitlab_project_job_token_scopes` with
   the whole list in place of one `gitlab_project_job_token_scope` per reader, and each hand entry adopted or removed.
   Why: an entry made by hand stays today, and the nightly drift never sees it.
+- **The live audit of VMs outside GKE** (looper, #11, 2026-11-27). What: `ci/audit.sh` names each live instance,
+  instance template and managed group that is neither GKE's (its node pools' groups and templates, `gke-*`, the
+  `goog-gke-node` label) nor made by the ci module's `looper_vm` and `reserved_vm` groups (`looper-vm-*` and the
+  reserved machines' names, created by those groups), as `live <project>: ... is a VM outside GKE`. Why: `ci/policy.sh`
+  refuses a VM outside GKE by its address in a plan (#11), which a live VM has not, so the audit drops that finding
+  today and names only the runner pools' `runner-*` leftovers; a VM made by hand in either project is in no state.
+- **An admitted group runs an admitted template** (looper, #11, 2026-11-27). What: `ci/policy.sh plan` also refuses a
+  `looper_vm` or `reserved_vm` instance group manager whose `version.instance_template` is not its own module's
+  template of the same name (in the plan, or by reference when known only after apply). Why: the policy holds the
+  admitted templates to COS, no external address and no SSH, but a group pointed at a template made outside the plan
+  would boot that one instead.

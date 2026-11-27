@@ -14,7 +14,8 @@
 # GKE's own firewall rules (gke-*, from the network's private ranges only: its nodes, its pods, its control plane)
 # open every port, 22 among them, inside the network; they are GKE's, not a stack's, so their port 22 is not
 # reported. Anything else they allow is, as is a gke-* rule from outside those ranges. An external address is
-# reported unless it is the one public IP, the global address gateway (#13).
+# reported unless it is the one public IP, the global address gateway (#13). The plan's refusal of a VM outside GKE
+# (#11) goes by a stack's resource address, which nothing live has, so it is not reported.
 #
 #   ci/audit.sh PROJECT...    # needs gcloud (signed in: ci/lib.sh ci_gcp) and jq
 set -uo pipefail
@@ -72,6 +73,8 @@ for project in "$@"; do
     | "live \($p): firewall rule \(.name) allows port 22"' > "$tmp/exempt" 2>> "$tmp/err" ||
     { echo "live $project: cannot read its lists: $(head -c 300 "$tmp/err" | tr '\n' ' ')"; continue; }
   "$here/policy.sh" plan "$tmp/live.json" > /dev/null 2> "$tmp/refused"
-  sed -n "s|^policy: refused: $tmp/live.json: ||p" "$tmp/refused" | grep -vF -f "$tmp/exempt"
+  # A VM outside GKE (#11) is refused by its address in a stack, which a live VM has not (GKE's nodes, the looper VMs'
+  # instances): not reported here.
+  sed -n "s|^policy: refused: $tmp/live.json: ||p" "$tmp/refused" | grep -vF -f "$tmp/exempt" | grep -vF ' is a VM outside GKE ('
 done
 exit 0

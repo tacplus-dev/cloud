@@ -94,9 +94,18 @@ release_publisher=serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.
 # left after GKE's DaemonSets (metadata server, logging, Dataplane V2, CSI, metrics) and the build's helper (50m 64Mi).
 gates_request_cpu=3000
 gates_request_memory=$((10 * 1024 * 1024 * 1024))
+# No VM outside GKE (#11; decisions/only-vms-are-k8s-nodes-2026-11-04.md, and looper-build-vms-2026-11-24.md for the
+# build environment): what makes a VM; of them, the ci module's looper VMs (#108) and reserved machines (#111) alone,
+# by address, each a zonal group of a global template; a new kind of VM outside GKE is a change to this list.
+vm_types='google_compute_instance|google_compute_instance_from_template|google_compute_instance_from_machine_image|google_compute_(region_)?instance_template|google_compute_(region_)?instance_group_manager'
+vm_admitted_types='google_compute_instance_template|google_compute_instance_group_manager'
+vm_admitted_names='looper_vm|reserved_vm'
+vm_why="no standalone VM in any stack, and no instance template or group but the ci module's looper_vm and reserved_vm (#11): a new kind is a change to ci/policy.sh's admitted list"
+# What an admitted VM boots: Container-Optimized OS, pinned by its image's name (modules/settings, cos_arm64_image).
+vm_image='^(https://www\.googleapis\.com/compute/v1/)?projects/cos-cloud/global/images/cos-[a-z0-9-]+$'
 
 source_check() {
-  local dir f n line
+  local dir f n line type name
   local -A why=(
     ['\bgoogle_service_account_key\b']="creates a service-account key (google_service_account_key)"
     ['\ballUsers\b']="names allUsers: nothing is public"
@@ -119,6 +128,13 @@ source_check() {
       done < <(awk '/^resource "google_compute_global_address" "/ { n = FNR; a = $3; gsub(/"/, "", a); p = 0 }
         n && /^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
         n && /^}/ { if (!p) print n ": google_compute_global_address." a; n = 0 }' "$f")
+      # No VM outside GKE (#11): a VM's resource block but the ci module's admitted ones.
+      while IFS=: read -r n line; do
+        [[ $line =~ ^resource[[:space:]]+\"([a-z0-9_]+)\"[[:space:]]+\"([^\"]+)\" ]] || continue
+        type=${BASH_REMATCH[1]} name=${BASH_REMATCH[2]}
+        [[ $f =~ (^|/)modules/projects/ci/[^/]+\.tf$ && $type =~ ^($vm_admitted_types)$ && $name =~ ^($vm_admitted_names)$ ]] && continue
+        refuse "$f:$n: $type.$name is a VM outside GKE: $vm_why"
+      done < <(grep -nE "^resource[[:space:]]+\"($vm_types)\"" "$f" 2>/dev/null)
     done < <(find "$dir" -type d -name .terraform -prune -o -type f \( -name '*.tf' -o -name '*.tftpl' \) -print0 | sort -z)
   done
 }
@@ -180,6 +196,15 @@ plan_check() {
          | (select($m | has("ssh-keys") or has("sshKeys")) | "\($a) has an SSH key in its metadata: no SSH in any form"),
            (select(any($after.tags[]?; . == "looper-vm") and $m["block-project-ssh-keys"] != "true")
             | "\($a) is a looper VM that does not block the project'"'"'s SSH keys (metadata block-project-ssh-keys \"true\"): no SSH in any form (#108)")),
+        # No VM outside GKE (#11): the ci module'"'"'s looper VMs and reserved machines alone, and they boot pinned COS.
+        (select(.type | test("^(\($vm_types))$"))
+         | if ($a | test("^module\\.ci\\.(\($vm_admitted_types))\\.(\($vm_admitted_names))(\\[[^]]*\\])?$")) | not then
+             "\($a) is a VM outside GKE (a \(.type)): \($vm_why)"
+           elif .type | endswith("_template") then
+             (($after.disk // []) | (map(select(.boot == true)) + .)[0]) as $boot
+             | (select(any($unknown[]; test("^disk($|\\.[0-9]+($|\\.source_image$))")) or ($boot.source_image // "" | test($vm_image) | not))
+                | "\($a) does not boot Container-Optimized OS pinned by name (its boot disk'"'"'s source_image is \($boot.source_image // "unknown" | tojson)): the looper VMs and reserved machines run COS alone, as modules/settings pins it (#11)")
+           else empty end),
         (select(.type == "google_compute_firewall")
          | if any($unknown[]; test("^(source_ranges|source_tags|source_service_accounts|allow)($|\\.)")) then
              "\($a): its sources or what it allows are known only after apply"
@@ -303,7 +328,8 @@ plan_check() {
       --arg audit "serviceAccount:$audit_sa" --arg audit_view "$audit_view" --arg audit_view_filter "$audit_view_filter" \
       --arg audit_registries_role "$audit_registries_role" --argjson audit_registries_permissions "$audit_registries_permissions" \
       --arg release_repository "$release_repository" --arg release_project "$release_project" --arg release_publisher "$release_publisher" \
-      --argjson gates_cpu "$gates_request_cpu" --argjson gates_memory "$gates_request_memory" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
+      --arg vm_types "$vm_types" --arg vm_admitted_types "$vm_admitted_types" --arg vm_admitted_names "$vm_admitted_names" \
+      --arg vm_why "$vm_why" --arg vm_image "$vm_image" --argjson gates_cpu "$gates_request_cpu" --argjson gates_memory "$gates_request_memory" --argjson audit_roles "$(printf '%s\n' "${audit_roles[@]}" | jq -R . | jq -sc .)" "$p") ||
       { refuse "$p: cannot read its changes"; continue; }
     while IFS= read -r line; do [ -n "$line" ] && refuse "$p: $line"; done <<< "$out"
     # The node pools' quotas (#88), over the whole plan: what its C4A pools need at their maximum, with one node of the

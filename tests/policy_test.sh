@@ -61,6 +61,13 @@ refuses "a global address without prevent_destroy" "google_compute_global_addres
 passes "a clean module" source "$fx/policy/clean"
 passes "this repository's modules and stacks" source "$here/modules" "$here/stacks"
 refuses "a missing directory" "no such directory" source "$fx/policy/none"
+# No VM outside GKE (#11): no standalone VM anywhere; templates and groups but the ci module's looper_vm and reserved_vm.
+refuses "a module with a standalone instance (#11)" 'google_compute_instance.bastion is a VM outside GKE' source "$fx/policy/vm-instance"
+refuses "a module with an instance from a template (#11)" 'google_compute_instance_from_template.one is a VM outside GKE' source "$fx/policy/vm-instance"
+refuses "a looper VM's template outside the ci module (#11)" 'google_compute_instance_template.looper_vm is a VM outside GKE' source "$fx/policy/vm-template"
+refuses "a module with a regional instance group (#11)" 'google_compute_region_instance_group_manager.pool is a VM outside GKE' source "$fx/policy/vm-template"
+refuses "another template in the ci module (#11)" 'google_compute_instance_template.builder is a VM outside GKE' source "$fx/policy/vm-ci-other"
+passes "the ci module's looper VMs and reserved machines, a VM read and one removed (#11)" source "$fx/policy/vm-admitted"
 
 refuses "a plan creating a key" "creates a service-account key" plan "$fx/plans/key.json"
 refuses "a plan with member allUsers" "allUsers" plan "$fx/plans/public-member.json"
@@ -88,6 +95,21 @@ refuses "a plan with a template's access config unknown" "known only after apply
 refuses "a plan with an SSH key in a VM's metadata (#108)" "has an SSH key in its metadata" plan "$fx/plans/looper-vm-ssh-key.json"
 refuses "a plan with a looper VM that does not block the project's SSH keys (#108)" "does not block the project's SSH keys" plan "$fx/plans/looper-vm-project-keys.json"
 passes "a plan with a looper VM with no SSH key, the project's blocked, and no external address (#108)" plan "$fx/plans/looper-vm-clean.json"
+# No VM outside GKE (#11; decisions/looper-build-vms-2026-11-24.md): no standalone VM, created or updated, in any stack;
+# an instance template or group but the ci module's looper_vm and reserved_vm, which boot Container-Optimized OS.
+for a in module.dev.google_compute_instance.bastion module.ci.google_compute_instance_from_template.one \
+  module.ci.google_compute_instance_from_machine_image.copy google_compute_instance.kept; do
+  refuses "a plan with a standalone VM, $a (#11)" "$a is a VM outside GKE" plan "$fx/plans/vm-instance.json"
+done
+for a in module.ci.google_compute_instance_template.other 'module.ci.google_compute_region_instance_template.looper_vm["tacplus"]' \
+  'module.dev.google_compute_instance_template.looper_vm["tacplus"]' module.ci.google_compute_instance_group_manager.other \
+  'module.ci.google_compute_region_instance_group_manager.reserved_vm["merger"]'; do
+  refuses "a plan with a VM not admitted, $a (#11)" "$a is a VM outside GKE" plan "$fx/plans/vm-template.json"
+done
+passes "a plan with the looper VMs and reserved machines on COS, and the runners' VMs deleted (#11)" plan "$fx/plans/vm-admitted.json"
+for k in merger family unknown nodisk; do
+  refuses "a plan with an admitted VM not on pinned COS, $k (#11)" "[\"$k\"] does not boot Container-Optimized OS" plan "$fx/plans/vm-not-cos.json"
+done
 refuses "a plan with ingress from 0.0.0.0/0" "from the internet" plan "$fx/plans/ingress-world.json"
 refuses "a plan with ingress from ::/0" "from the internet" plan "$fx/plans/ingress-world6.json"
 refuses "a plan with ingress from no source (0.0.0.0/0)" "from the internet" plan "$fx/plans/ingress-no-source.json"
