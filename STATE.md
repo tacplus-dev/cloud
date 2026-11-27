@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#115).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#116).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521` by digest, the 2.6 line's dated build tag, never the floating
@@ -31,7 +31,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (runner manager VM, the arm64 pools as MIGs (#5, below), runner token secrets, the build
   cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal, a spot and a looper pool (#7, #95, below), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
-  variables from Secret Manager by version; the pools' runners, and the in-cluster `infra` runner, #64, unpaused at the switch-over, #66, which paused the `cluster` and `deploy` pools, and `kick`, #81, `build-report`, #93, `build-light`, #100, and `manager`, #106, runners); the GitLab pipeline (checks on every
+  variables from Secret Manager by version; the pools' runners, and the in-cluster `infra` runner, #64, unpaused at the switch-over, #66, which paused the `cluster` and `deploy` pools, and `kick`, #81, `build-report`, #93, `build-light`, #100, `manager`, #106, and `nightly`, #116, runners); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
   applying); `ci/policy.sh` (no service-account key, nothing public, nothing a commit does not fix) on the source and on
   every plan, and the network rules on every plan (#7, below). Tests green (`ci/lint.sh all && ci/checks.sh`), here and in the CI image: each stack's plan against mock
@@ -321,9 +321,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   Google's answers (`tests/fixtures/gitlab/api.json`, built from the APIs' documented responses, not recorded: the
   looper cannot read the project's settings): both adopted with no change, nothing replaced or deleted, the old form
   refused. Its plan: the two adoptions, and creates of the membership (#12), the four protected environments, the
-  reader's two variables, and the pools' runners and the `infra` (#64), `kick` (#81), `build-report` (#93), `build-light` (#100) and `manager` (#106) runners with their token versions.
+  reader's two variables, and the pools' runners and the `infra` (#64), `kick` (#81), `build-report` (#93), `build-light` (#100), `manager` (#106) and `nightly` (#116) runners with their token versions.
 - **The cluster pipeline's rights on dev, by this pipeline (#18):** the dev stack makes the secrets `gitlab-runner-build`,
-  `gitlab-runner-control`, `gitlab-runner-infra` (#64), `gitlab-runner-kick` (#81), `gitlab-runner-build-report` (#93), `gitlab-runner-build-light` (#100) and `gitlab-runner-manager` (#106; us-central1, empty; `secretAccessor` for `cluster-admin-pipeline` alone, `secretVersionAdder`
+  `gitlab-runner-control`, `gitlab-runner-infra` (#64), `gitlab-runner-kick` (#81), `gitlab-runner-build-report` (#93), `gitlab-runner-build-light` (#100), `gitlab-runner-manager` (#106) and `gitlab-runner-nightly` (#116; us-central1, empty; `secretAccessor` for `cluster-admin-pipeline` alone, `secretVersionAdder`
   for `runner_token_adders` alone, Jody's account, from the protected GitLab variable `GCP_RUNNER_TOKEN_ADDERS` (`ci/lib.sh`:
   no file names the host's directory, #8): authoritative bindings; output `runner_tokens`), and, through
   the kubernetes provider as this pipeline, the ClusterRoleBinding `cluster-admin-pipeline` of `cluster-admin` to the User
@@ -382,6 +382,16 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   `tests/gitlab_plan_test.sh`. Not applied yet: `apply:dev` makes the secret, `apply:gitlab` the runner and version
   (a retry if it reaches the version first); then cluster#60 renders the runner, and tacplus-dev/looper#236 tags the
   managers `manager`. **Gap:** until then managers still wait for `control`'s slots.
+- **The `nightly` runner, registered and its token written by this pipeline (#116; tacplus-dev/cluster#46):** as
+  `build-report`: the gitlab stack registers the in-cluster runner, on the spot pool, of the nightly fan-out's jobs
+  alone, whose pods run at cluster's PriorityClass `build-nightly` (above the reports, below a land's)
+  (`stacks/gitlab/main.tf`, `nightly`), a tacplus-dev group runner, tags `arm64` and `build-nightly` and no other (not
+  `build`, whose land jobs it would take too), untagged off, any ref, unpaused, and writes its token as
+  `gitlab-runner-nightly`'s version 1, which cluster#46's `gitlab-runner/runners/nightly.yaml` names. Tested: the
+  gitlab and dev stacks' plan tests and `tests/gitlab_plan_test.sh`. Not applied yet: `apply:dev` makes the secret,
+  `apply:gitlab` the runner and version (a retry if it reaches the version first); then the hub re-pins cluster to
+  cluster#46, then tacplus-dev/looper#220 sets `BUILD_NIGHTLY_TAGS`. **Gap:** until then the nightly's security jobs
+  still queue behind the report builds on `build`'s tags. Interim: it goes with the spot pool (#114).
 - **The switch-over to `infra` (#66; tacplus-dev/cluster#25):** `stacks/gitlab/main.tf` unpauses `infra` and pauses the
   `cluster` and `deploy` pools' runners (`contains(["cluster", "deploy"], k)`); `shared` and `build` take jobs. Tested:
   the gitlab stack's plan test and `tests/gitlab_plan_test.sh` assert which runners are paused. Its `apply:gitlab` on
