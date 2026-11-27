@@ -693,7 +693,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   Their IDs go into `github_apps`, with `import` true, their keys are imported as #19's were, and `reserved_vms`'
   `key` moves to them: the checks' login (`LOOPER_CHECK_LOGIN`, the merger's gate) follows. Why: a tightening, not a
   blocker (the hub, for Jody, 2026-11-25): until then all three machines sign as `tacplus-manager`, beside the
-  managers' jobs and no looper VM.
+  managers' jobs and no looper VM. That app then needs **Commit statuses** and **Pull requests** (read and write) as
+  well as its Contents and Issues, for the check's token (tacplus-dev/looper README, the apps): a setting on the app,
+  its owner's. Until it holds them, GitHub refuses the check's token, so a check machine the merger's machine starts
+  fails, stops after its fifth failure, and is started again only after a backoff (15 minutes, doubled, to 6 hours):
+  no check runs, and the merger's gate stays closed.
 - **Right-size the reserved machines from the measured peaks** (looper, #111, 2026-11-27). What: once the rolling
   check has run the full gates on `check-tacplus` (8 CPUs, 100 GB) and `check-tacplus-dev`, size them from the peaks
   tacplus-dev/looper#249 posts: more CPUs for tacplus's only if its gate groups need them (a quota raise or fewer
