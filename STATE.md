@@ -1,6 +1,6 @@
 # State: cloud
 
-Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#113).
+Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by the looper (#114).
 
 - **Version / line:** unreleased (main); no tacplus floor (OpenTofu and shell, no tacplus build). CI image
   `ghcr.io/tacplus-dev/tacplus/build:20261126-57a6521` by digest, the 2.6 line's dated build tag, never the floating
@@ -29,7 +29,7 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
 - **Works (#1):** `bootstrap/bootstrap.sh` (the folder and project `bootstrap`, the state bucket,
   `cloud-admin-pipeline` with its rights and its WIF from `tacplus-dev/cloud`'s protected main, the empty secrets;
   idempotent, refuses what differs, `--dry-run`; reads a folder listed by its bare ID as gcloud now lists it, #14); the stacks `folder` (folders `ci` and `dev`, readers), `ci` (the looper VMs and the reserved machines on the network
-  `runners` and its NAT, no runner pool since #113, below; the build cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal, a spot and a looper pool (#7, #95, below), `dev.tacplus.dev` zone,
+  `runners` and its NAT, no runner pool since #113, below; the build cache, the GitHub Apps' import-only KMS keys and their federation, #19 below), `dev` (GKE Axion cluster, private COS nodes in a normal and a spot pool (#7, below; the looper pool gone, #114), `dev.tacplus.dev` zone,
   `cluster-admin-pipeline` for tacplus-dev/cluster) and `gitlab` (this project's protected main, environments and
   variables from Secret Manager by version; the in-cluster `infra` runner, #64, unpaused at the switch-over, #66, and `kick`, #81, `build-report`, #93, `build-light`, #100, `manager`, #106, and `nightly`, #116, runners); the GitLab pipeline (checks on every
   push, plan per stack saved, apply of exactly that plan automatically on main, nightly drift filing an issue, never
@@ -141,33 +141,21 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   hold (5 x 4 + 6 = 26 C4A CPUs over 24, 8 x 100 GB over 500), so `apply:dev` made both preferences (the HDB ID
   `HDB-TOTAL-GB-per-project-region` included) and Google granted at least that much. Not seen from the looper (no
   GitLab or GCP access): the audit's Quotas rows (requested, granted, pending) at #96's 48 CPUs and 1500 GB.
-- **The looper pool (#95):** looper runs were capped at 12 by the normal pool's room, all full for 30+ minutes on
-  2026-11-22. A third pool, `looper` (the decision's addendum of 2026-11-22): c4a-standard-2 on demand (a looper run
-  lasts hours; spot would preempt it) in us-central1-a, from 0 to 2 (`total_min_node_count` 0, `total_max_node_count`
-  2: at most the $130/month Jody approved; a larger maximum needs Jody's yes), labelled `looper=true` and tainted
-  `looper=true:NoSchedule`; the output `cluster` gives the label and taint (`looper_label`, `looper_taint`) for
-  tacplus-dev/cluster#47, whose control runner's job pods tolerate it. The quota preferences count it: 40 C4A CPUs
-  (6 + 20 + 4 + one c4a-standard-4 being replaced, 34; the issue's 30 left out that node) and 1500 GB of Hyperdisk
-  Balanced (11 x 100, 1100): the 40 may wait on Google's review, and 30 (every pool at its maximum, no node being
-  replaced) fit the 32 granted. The plan checks and the live audit pass the three pools and still refuse a short
-  preference or a public pool; the hub's audit shows an autoscaled pool's minimum 0 (GKE's JSON leaves it out, so it
-  showed none). Tested with the dev plan test (mock providers), the policy's, audit's and hub audit's fixtures; not yet
-  seen live: `apply:dev` making the pool with 0 nodes, the audit's Node pools table showing it, and a looper run on
-  it once tacplus-dev/cluster#47 lands.
 - **The build pool to 8 (#96; Jody, 2026-11-23):** on 2026-11-22 `spot` sat at its 5-node maximum with 18 builds
   queued, a tacplus batch candidate waiting 1h17m. Its maximum is now 8 (c4a-standard-4 spot, still from 0, still over
   the region's zones), and the quota preferences follow from it: 48 C4A CPUs (6 + 32 + 4 + 4 = 46, with the looper
   pool's 2 x 2, #95) and 1500 GB of Hyperdisk Balanced (14 x 100 = 1400). Tested with the dev plan test (mock
   providers); not yet seen live: `apply:dev`, Google granting the increase (the pool grows as it is granted), then more
   than 5 build nodes at once.
-- **The looper pool to 4 (#107; Jody, 2026-11-24):** at 19:59Z on 2026-11-24 the control runner sat at its 17
-  (cluster#53) with 18 jobs pending, 5 of them managers, bounded by the looper pool's 2. Its maximum is now 4
-  (c4a-standard-2 on demand, still from 0: at most about $260/month, Jody's yes; a larger maximum still needs it), and
-  the quota preferences follow from it: 56 C4A CPUs (6 + 32 + 8 + 4 = 50) and 2000 GB of Hyperdisk Balanced
-  (16 x 100 = 1600). Tested with the dev plan test (mock providers; the module's fixtures stay at 2); not yet seen
-  live: `apply:dev` and Google granting the increase. tacplus-dev/cluster#61 mirrors it in `gitlab-runner/pool.yaml`
-  only after that apply, and best after the grant (until then a 3rd or 4th looper node may be refused
-  `QUOTA_EXCEEDED`, #88).
+- **The looper pool gone (#114 step 1; Jody, 2026-11-25: one pool of 3 small nodes, no autoscaling, deployments
+  only):** #95's and #107's `looper` pool, the control runner's overflow, is removed with the `cluster` variable's
+  `looper` field and the output's `looper_label`/`looper_taint`; the looper runs moved to the looper VMs, and the recap
+  of 2026-11-26 had the normal pool full for 0 of 1060 pods. The quota preferences follow: 48 C4A CPUs (6 + 32 + 4 =
+  42) and 1500 GB of Hyperdisk Balanced (12 x 100 = 1200). tacplus-dev/cluster#64 drops the pool from control's
+  `concurrent` and its toleration first (cluster#61, the pool to 4, superseded). Tested with the dev plan test (mock
+  providers); not yet seen live: `apply:dev` deleting the pool and lowering the preferences. Left (#114): steps 2 and
+  3 (the spot pool, then the in-cluster runners and namespace `ci`) when the merge train retires
+  (tacplus-dev/looper#249, #251), and step 4, the 3 nodes sized from the deployments' measured requests.
 - **The one public IP and tacplus.dev's zone (#13):** the dev stack reserves the global external IPv4 address `gateway`
   (`prevent_destroy`) for the load balancer (its TCP proxy, #21), and holds tacplus.dev's zone `tacplus-dev` (DNSSEC on), written
   only by this pipeline: the records copied from the zone in jody1-328023 (`modules/settings`, `zone`), each deployment's
