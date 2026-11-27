@@ -1121,14 +1121,15 @@ makes the federation, the ci module's `admiral.tf` the rest.
 - **The federation** (`tacplus-dev`): the pool `fleet-kernels`, for fleet services by their kernel's identity (not
   GitLab's jobs, not GKE Workload Identity), and in it the provider `seatrials`, an OIDC provider for the seatrials
   kernel's issuer `https://seatrials.tacplus.dev` (its keys by discovery, as llmproxy's Anthropic issuer, #34), mapping
-  `google.subject` to `assertion.sub` and admitting `spiffe://local.dev/system/services/admiral` alone. One issuer URL,
-  never a pattern: every fleet's kernel may mint that SPIFFE ID (`local.dev` is every fleet's trust domain), so another
-  fleet's Admiral is another provider, a commit. The audience is the provider's own (GCP's default):
+  `google.subject` to `assertion.sub` and admitting `spiffe://tacplus.dev/system/services/admiral` alone. One issuer URL,
+  never a pattern: the trust domain (`tacplus.dev`, seatrials' `spiffe_prefix` since fleet-seatrials#16, #119) is a
+  fleet's setting, not a key, so another fleet may mint that SPIFFE ID and another fleet's Admiral is another provider,
+  a commit. The audience is the provider's own (GCP's default):
   `//iam.googleapis.com/projects/<tacplus-dev's number>/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials`.
   The issuer must stay publicly discoverable; if it ever is not, the provider takes its JWKS inline (`jwks_json`), and
   a kernel key rotation becomes a commit.
 - **The account** `admiral@tacplus-ci.iam.gserviceaccount.com`: only
-  `principal://iam.googleapis.com/projects/<tacplus-dev's number>/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://local.dev/system/services/admiral`
+  `principal://iam.googleapis.com/projects/<tacplus-dev's number>/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://tacplus.dev/system/services/admiral`
   becomes it (`roles/iam.workloadIdentityUser`, authoritative). It is in `tacplus-ci`, beside the keys, whose project
   enables Cloud KMS (`tacplus-dev` does not).
 - **The key** `tacplus-admiral`, a `github_apps` key like the others (above, The GitHub Apps' keys: import-only, no

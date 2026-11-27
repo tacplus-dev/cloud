@@ -135,12 +135,13 @@ output "admiral" {
   EOT
   value = {
     # The fleet whose kernel issues it: the seatrials fleet in the dev cluster, the issuer llmproxy's Anthropic
-    # identity trusts too (deployments' llmproxy, #34). One issuer URL, never a pattern: every fleet's kernel may
-    # mint this SPIFFE ID (its trust domain local.dev is every fleet's), so another fleet's Admiral is another provider.
+    # identity trusts too (deployments' llmproxy, #34). One issuer URL, never a pattern: the SPIFFE ID's trust domain
+    # tacplus.dev is the fleet's spiffe_prefix (fleet-seatrials#16, #119), not a key, so another fleet's Admiral is
+    # another provider.
     pool       = "fleet-kernels"
     provider   = "seatrials"
     issuer     = "https://seatrials.tacplus.dev"
-    subject    = "spiffe://local.dev/system/services/admiral"
+    subject    = "spiffe://tacplus.dev/system/services/admiral"
     account_id = "admiral"
     key        = "tacplus-admiral"
     secret     = "admiral-triage-gitlab"
@@ -223,7 +224,7 @@ output "deployments" {
         rule = {
           name                   = "llmproxy-seatrials"
           description            = "llmproxy on the seatrials fleet mints its own kernel-signed assertion; inference only"
-          subject                = "spiffe://local.dev/system/services/llmproxy"
+          subject                = "spiffe://tacplus.dev/system/services/llmproxy"
           audience               = "https://api.anthropic.com"
           token_lifetime_seconds = 600
           oauth_scope            = "workspace:inference"
