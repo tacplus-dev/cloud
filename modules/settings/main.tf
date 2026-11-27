@@ -346,8 +346,8 @@ output "cos_arm64_image" {
 output "looper_vms" {
   description = "The looper VMs (the ci module's looper_vms): per repository, its machine type (C4A), its Hyperdisk Balanced disk in GB, spot or not, and its image by digest (empty: none yet)."
   value = {
-    tacplus     = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c3a8b379342d988683c777b549e57e9b57f8e81eaf1ab557158806589fc89f5b" }
-    tacplus-dev = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c3a8b379342d988683c777b549e57e9b57f8e81eaf1ab557158806589fc89f5b", org = "tacplus-dev" }
+    tacplus     = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246" }
+    tacplus-dev = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", org = "tacplus-dev" }
   }
 }
 

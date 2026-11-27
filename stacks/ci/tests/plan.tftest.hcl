@@ -186,7 +186,7 @@ run "settings" {
   # The looper VMs (#108; decisions/looper-build-vms-2026-11-24.md): tacplus first, the pilot, a spot c4a-standard-8
   # with a 200 GB cache disk, with no image until tacplus-dev/looper#239 publishes it (its group stays at 0).
   assert {
-    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c3a8b379342d988683c777b549e57e9b57f8e81eaf1ab557158806589fc89f5b" }, tacplus-dev = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c3a8b379342d988683c777b549e57e9b57f8e81eaf1ab557158806589fc89f5b", org = "tacplus-dev" } }
+    condition     = output.looper_vms == { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246" }, tacplus-dev = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", org = "tacplus-dev" } }
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
   # The reserved machines (#111; decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8, Jody's yes of
