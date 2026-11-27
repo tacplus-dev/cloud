@@ -97,3 +97,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-27 looper issue tests/ci_test.sh: accept the CI image at a tacplus line's dated build tag (build:<YYYYMMDD>-<commit>@digest), so the nightly re-pin lands (looper#226) (#102)
 - 2026-11-27 looper issue A land that changes only PROPOSALS.md or ROADMAP.md runs the full gate set: map them to docs (#118)
 - 2026-11-27 looper issue dev: the test-idp listener ready (ready = true) once the NEG seatrials-test-idp exists (split from #32) (#42)
+- 2026-11-27 looper issue Seatrials' trust domain is tacplus.dev: the llmproxy-seatrials rule and the Admiral's provider name spiffe://tacplus.dev/… (#119)
