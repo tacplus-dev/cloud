@@ -152,9 +152,10 @@ is applied:
   `google_compute_instance_from_template` or `_from_machine_image`) created or updated is refused in every stack, with
   no exception; so is an instance template or instance group manager, zonal or regional, but the ci module's
   looper VMs and reserved machines, admitted by address (`module.ci.google_compute_instance_template` and
-  `google_compute_instance_group_manager`, `looper_vm` and `reserved_vm`), whose templates must boot Container-Optimized
-  OS pinned by name (`modules/settings`' `cos_arm64_image`) and are held to the rules above and below like any VM. The
-  source check refuses the same resource blocks outside `modules/projects/ci`'s two. A new kind of VM outside GKE is a
+  `google_compute_instance_group_manager`, `looper_vm`, `reserved_vm` and the check machines' `reserved_vm_check`),
+  whose templates must boot Container-Optimized OS pinned by name (`modules/settings`' `cos_arm64_image`) and are held
+  to the rules above and below like any VM. The source check refuses the same resource blocks outside
+  `modules/projects/ci`'s two. A new kind of VM outside GKE is a
   change to `ci/policy.sh`'s admitted list, reviewed as such. GKE's own nodes are in no plan; the live audit does not
   report this one (a live VM has no stack address), and names the runner pools' leftovers instead (below, What runs
   where).
@@ -1129,23 +1130,37 @@ no version and no adder: Jody adds its value out of band (`gcloud secrets versio
 
 #111; `decisions/agentic-dev-flow-2026-11-25.md` (tacplus-dev/roadmap, the panel's items 4, 5 and 8; capacity approved
 by Jody 2026-11-25). In `tacplus-ci` (`modules/projects/ci/reserved-vms.tf`; `modules/settings`' `reserved_vms`):
-`check-tacplus`, the rolling check of tacplus's main (c4a-standard-8 until the full gates are measured on it; more only if they need it, so its gate groups run side
-by side), `check-tacplus-dev`, the org's other repositories' (c4a-standard-4), and `merger`, the merger's control
-machine (c4a-standard-1). Each is a zonal instance group of its own name, of one on-demand VM (never spot), its boot
-disk its own cache; not a looper VM (no model token, not the reports' key, no kicker) and not the GitLab build project.
-The sizes are the panel's start, right-sized from the rolling check's measurement (tacplus-dev/looper#249). The OS, the
-network, the SSH rules and the cloud-init are the looper VMs'; the metadata's `looper-role` makes it run `looper-vm
-check` (with the container socket, its builds cut off from the metadata server) or `looper-vm merger` (no container
-socket: it runs no project code). A reserved machine is never idle: its group is at 1 while it has an image, sized by
-the plan alone, and at 0 while its image is empty, as all three are until the looper image runs them
-(tacplus-dev/looper#249, #251). The CPU quota is raised before an image is pinned: the ci stack's test counts them
-then (`ci_cpus`).
+`check-tacplus`, the rolling check of tacplus's main (c4a-standard-8 with 100 GB of Hyperdisk Balanced, until the full
+gates are measured on it; more only if they need it, so its gate groups run side by side), `check-tacplus-dev`, the
+org's other repositories' (t2a-standard-4, 100 GB pd-balanced), and `merger`, the merger's control machine
+(t2a-standard-1, 30 GB pd-balanced). All three run the looper image of `main-c0d53ba` by digest (tacplus-dev/looper#249,
+#251). Each is a zonal instance group of its own name, of one on-demand VM (never spot), its boot disk its own cache;
+not a looper VM (no model token, not the reports' key, no kicker) and not the GitLab build project. The sizes are what
+tacplus-ci's quotas admit without a raise (Jody, 2026-11-25; `ci_cpus`, `ci_disks`: C4A 24 of 24 with the looper VMs,
+T2A 5 of 24, 29 CPUs of 32), right-sized later from the rolling check's measurement (PROPOSALS.md). The OS, the network,
+the SSH rules and the cloud-init are the looper VMs'; the metadata's `looper-role` makes it run `looper-vm check` (with
+the container socket, its builds cut off from the metadata server) or `looper-vm merger` (no container socket: it
+runs no project code), and `looper-env` gives its container its app's IDs and the key ring.
 
-Each machine's account, its own name, keyless, writes logs and signs with its role's GitHub App key alone:
-`tacplus-check` (the checks', so the status of main and `main-green` are what no report can mint) or `tacplus-merger`
-(the merger's alone, which no job, account or other machine may sign with: the module refuses it; once the managers
-retire, the only identity that accepts and merges). Jody creates both apps, their IDs go into `github_apps`, and their
-keys are imported as the others (`import` true then).
+Builders run only while used (Jody, 2026-11-25). A check machine's group is 0..1, never sized by a plan: when every
+check on it ended idle (`looper-vm check` exits 0), its VM has its group stop it (`stopInstances`, `files/looper-vm.sh
+post`); the stopped VM keeps its boot disk, the cache, and costs only that. The merger's machine is the one always-on
+machine, at 1 while it has an image, sized by the plan alone, and the small orchestrator: every minute
+(`files/looper-vm.sh kick`, beside the merger's container) it asks `looper-check needed` of each check machine whose
+group runs no VM (in the looper image, as the merger's app: has main's head no verdict of the check, or a pending
+one?) and starts it (`startInstances`, or `resize` to 1 for its first VM). The drift's pool check does not report a VM
+its group means to keep stopped.
+
+Each machine's account, its own name, keyless, writes logs and signs with its machine's GitHub App key alone:
+`tacplus-manager`, the identity that merges today, until Jody makes `tacplus-check` and `tacplus-merger` (the hub, for
+Jody, 2026-11-25: a setting, no new App to go live; PROPOSALS.md). Its signers are the managers' jobs and these three
+accounts; never a looper VM's (the module refuses `looper_vm_app_key = "tacplus-manager"`, and a test checks the
+binding). The build containers on the check machines cannot reach their metadata server, so a report still cannot
+mint the check's status or a merge. The checks share one key, whose login the merger's gate trusts
+(`LOOPER_CHECK_LOGIN`); a merger's own key, once it has one, no job, account or other machine may sign with. A check
+machine's account may also stop its own group's VM, and the merger's start the check machines' (`looperVmResizer`,
+conditioned on the groups' names). Until the check has been seen working, the looper VMs' reports still land through
+the manager (`LOOPER_VM_MR=0`; PROPOSALS.md).
 
 ## Certificates
 

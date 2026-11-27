@@ -132,11 +132,12 @@ run() {
   cache_ready
   if ! metadata_cutoff; then
     log "the build containers could not be cut off from the metadata server: nothing starts, systemd tries again"
-    return 1
+    failed 1
+    return
   fi
   for try in 1 2 3 4 5; do
     timeout 600 docker pull "$image" && break
-    [ "$try" = 5 ] && { log "cannot pull $image after $try tries: systemd tries again"; return 1; }
+    [ "$try" = 5 ] && { log "cannot pull $image after $try tries: systemd tries again"; failed 1; return; }
     log "pull $try of $image failed: again in $((try * poll)) s"
     sleep $((try * poll))
   done
@@ -164,11 +165,31 @@ run() {
     return 1
   elif [ "$rc" = 0 ] && [ ! -f "$state/stopping" ]; then
     log "the container exited 0: idle"
+    rm -f "$state/failures"
     : > "$state/idle"
   else
     log "the container exited $rc$([ -f "$state/stopping" ] && echo ', on a stop')"
+    failed "$rc"
+    return
   fi
   return "$rc"
+}
+
+# failed RC: run's failure, RC. A check machine's is counted, and its fifth in a row this boot is idle instead: it
+# stops, rather than run on unused (its identity refused, its image gone), and the merger's machine starts it again,
+# backing off, while its check is needed.
+failed() {
+  local n
+  [ "$role" = check ] && [ ! -f "$state/stopping" ] || return "$1"
+  n=$(($(cat "$state/failures" 2>/dev/null || echo 0) + 1))
+  if [ "$n" -lt 5 ]; then
+    echo "$n" > "$state/failures"
+    return "$1"
+  fi
+  rm -f "$state/failures"
+  log "a check machine that failed $n times in a row stops: the merger's machine starts it again while its check is needed"
+  : > "$state/idle"
+  return 0
 }
 
 stop() {
@@ -232,9 +253,12 @@ field() { local v; v=$(sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([0-
 # One pass of the orchestrator, on the merger's machine (#111; Jody, 2026-11-25: "If we need a manager then we run a
 # very small orchestrator"): each check machine whose group runs no VM is asked for (looper-check needed) and, when
 # needed, started: its stopped VM (startInstances), which keeps its cache disk, or a first one (resize to 1). Its
-# account's one grant in Compute is that, on the check machines' groups alone.
+# account's one grant in Compute is that, on the check machines' groups alone. A machine that stopped within its
+# backoff of its start (15 minutes, doubled each time, to 6 hours) with its check still needed ended without a verdict
+# (failed): it is started again only once that backoff has passed since it stopped. Its record, $state/kick-<group>
+# (started, fails, seen at 0), goes when a look finds its check not needed.
 kick() {
-  local image token group args g stopped vm env=() rc
+  local image token group args g stopped vm env=() rc f last fails seen now gap
   image=$(metadata looper-image)
   [[ $image =~ ^[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]] || return 0
   envs
@@ -259,7 +283,25 @@ kick() {
       "$image" bash -c "$needed_script" needed $args > "$state/needed.log" 2>&1
     rc=$?
     log "kick: ${group##*/}: $(tail -n 1 "$state/needed.log" | cut -c1-300)"
+    f=$state/kick-${group##*/}
+    [ "$rc" = 1 ] && rm -f "$f"
     [ "$rc" = 0 ] || continue
+    read -r last fails seen 2> /dev/null < "$f" || last=0 fails=0 seen=0
+    now=$(date +%s)
+    if [ "${last:-0}" != 0 ]; then
+      gap=$((900 << fails)); [ "$gap" -le 21600 ] || gap=21600
+      [ "${seen:-0}" != 0 ] || { seen=$now; echo "$last $fails $seen" > "$f"; }
+      if [ $((seen - last)) -lt "$gap" ]; then
+        if [ $((now - seen)) -lt "$gap" ]; then
+          log "kick: ${group##*/}: stopped $(((seen - last) / 60))m after its start, its check still needed: started again in $(((gap - now + seen + 59) / 60))m"
+          continue
+        fi
+        [ "$fails" -ge 5 ] || fails=$((fails + 1))
+      else
+        fails=0
+      fi
+    fi
+    echo "$now ${fails:-0} 0" > "$f"
     if [ "$stopped" != 0 ]; then
       vm=$(curl -sf --max-time 30 --retry 3 -X POST -H "Authorization: Bearer $token" -H 'Content-Length: 0' "$compute/$group/listManagedInstances" |
         sed -n 's/.*"instance"[[:space:]]*:[[:space:]]*"\(https:[^"]*\)".*/\1/p' | head -n 1)

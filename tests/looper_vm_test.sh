@@ -17,7 +17,9 @@
 # socket, and never idle. A check machine's exit 0 is idle: its group stops it (stopInstances, its disk kept), or it
 # powers off. The merger's machine is the orchestrator (kick): a check machine whose group runs no VM is started when
 # looper-check needed says so (in the looper image, on the host's network, with the cache), its stopped VM started or
-# its group sized to 1; one running, not needed, or unreadable is left. Needs bash and coreutils' timeout.
+# its group sized to 1; one running, not needed, or unreadable is left; one that stopped soon after its start, still
+# needed, is started again after a backoff. A check machine that fails five times in a row stops. Needs bash and
+# coreutils' timeout.
 #
 #   tests/looper_vm_test.sh
 set -uo pipefail
@@ -124,6 +126,22 @@ looper run
 looper post
 ! grep -q stopInstances "$stub/calls" && [ ! -s "$stub/systemctl" ] && ok "a check machine's exit 0 during a stop is not idle" || fail "a check machine's stop: $(cat "$stub/calls")"
 
+# A check machine that fails five times in a row (its identity refused, its image gone) stops rather than run on.
+world "$image"
+printf %s check > "$stub/attributes/looper-role"; printf %s "$check_group" > "$stub/attributes/looper-group"
+echo 3 > "$stub/exit"
+for n in 1 2 3 4; do looper run; run_rc=$rc; looper post; [ "$run_rc" = 3 ] || break; done
+[ "$run_rc" = 3 ] && ! grep -q stopInstances "$stub/calls" && ok "a check machine's four failures in a row are systemd's to start again" || fail "four failures: exit $run_rc, $(cat "$stub/calls")"
+looper run
+run_rc=$rc
+looper post
+[ "$run_rc" = 0 ] && grep -q "$check_group/stopInstances" "$stub/calls" && ok "its fifth failure in a row stops it" || fail "a fifth failure: exit $run_rc, $(cat "$stub/calls")"
+rm -f "$stub/exit"; looper run; looper post; echo 3 > "$stub/exit"; : > "$stub/calls"
+looper run
+run_rc=$rc
+looper post
+[ "$run_rc" = 3 ] && ! grep -q stopInstances "$stub/calls" && ok "a check that ends idle starts the count again" || fail "the count after an idle exit: exit $run_rc"
+
 # The merger's machine runs no project code (#111): looper-vm merger, with no container socket, as its app; never idle.
 world "$image"
 printf '' > "$stub/attributes/looper-repo"; printf %s tacplus-dev > "$stub/attributes/looper-org"; printf %s merger > "$stub/attributes/looper-role"
@@ -175,6 +193,29 @@ echo 0 > "$stub/needed-exit"
 printf '%s\n' "$check_group --repo tacplus" "$check_group --repo 'x;y'" > "$stub/attributes/looper-checks"
 looper kick
 ! grep -q ' needed ' "$stub/docker" && ! grep -q -e startInstances -e resize "$stub/calls" && ok "a group that cannot be read, or a looper-checks line that is no check machine, is left" || fail "unreadable group: $(cat "$stub/docker" "$stub/calls")"
+# A machine that stopped soon after its start, its check still needed, ended without a verdict: it is started again
+# once its backoff (15 minutes, doubled each time) has passed since it stopped; a look that finds it not needed ends it.
+merger_world 0 1
+echo 0 > "$stub/needed-exit"
+looper kick
+: > "$stub/calls"
+looper kick
+! grep -q startInstances "$stub/calls" && grep -q 'stopped 0m after its start, its check still needed: started again in 15m' "$work/out" &&
+  ok "a check machine that stopped at once, still needed, waits out its backoff" || fail "the backoff: $(cat "$stub/calls")"
+kicked=$root/run/looper-vm/kick-check-tacplus
+read -r last fails seen < "$kicked"
+echo "$((last - 1000)) $fails $((seen - 1000))" > "$kicked"
+looper kick
+read -r last fails seen < "$kicked"
+grep -q startInstances "$stub/calls" && [ "$fails" = 1 ] && ok "its backoff passed, it is started again, the next backoff doubled" || fail "after the backoff: fails $fails, $(cat "$stub/calls")"
+echo 1 > "$stub/needed-exit"
+looper kick
+[ ! -f "$kicked" ] && ok "a look that finds its check not needed ends the backoff" || fail "the backoff record stays: $(cat "$kicked")"
+echo "$(($(date +%s) - 3600)) 0 0" > "$kicked"
+echo 0 > "$stub/needed-exit"; : > "$stub/calls"
+looper kick
+read -r last fails seen < "$kicked"
+grep -q startInstances "$stub/calls" && [ "$fails" = 0 ] && ok "a machine that ran past its backoff is started at once, no backoff" || fail "a long run: fails $fails, $(cat "$stub/calls")"
 merger_world 0 0
 echo 0 > "$stub/needed-exit"
 printf '{"name": "check-tacplus-dev", "targetSize": 0}' > "$stub/group-check-tacplus-dev"
