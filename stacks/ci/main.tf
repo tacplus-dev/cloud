@@ -1,8 +1,9 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: runners, the build cache, the GitHub Apps' keys and their federation, and the Admiral's credentials
-# (#84). Its folder is the folder stack's; its billing account is the bootstrap project's.
+# The ci project: the looper VMs and the reserved machines, the build cache, the GitHub Apps' keys and their
+# federation, the Admiral's credentials (#84) and the audit's account (#77); no runner pool since #113. Its folder is
+# the folder stack's; its billing account is the bootstrap project's.
 
 variable "parent_folder" {
   description = "The parent folder's numeric ID: the protected GitLab variable GCP_PARENT_FOLDER (ci/lib.sh), never written here."
@@ -46,42 +47,15 @@ data "google_project" "dev" {
 }
 
 module "ci" {
-  source               = "../../modules/projects/ci"
-  project_id           = module.settings.projects.ci.project
-  name                 = module.settings.projects.ci.name
-  folder               = data.google_active_folder.ci.name
-  billing_account      = data.google_project.bootstrap.billing_account
-  region               = module.settings.region
-  zone                 = "${module.settings.region}-b"
-  subnet_cidr          = "10.10.0.0/20"
-  image                = module.settings.ubuntu_arm64_image.image
-  pool_image           = module.settings.cos_arm64_image
-  manager_machine_type = module.settings.ci_cpus.manager_machine_type
-  manager_disk_gb      = module.settings.ci_disks.manager_disk_gb
-  # A new manager's handoff (#51, Jody 2026-11-12): the old one drains for at most this long, less 12 minutes, then
-  # the jobs still on it are cut and reported (#54), and the pipeline's handoff job, 5 minutes past it, runs them
-  # again here (ci/gitlab-project.gitlab-ci.yml's start_in follows this); the fleet starts nothing new until then.
-  manager_handoff_minutes = 30
-  # GitLab Runner and the fleeting plugin, our builds of upstream's tags (ci/runner.sh, #40): each commit, and each
-  # build's SHA-256, which the build is refused without and the manager installs by.
-  # One release with tacplus-dev/cluster (cluster#21, #44): a runner bump here names the cluster issue that moves its pins
-  # (v19.6.0, #99: cluster#52).
-  runner = {
-    version        = "v19.6.0"
-    branch         = "19-6-stable"
-    commit         = "9e4c6b50fd8a81ceaf2ee5c0b4d5d1c6c16067b0"
-    runner_sha256  = "c48789d1b21f34c017302320aeeef22ea589ec161a553d830f3e310880bfacee"
-    plugin_version = "v1.3.1"
-    plugin_commit  = "31ea56d71b16c75e37999262293b273be509f13d"
-    plugin_sha256  = "429bff00bccf870039e5b8efe637860aea9b518c4be973c3bd38d463e31b20bb"
-    # The helper image of the runner's version, by digest: upstream's, which the pools pull at a job's start.
-    helper_image  = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v19.6.0@sha256:8b17f12e12f28844d6b9aa0777297ddc243cc5caaa92b269f30daf2783655893"
-    default_image = "alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a"
-  }
-  # The tools job's artifact (ci/tools.sh), which plan:ci and apply:ci get: relative, so a plan applies in another job.
-  runner_bin  = "${path.root}/../../bin/manager"
-  pools       = { for k, p in module.settings.runner_pools : k => { for a, v in p : a => v if a != "runner" } }
-  build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+  source          = "../../modules/projects/ci"
+  project_id      = module.settings.projects.ci.project
+  name            = module.settings.projects.ci.name
+  folder          = data.google_active_folder.ci.name
+  billing_account = data.google_project.bootstrap.billing_account
+  region          = module.settings.region
+  zone            = "${module.settings.region}-b"
+  subnet_cidr     = "10.10.0.0/20"
+  build_cache     = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
   github_apps = {
     key_ring  = module.settings.github_apps.key_ring
     wif_pool  = module.settings.github_apps.pool
@@ -106,7 +80,7 @@ module "ci" {
     secret     = module.settings.admiral.secret
   }
   admiral_secret_adders = var.admiral_secret_adders
-  # The looper VMs (#108): stock Container-Optimized OS for arm64, the pools' pin, and each project's spec.
+  # The looper VMs (#108): stock Container-Optimized OS for arm64, pinned by name, and each project's spec.
   looper_vm_os_image = module.settings.cos_arm64_image
   looper_vms         = module.settings.looper_vms
   # The reserved machines (#111): the rolling check's and the merger's, on the same OS and cloud-init.
@@ -137,10 +111,6 @@ module "ci" {
 
 output "project_id" {
   value = module.ci.project_id
-}
-
-output "runner_token_secrets" {
-  value = module.ci.runner_token_secrets
 }
 
 output "app_keys" {

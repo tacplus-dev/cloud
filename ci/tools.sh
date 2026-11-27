@@ -25,9 +25,6 @@
 #                     this platform (ci/gitlab-provider.sh, ci/kubernetes-provider.sh, ci/google-provider.sh,
 #                     ci/anthropic-provider.sh, pinned by
 #                     commit and by the SHA-256 of the build): OpenTofu installs them from there only (ci/tofurc.sh)
-#   bin/manager       GitLab Runner and its googlecloud fleeting plugin for the runner manager (linux arm64), our
-#                     builds (ci/runner.sh, pinned by commit and by the SHA-256 of the build in stacks/ci/main.tf),
-#                     which the ci stack uploads to the manager's bucket (#40)
 #
 # And with `security`, the security job's (ci/security.sh), only that job's (they are large):
 #
@@ -35,13 +32,10 @@
 #                     built with go1.27.0), with the fixed klauspost/compress (#24)
 #   bin/trivy         the CI image: built as tofu is (upstream's release is built with go1.27.3, #39)
 #   bin/govulncheck   the pinned binaries (-mode=binary): built as gitleaks is
-#   bin/scan/         the pinned binaries that are not tools here, to scan: GitLab Runner and its fleeting plugin, the
-#                     very builds the manager installs (bin/manager, of the tools job); every provider is ours, in
-#                     bin/providers (#39)
 #
 #   ci/tools.sh [security]   # needs curl, xz, sha256sum, git, jq and go (ghcr.io/tacplus-dev/tacplus/build;
 #                            # the pinned Go is fetched by the go command, by the checksum database); linux arm64
-#                            # or amd64; security after ci/tools.sh (bin/manager)
+#                            # or amd64; security after ci/tools.sh
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 bin=$here/bin
@@ -66,7 +60,7 @@ osv_scanner_sum=h1:7aOrJ9vB7qbzxC3R+QCXs03SHQiRuM80RJdqZhUEl2g=
 klauspost_compress=github.com/klauspost/compress@v1.20.2
 brotli=github.com/andybalholm/brotli@v1.2.7
 # What OpenTofu is built with in place of its release's go-jose v4.1.4 (#98): GHSA-mgcc-cww5-fp2q (HIGH),
-# GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4, none with a Go vulndb id yet; v4.1.6, ci/runner.sh's. Drop it for the
+# GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4, none with a Go vulndb id yet; v4.1.6. Drop it for the
 # first OpenTofu release that requires it.
 go_jose=github.com/go-jose/go-jose/v4@v4.1.6
 govulncheck_version=v1.1.4
@@ -141,21 +135,16 @@ srcbuild() {
   echo "$out"
 }
 
-# The security job's tools and the binaries it scans (above).
+# The security job's tools (above).
 security() {
-  local f b
+  local f
   gobuild github.com/google/osv-scanner/v2 "$osv_scanner_version" "$osv_scanner_sum" github.com/google/osv-scanner/v2/cmd/osv-scanner \
     "$klauspost_compress"
   f=$(srcbuild github.com/aquasecurity/trivy "v$trivy_version" "$trivy_sum" github.com/aquasecurity/trivy/cmd/trivy "$trivy_sha" \
     "-s -w -X github.com/aquasecurity/trivy/pkg/version/app.ver=$trivy_version")
   install -m 0755 "$f" "$bin/trivy"
   gobuild golang.org/x/vuln "$govulncheck_version" "$govulncheck_sum" golang.org/x/vuln/cmd/govulncheck
-  rm -rf "$bin/scan" && mkdir -p "$bin/scan"
-  for b in gitlab-runner fleeting-plugin-googlecloud; do
-    [ -f "$bin/manager/$b" ] || die "no bin/manager/$b: ci/tools.sh builds it (ci/runner.sh)"
-    install -m 0755 "$bin/manager/$b" "$bin/scan/$b"
-  done
-  echo "bin/: osv-scanner $osv_scanner_version, trivy $trivy_version, govulncheck $govulncheck_version; bin/scan/: our GitLab Runner and fleeting plugin (bin/manager)"
+  echo "bin/: osv-scanner $osv_scanner_version, trivy $trivy_version, govulncheck $govulncheck_version"
 }
 
 mkdir -p "$bin"
@@ -180,5 +169,4 @@ GOBIN=$bin GOTOOLCHAIN=$tools_go GOFLAGS=-mod=mod go install "github.com/mikefar
 "$here/ci/kubernetes-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/google-provider.sh" "$bin/providers" "linux_$arch"
 "$here/ci/anthropic-provider.sh" "$bin/providers" "linux_$arch"
-"$here/ci/runner.sh" "$bin/manager"
-echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, the gitlab, kubernetes, google and anthropic providers (providers/), GitLab Runner and its fleeting plugin (manager/), all built with $tools_go"
+echo "bin/: tofu $("$bin/tofu" version | head -1 | cut -d' ' -f2), tflint $tflint_version (google $tflint_google_version), shellcheck $shellcheck_version, yq $yq_version, gitleaks $gitleaks_version, and the gitlab, kubernetes, google and anthropic providers (providers/), all built with $tools_go"

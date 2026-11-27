@@ -8,8 +8,8 @@
 # time: while it is open, a new drift is a comment on it, and the same drift again is nothing. It never applies.
 # A plan sees only what is in a stack's state, so the live audit (ci/audit.sh) then checks everything the projects
 # hold, hand-made or not, against the network rules ci/policy.sh refuses in a plan (#7), and the DNS check (ci/dns.sh)
-# what the public resolvers answer against tacplus.dev's zone (#13), the pool check (ci/pools.sh) why a runner pool
-# makes no VM (#53), and the expiry check (ci/expiry.sh) each expiry
+# what the public resolvers answer against tacplus.dev's zone (#13), the pool check (ci/pools.sh) why an instance group
+# of the ci project makes no VM (#53), and the expiry check (ci/expiry.sh) each expiry
 # of the stacks' source that is past or within 30 days, such as a membership's (#12): their findings are drift too.
 # (The nightly builds' check of #33 went with #67: tacplus-dev/build's one nightly lists the pinned repositories itself.)
 # (tacplus-dev/cluster ci/drift.sh is the pattern.)

@@ -11,8 +11,8 @@ locals {
   build = var.build == null ? {} : { build = var.build }
 }
 
-# Its runner settings (#35): its build jobs are tagged `build`, which only tacplus-dev's group runners take (the pools,
-# none of them a project runner of it), so group runners are on, and gitlab.com's shared runners off. With them off,
+# Its runner settings (#35): its build jobs are tagged `build`, which only tacplus-dev's group runners take (the in-cluster
+# ones, none of them a project runner of it), so group runners are on, and gitlab.com's shared runners off. With them off,
 # every build job waited 1.5 h and failed stuck_pending_no_matching_runners. Only gitlab_project sets them: the
 # project is adopted (the stack's import block, by its ID), never created or deleted here, and this owns nothing else
 # of it: every other attribute the provider reads back and would otherwise reset is ignored.

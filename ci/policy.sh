@@ -11,8 +11,8 @@
 #     access_config or ipv6_access_config, or one known only after apply): only load balancers are public; a firewall
 #     rule allowing ingress from the internet (0.0.0.0/0 or ::/0, or no source at all, which is 0.0.0.0/0): every load
 #     balancer is proxy-based, so no exception; a firewall rule allowing port 22, in either direction (tcp or all, with
-#     no ports, 22, or a range covering it): no SSH anywhere, not even IAP, the one exception being the runners' internal
-#     rule, exactly as it is, until the runner VMs go (#11); an instance or instance template whose metadata holds an
+#     no ports, 22, or a range covering it): no SSH anywhere, not even IAP, with no exception since the runner manager's
+#     rule to its workers went with them (#113); an instance or instance template whose metadata holds an
 #     SSH key (ssh-keys or sshKeys), and a looper VM's (tagged looper-vm, #108) that does not block the project's
 #     (block-project-ssh-keys "true"): no SSH in any form; a cluster without private nodes, one whose control plane
 #     has a public endpoint, no master authorized networks, or a public range among them (#79), a node pool with public
@@ -50,10 +50,6 @@
 #     names it and its config was written from what the Console holds (a change is a commit of its own, after); a
 #     federation rule whose scope is not workspace:developer or workspace:inference, or a service account whose
 #     organization role is not developer: the one org:admin rule and admin account are the bootstrap, made by hand;
-#   - the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false;
-#     in a plan, a VM tagged runner-manager destroyed, first or after its replacement: destroyed first, the fleet would
-#     have no manager and every runner would go offline; destroyed at all, its running jobs would die with it (an
-#     old manager retires by itself, its jobs finished: modules/projects/ci/files/manager-startup.sh);
 #   - in a plan, a gates job's request (#87): a BUILD_GATES_REQUESTS_<repo> variable ("<cpu> <memory> <cpu limit>
 #     <memory limit>", tacplus-dev/looper#202) requesting more than 3 CPU or 10Gi, or whose request cannot be read: the
 #     build pool's c4a-standard-4 spot node allocates ~3920m and ~13.3Gi, before its DaemonSets take theirs, so a larger
@@ -123,17 +119,6 @@ source_check() {
       done < <(awk '/^resource "google_compute_global_address" "/ { n = FNR; a = $3; gsub(/"/, "", a); p = 0 }
         n && /^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
         n && /^}/ { if (!p) print n ": google_compute_global_address." a; n = 0 }' "$f")
-      # The runner manager's instance says create_before_destroy = true (#46): a replacement never leaves the fleet
-      # without a manager; and destroy = false (#48): no apply deletes one, and its jobs with it.
-      while IFS= read -r line; do
-        [ -n "$line" ] && refuse "$f:$line"
-      done < <(awk '/^resource "google_compute_instance" "manager"/ { n = FNR; p = 0; d = 0 }
-        n && /^[[:space:]]*create_before_destroy[[:space:]]*=[[:space:]]*true/ { p = 1 }
-        n && /^[[:space:]]*destroy[[:space:]]*=[[:space:]]*false/ { d = 1 }
-        n && /^}/ {
-          if (!p) print n ": google_compute_instance.manager is not create_before_destroy: its replacement would leave the fleet with no runner manager"
-          if (!d) print n ": google_compute_instance.manager is not destroy = false: an apply would delete the old manager, and its running jobs with it"
-          n = 0 }' "$f")
     done < <(find "$dir" -type d -name .terraform -prune -o -type f \( -name '*.tf' -o -name '*.tftpl' \) -print0 | sort -z)
   done
 }
@@ -146,10 +131,6 @@ plan_check() {
       # ssh: an allow block that admits tcp port 22.
       def ssh: (.protocol | ascii_downcase | IN("tcp", "6", "all"))
         and ((.ports // []) | length == 0 or any(.[]; split("-") | map(tonumber) | .[0] <= 22 and 22 <= .[-1]));
-      # The runners'"'"' internal SSH rule (the manager to its workers, by network tag, nothing else), until #11 removes it.
-      def runner_ssh: .name == "runner-manager-to-workers-ssh" and (.direction // "INGRESS") == "INGRESS"
-        and (.source_ranges // []) == [] and .source_tags == ["runner-manager"] and .target_tags == ["runner-worker"]
-        and .allow == [{protocol: "tcp", ports: ["22"]}];
       # A public range: not within the private ranges, nor within Google'"'"'s proxies'"'"' and health checkers'"'"', the only
       # sources outside the network a node admits (#21). Any IPv6 range is public here.
       def ip4: capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)\\.(?<d>[0-9]+)(/(?<n>[0-9]+))?$")
@@ -180,16 +161,7 @@ plan_check() {
           and (if any($unknown[]; . == "ip_address") then any(refs($rc; "ip_address")[]; startswith("google_compute_global_address.gateway"))
                else ($after.ip_address // "") as $ip | ($ip | test("(^|/)global/addresses/gateway$")) or any($gateway_ips[]; . == $ip) end);
       .resource_changes[]
-      # The runner manager (a VM tagged runner-manager) replaced destroy-first: the fleet would have none (#46); or
-      # destroyed at all, a deposed one too: its running jobs would die with it (#48: destroy = false, it retires).
-      | (select(.type == "google_compute_instance" and any(.change.before.tags[]?; . == "runner-manager"))
-         | select(.change.actions | any(. == "delete"))
-         | if .change.actions == ["delete", "create"] then
-             "\(.address) destroys the runner manager before its replacement exists: every runner would go offline (create_before_destroy)"
-           else
-             "\(.address)\(if .deposed then " (deposed \(.deposed))" else "" end) destroys a runner manager: its running jobs would die with it (destroy = false: it retires by itself, its jobs done)"
-           end),
-      (select(.change.actions | any(. == "create" or . == "update"))
+      | (select(.change.actions | any(. == "create" or . == "update"))
       | . as $rc | .address as $a | (.change.after // {}) as $after
       | [.change.after_unknown // {} | paths(. == true) | map(tostring) | join(".")] as $unknown
       | (select(.type == "google_service_account_key") | "\($a) creates a service-account key"),
@@ -202,8 +174,7 @@ plan_check() {
            elif any($after.network_interface[]?; (.access_config // []) + (.ipv6_access_config // []) | length > 0) then
              "\($a) has an external address (an access_config): only load balancers are public"
            else empty end),
-        # No SSH in any form (#108): no key in a VM'"'"'s metadata (the runner pools'"'"' keys are the fleeting plugin'"'"'s, set
-        # at run time, never planned), and a looper VM blocks the project'"'"'s.
+        # No SSH in any form (#108): no key in a VM'"'"'s metadata, and a looper VM blocks the project'"'"'s.
         (select(.type | IN("google_compute_instance", "google_compute_instance_template", "google_compute_region_instance_template"))
          | ($after.metadata // {}) as $m
          | (select($m | has("ssh-keys") or has("sshKeys")) | "\($a) has an SSH key in its metadata: no SSH in any form"),
@@ -220,7 +191,7 @@ plan_check() {
              (select(($after.direction // "INGRESS") == "INGRESS" and ($after.allow // [] | length > 0))
               | $after.source_ranges[]? | select(IN("0.0.0.0/0", "::/0") | not) | select(public)
               | "\($a) allows ingress from \(.), a public range: the nodes admit only Google'"'"'s proxies and health checkers (35.191.0.0/16, 130.211.0.0/22) from outside the network"),
-             (select(any($after.allow[]?; ssh) and ($after | runner_ssh | not))
+             (select(any($after.allow[]?; ssh))
               | "\($a) allows port 22 (SSH): no SSH anywhere, not even IAP")
            end),
         (select(.type == "google_compute_address" and ($after.address_type // "EXTERNAL") == "EXTERNAL")

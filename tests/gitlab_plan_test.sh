@@ -20,10 +20,9 @@
 # build-light runner, the same but tags arm64 and build-light, and its token's version in gitlab-runner-build-light
 # (#100), the manager runner, the same but tags arm64 and manager, and its token's version in gitlab-runner-manager
 # (#106), the nightly runner, the same but tags arm64 and build-nightly, and its token's version in
-# gitlab-runner-nightly (#116), and the pools' runners, and tacplus-dev/build's job token allowlist entry for
-# tacplus-dev/fleet-seatrials (#117),
-# the cluster and deploy pools' paused (#66); it replaces, changes or deletes nothing else; the old form of the protection is refused, as gitlab.com refused
-# it. The fixture is built from the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot
+# gitlab-runner-nightly (#116), and tacplus-dev/build's job token allowlist entry for tacplus-dev/fleet-seatrials (#117),
+# and no tacplus-ci pool's runner (#113); it replaces, changes or deletes nothing else; the old form of the protection is
+# refused, as gitlab.com refused it. The fixture is built from the GitLab and Google APIs' documented answers, not recorded: the looper's token cannot
 # read tacplus-dev/cloud's settings. Needs bin/ (ci/tools.sh), go, jq, and the registry for the google provider (as ci/checks.sh's init).
 #
 #   tests/gitlab_plan_test.sh
@@ -68,9 +67,6 @@ provider "google" {
 provider "gitlab" {
   token    = "stub"
   base_url = "$api/api/v4/"
-}
-variable "adopt_cluster_enablement" {
-  default = false
 }
 EOF
 plan() { (cd "$stack" && rm -f p.tfplan && tofu plan -input=false -no-color -out=p.tfplan > "$work/plan.txt" 2>&1); }
@@ -207,18 +203,13 @@ if plan; then
   token=$(change 'module.gitlab.google_secret_manager_secret_version.runner_token["nightly"]')
   jq -e '.actions == ["create"] and .after.secret == "projects/tacplus-dev/secrets/gitlab-runner-nightly" and .after_unknown.secret_data == true' <<< "$token" > /dev/null &&
     ok "its token: a version of the dev project's gitlab-runner-nightly, known only at apply (#116)" || fail "the nightly runner's token: $(jq -c 'del(.before)' <<< "$token")"
-  # The build pool's runner (#70): arm64 and build, and build-docker, the tags of tacplus-dev/looper#172's
-  # BUILD_DOCKER_TAGS, which the in-cluster build runner (no Docker socket) never carries.
-  build_runner=$(change 'module.gitlab.gitlab_user_runner.runner["build"]')
-  jq -e '(.after.tag_list | sort) == ["arm64", "build", "build-docker"] and .after.untagged == false' <<< "$build_runner" > /dev/null &&
-    ok "the build pool's runner: tags arm64, build and build-docker (#70)" || fail "the build pool's runner: $(jq -c 'del(.before)' <<< "$build_runner")"
   token=$(change 'module.gitlab.google_secret_manager_secret_version.runner_token["infra"]')
   jq -e '.actions == ["create"] and .after.secret == "projects/tacplus-dev/secrets/gitlab-runner-infra" and .after_unknown.secret_data == true' <<< "$token" > /dev/null &&
     ok "its token: a version of the dev project's gitlab-runner-infra, known only at apply (#64)" || fail "the infra runner's token: $(jq -c 'del(.before)' <<< "$token")"
-  # The switch-over (#66): the cluster and deploy pools' runners paused, infra taking their jobs; shared, build and infra not.
+  # The in-cluster runners alone, none paused: no tacplus-ci pool's runner is registered (#113).
   paused=$(jq -cS '[.resource_changes[] | select(.type == "gitlab_user_runner") | {(.index): .change.after.paused}] | add' "$work/plan.json")
-  [ "$paused" = '{"build":false,"build-light":false,"build-report":false,"cluster":true,"deploy":true,"infra":false,"kick":false,"manager":false,"nightly":false,"shared":false}' ] &&
-    ok "the cluster and deploy pools' runners paused, infra, kick, build-report, build-light, manager, nightly, shared and build not (#66, #81, #93, #100, #106, #116)" || fail "the runners' paused: $paused"
+  [ "$paused" = '{"build-light":false,"build-report":false,"infra":false,"kick":false,"manager":false,"nightly":false}' ] &&
+    ok "the runners: infra, kick, build-report, build-light, manager and nightly, none paused, and no pool's (#64, #81, #93, #100, #106, #116, #113)" || fail "the runners' paused: $paused"
   member=$(change 'module.gitlab.gitlab_project_membership.member["tacplus-dev/build:tacplus-looper-bot"]')
   jq -e '.actions == ["create"] and .after.access_level == "reporter" and .after.project == "4003" and .after.user_id == 2002' <<< "$member" > /dev/null &&
     ok "tacplus-looper-bot: a Reporter of tacplus-dev/build (#12)" || fail "the membership: $member"

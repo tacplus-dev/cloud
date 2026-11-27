@@ -1,0 +1,8 @@
+[
+  {
+    "name": "looper-vm-tacplus-x1y2",
+    "zone": "https://www.googleapis.com/compute/v1/projects/clean/zones/us-central1-b",
+    "sizeGb": "200",
+    "type": "https://www.googleapis.com/compute/v1/projects/clean/zones/us-central1-b/diskTypes/hyperdisk-balanced"
+  }
+]

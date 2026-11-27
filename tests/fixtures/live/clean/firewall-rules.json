@@ -1,23 +1,5 @@
 [
   {
-    "name": "runner-manager-to-workers-ssh",
-    "direction": "INGRESS",
-    "sourceTags": [
-      "runner-manager"
-    ],
-    "targetTags": [
-      "runner-worker"
-    ],
-    "allowed": [
-      {
-        "IPProtocol": "tcp",
-        "ports": [
-          "22"
-        ]
-      }
-    ]
-  },
-  {
     "name": "gke-dev-1a2b3c4d-vms",
     "direction": "INGRESS",
     "sourceRanges": [

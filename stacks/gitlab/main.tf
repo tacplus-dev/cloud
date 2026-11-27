@@ -100,21 +100,17 @@ module "gitlab" {
     # variable_key BUILD_SEATRIALS_TRIGGER_TOKEN and its environment_scope seatrials-trigger.
     downstream_triggers = {}
   }
-  # The pools replaced jody1-328023's runners (2026-11-10, Jody: nothing stays in the thescottsweb.com org): shared (the
-  # loopers' always-on node) and build (on demand, from zero) take jobs; deploy (fleet-seatrials') and cluster
-  # (tacplus-dev/cluster's and this repository's own pipeline) are paused since the switch-over (#66), infra below
-  # taking their tags' jobs, until #11 removes them and their VMs. Pausing stops new pickups, not a running job.
-  runners = merge(
-    {
-      for k, p in module.settings.runner_pools : k => merge(p.runner, {
-        paused       = contains(["cluster", "deploy"], k)
-        token_secret = "projects/${module.settings.projects.ci.project}/secrets/runner-token-${k}"
-      })
-    },
+  # The in-cluster runners, every runner this stack registers. The tacplus-ci pools' (shared, build, deploy and cluster),
+  # which replaced jody1-328023's on 2026-11-10, were deleted with their pools and manager (#113, Jody 2026-11-25: "make
+  # sure you have all the dead stuff cut"): nothing had run on them for a day, and every tag they carried is an
+  # in-cluster runner's (cloud, cluster and deploy infra's below, arm64 and build tacplus-dev/cluster's build runner's)
+  # but the dead ones: autoscale and autoscale-16, and build-docker, a host-Docker publish's, which waits for a builder
+  # image with rootless BuildKit (tacplus-dev/tacplus#315).
+  runners = {
     # The in-cluster infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): the cloud, cluster
     # and deploy pipelines' jobs, on protected refs only, in the dev cluster, so the runner VMs can go (#11). Registered
     # here, by nobody else, paused until the switch-over (#66; cluster's README, The infra runner), which unpaused it
-    # and paused the cluster and deploy pools above, which carry the same tags, in the same commit. Its token is the
+    # and paused the cluster and deploy pools, which carried the same tags, in the same commit (#113 deleted them). Its token is the
     # first version of the dev stack's secret gitlab-runner-infra, the version its file names, written by this
     # pipeline, so that no person or agent ever types it; cluster-admin-pipeline alone reads it.
     # The in-cluster kick runner (#81; tacplus-dev/cluster#36, its gitlab-runner/runners/kick.yaml): the looper's kicker
@@ -156,8 +152,8 @@ module "gitlab" {
     # too, at the nightly's priority. Any ref, unpaused: no job carries build-nightly until tacplus-dev/looper#220 sets
     # BUILD_NIGHTLY_TAGS, after cluster's pipeline has applied the runner. Its token, as kick's, the first version of the
     # dev stack's gitlab-runner-nightly, written by this pipeline. Interim: it goes with the spot pool (#114).
-    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner, manager = local.manager_runner, nightly = local.nightly_runner },
-  )
+    infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner, manager = local.manager_runner, nightly = local.nightly_runner
+  }
 }
 
 locals {
@@ -293,21 +289,6 @@ import {
   for_each = var.import_existing ? toset(["build"]) : toset([])
   to       = module.gitlab.gitlab_project.build[each.key]
   id       = module.gitlab.build.project
-}
-
-# The cluster pool's runner on tacplus-dev/cloud, which the hub enabled by hand on 2026-11-10 while jody1-328023's
-# runner for this repository stopped taking jobs: adopted, from then on this stack's. GitLab refuses to enable a
-# locked runner on a second project, so the adoption is how this one stays locked.
-variable "adopt_cluster_enablement" {
-  description = "Adopt the hand-made enablement above. False only where the cluster runner is not yet in state (tests/gitlab_plan_test.sh plans from empty state), since the import's ID is the runner's."
-  type        = bool
-  default     = true
-}
-
-import {
-  for_each = var.import_existing && var.adopt_cluster_enablement ? toset(["cluster:tacplus-dev/cloud"]) : toset([])
-  to       = module.gitlab.gitlab_project_runner_enablement.also[each.key]
-  id       = "${module.gitlab.project_ids[local.cloud]}:${module.gitlab.runner_ids["cluster"]}"
 }
 
 output "project_ids" {

@@ -14,12 +14,10 @@
 #                               history, Trivy on this image; fails on a secret, or a HIGH or CRITICAL finding with
 #                               a fix that no unexpired security-exceptions.yaml entry accepts; its report the
 #                               artifact src/security/. No plan runs unless it passes.
-#   plan:<stack>                main: the plan, saved (ci/tofu.sh plan), refused if ci/policy.sh refuses it
+#   plan:<stack>                main: the plan, saved (ci/tofu.sh plan), refused if ci/policy.sh refuses it;
+#                               plan:ci's first, the tacplus-ci pools' runners idle for a day (ci/idle-runners.sh, #113)
 #   apply:<stack>               main, automatic once its plan succeeds: applies exactly that saved plan
 #                               (ci/tofu.sh apply); the stack's environment, one apply at a time
-#   handoff                     main, 35 minutes after apply:ci (a new manager's handoff, capped at 30, is over):
-#                               no job left running on an old runner manager, the jobs its cut failed run again
-#                               (ci/handoff.sh, #54)
 #   drift                       the nightly schedule: a plan of every stack, and an issue on
 #                               github.com/tacplus-dev/cloud if anything differs; never applies
 #   plan:anthropic,             main, once the bootstrap org:admin rule's IDs are set below (#34): the anthropic
@@ -31,14 +29,15 @@
 #                               src/audit/ (audit.json, audit.md); red on an exposure finding. Never changes anything
 #
 # The stacks run in order: folder (the folders under the parent folder), then dev, then ci (the projects: ci reads
-# dev's number), then gitlab (whose runners' tokens go to the ci project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
+# dev's number), then gitlab (whose runners' tokens go to the dev project's secrets). Outside production nothing waits for Jody (tacplus-dev/roadmap
 # decisions/deterministic-deployments-2026-11-02.md, addendum "approval only for production"): ci and dev apply on
 # main once their plan succeeds. prod is not built; its apply-prod will be a protected manual job only Jody plays.
 #
 # The plan and apply jobs run on main only, where Workload Identity Federation admits this project (its
 # provider's condition: protected main) as cloud-admin-pipeline. No key file and no token is stored in GitLab: the
 # id_token is exchanged for each job, and the GitLab token is read from Secret Manager by version (ci/lib.sh).
-# Every job runs on the project's own runner (tag `cloud`: a VM used once, with no Google account of its own).
+# Every job runs on the in-cluster infra runner (tag `cloud`: a pod per job in the dev cluster's ci namespace, protected
+# refs only, #64, #66; tacplus-ci's runner VMs are gone, #113).
 # An audit pipeline (#77: the schedule audit, or CLOUD_AUDIT "true") runs the audit job alone: every other job's first
 # rules leave it out.
 stages: [lint, folder, projects, gitlab, anthropic, audit]
@@ -214,36 +213,22 @@ apply:folder:
   needs: [tools, plan:folder]
   variables: { STACK: folder }
 
-# ci after dev: the ci stack reads the dev project's number, whose pool federates the reader's account (#30).
+# ci after dev: the ci stack reads the dev project's number, whose pool federates the reader's account (#30). Its plan
+# first confirms, with the GitLab token, that the tacplus-ci pools' runners have run nothing for a day (#113): its
+# apply deletes the pools and their manager.
 plan:ci:
   extends: .plan
   stage: projects
   needs: [tools, apply:dev]
   variables: { STACK: ci }
+  script:
+    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/idle-runners.sh && ci/tofu.sh plan "$STACK"
 
 apply:ci:
   extends: .apply
   stage: projects
   needs: [tools, plan:ci]
   variables: { STACK: ci }
-
-# The end of a manager handoff (#54): once the old managers are gone (the handoff's cap, the ci stack's
-# manager_handoff_minutes, 30, with 5 to spare), on the new one, which alone runs the fleet then: the jobs an old one
-# left running fail back to GitLab and run again, and the ones its cut failed (runner_interrupted) run again
-# (ci/handoff.sh), with the GitLab token. After every apply of the ci stack: one that made no new manager finds
-# nothing to do.
-handoff:
-  extends: .gcp
-  stage: projects
-  needs: [apply:ci]
-  rules:
-    - if: $CLOUD_AUDIT == "true"
-      when: never
-    - if: $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE =~ /^(push|web|api)$/
-      when: delayed
-      start_in: 35 minutes
-  script:
-    - cd src && source ci/lib.sh && ci_gcp && ci_gitlab && ci/handoff.sh
 
 plan:dev:
   extends: .plan

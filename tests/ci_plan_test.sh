@@ -3,16 +3,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Plans the ci stack with its real providers (our google build) against a stub API (tests/stubapi), from the state the
-# crashed apply of 2026-11-12 left (#47): tests/fixtures/ci/deposed.tfstate, the manager runner-manager as the config
-# before #46 made it (its stored dependencies name terraform_data.manager_config, its old replace_triggered_by), a
-# deposed object of it (01338cc8), and terraform_data.manager_config, which #46 removed. The stack's tests plan from an
-# empty state, with mock providers: they never see what the state adds to the graph, and there the deposed manager's
-# destroy (create_before_destroy), the removed terraform_data's destroy and the pools' templates and groups closed a
-# cycle, and plan:ci failed. So: the plan has no cycle; it forgets terraform_data.manager_config (it has no remote
-# object) and destroys nothing of it; it forgets the deposed manager and runner-manager, which retire by themselves
-# once their jobs are done (#48), and creates runner-manager-<hash>; ci/policy.sh admits it; it only reads; and the
-# stack as #46 left it (the terraform_data destroyed, the manager destroyed too), fails with the cycle, as plan:ci did. The fixture is built from the Compute and Resource
-# Manager APIs' documented answers, not recorded. Needs bin/ (ci/tools.sh), go, jq.
+# runner manager is in before #113's apply: tests/fixtures/ci/manager.tfstate, runner-manager-d510c62b as #46 and #48
+# made it, create_before_destroy and destroy = false, which OpenTofu keeps in the state (its skip_destroy). The
+# stack's tests plan from an empty state, with mock providers: they never see what the state holds, and there a
+# resource taken out of the configuration whose state says destroy = false is forgotten, not destroyed, so the manager
+# would bill on outside every state. So: the plan destroys the manager (its removed block, destroy = true); ci/policy.sh
+# admits it; it only reads; and the stack without that block forgets the manager, the trap the block is for. The fixture
+# is built from the Compute and Resource Manager APIs' documented answers, not recorded. Needs bin/ (ci/tools.sh), go,
+# jq.
 #
 #   tests/ci_plan_test.sh
 set -uo pipefail
@@ -33,7 +31,7 @@ for _ in $(seq 50); do [ -s "$work/addr" ] && break; sleep 0.1; done
 [ -s "$work/addr" ] || { echo "FAIL the stub API does not listen"; exit 1; }
 api=http://$(cat "$work/addr")
 
-# The stack as it is, but its state local, from the fixture, and its provider on the stub; bin/manager the tools job's.
+# The stack as it is, but its state local, from the fixture, and its provider on the stub.
 cp -r "$here/stacks" "$here/modules" "$work/" && ln -s "$here/bin" "$work/bin"
 find "$work/stacks" -name .terraform -prune -exec rm -rf {} +
 stack=$work/stacks/ci
@@ -51,40 +49,39 @@ provider "google" {
 EOF
 # Nothing but the stub: a call to Google itself fails.
 plan() {
-  (cd "$stack" && rm -f p.tfplan && cp "$here/tests/fixtures/ci/deposed.tfstate" terraform.tfstate &&
+  (cd "$stack" && rm -f p.tfplan && cp "$here/tests/fixtures/ci/manager.tfstate" terraform.tfstate &&
     HTTPS_PROXY=http://127.0.0.1:1 tofu plan -input=false -no-color -var parent_folder=111111111111 -out=p.tfplan > "$work/plan.txt" 2>&1)
 }
 (cd "$stack" && tofu init -input=false -lockfile=readonly -no-color > "$work/init.txt" 2>&1) ||
   { echo "FAIL init: $(cat "$work/init.txt")"; exit 1; }
 
 if plan; then
-  ok "the stack plans from a deposed manager and the removed terraform_data.manager_config, with no cycle (#47)"
+  ok "the stack plans from the runner manager's state"
   (cd "$stack" && tofu show -json p.tfplan) > "$work/plan.json"
   changes() { jq -c --arg a "$1" '[.resource_changes[] | select(.address == $a) | {deposed, actions: .change.actions}] | sort_by(.deposed)' "$work/plan.json"; }
-  [ "$(changes module.ci.terraform_data.manager_config)" = '[{"deposed":null,"actions":["forget"]}]' ] &&
-    ok "terraform_data.manager_config: forgotten, not destroyed (it has no remote object)" ||
-    fail "terraform_data.manager_config: $(changes module.ci.terraform_data.manager_config)"
-  [ "$(changes module.ci.google_compute_instance.manager)" = '[{"deposed":null,"actions":["forget","create"]},{"deposed":"01338cc8","actions":["forget"]}]' ] &&
-    ok "the manager: the old one and the deposed one forgotten, not destroyed (they retire by themselves, #48), the new one created" ||
+  [ "$(changes module.ci.google_compute_instance.manager)" = '[{"deposed":null,"actions":["delete"]}]' ] &&
+    ok "the manager: destroyed, not forgotten, though its state says destroy = false (#113)" ||
     fail "the manager: $(changes module.ci.google_compute_instance.manager)"
-  jq -e '.resource_changes[] | select(.address == "module.ci.google_compute_instance.manager" and .deposed == null) | .change.after.name | test("^runner-manager-[0-9a-f]{8}$")' "$work/plan.json" > /dev/null &&
-    ok "the new manager is runner-manager-<its build's hash> (#46)" ||
-    fail "the new manager's name: $(jq -c '.resource_changes[] | select(.address == "module.ci.google_compute_instance.manager") | .change.after.name' "$work/plan.json")"
+  [ -z "$(jq -r '.resource_changes[] | select(.change.actions == ["forget"]) | .address' "$work/plan.json")" ] &&
+    ok "nothing forgotten" || fail "the plan forgets: $(jq -r '.resource_changes[] | select(.change.actions == ["forget"]) | .address' "$work/plan.json")"
   "$here/ci/policy.sh" plan "$work/plan.json" > "$work/policy.txt" 2>&1 && ok "ci/policy.sh admits the plan" ||
     fail "ci/policy.sh refuses the plan: $(cat "$work/policy.txt")"
 else
-  fail "the stack does not plan from a deposed manager and the removed terraform_data.manager_config: $(grep -A4 '^Error' "$work/plan.txt" | cut -c1-400)"
+  fail "the stack does not plan from the runner manager's state: $(grep -A4 '^Error' "$work/plan.txt" | cut -c1-400)"
 fi
 ! grep -v '^GET ' "$work/requests" > /dev/null && ok "a plan only reads" || fail "the plan wrote: $(grep -v '^GET ' "$work/requests")"
 
-# The stack as #46 left it (b15a1c9): terraform_data.manager_config destroyed, not forgotten, and the manager destroyed
-# (no destroy = false, #48). The plan fails with the cycle plan:ci met (job 17961392097), so the test sees what it
-# guards against.
-awk '/^removed \{/ { skip = 1 } !skip && !/^ *destroy *= *false$/ { print } skip && /^\}/ { skip = 0 }' "$here/modules/projects/ci/runners.tf" > "$work/modules/projects/ci/runners.tf"
-grep -qE '^removed \{|^ *destroy *= *false$' "$work/modules/projects/ci/runners.tf" && fail "the test cannot remove the removed block and destroy = false from its copy"
-(cd "$stack" && tofu init -input=false -lockfile=readonly -no-color > "$work/init.txt" 2>&1) || fail "init: $(cat "$work/init.txt")"
-! plan && grep '^Error: Cycle: ' "$work/plan.txt" | grep -F 'module.ci.google_compute_instance.manager (destroy deposed 01338cc8)' |
-  grep -qF 'module.ci.terraform_data.manager_config (destroy)' &&
-  ok "the removed terraform_data destroyed, as after #46: the cycle, as on plan:ci" || fail "as after #46: $(grep -E '^Error|^Plan:' "$work/plan.txt" | cut -c1-400)"
+# The stack without the manager's removed block: the manager is forgotten (its state's destroy = false), and its VM and
+# disk would bill on outside every state. The test sees what the block guards against.
+awk '/^removed \{/ { skip = 1 } !skip { print } skip && /^\}/ { skip = 0 }' "$here/modules/projects/ci/main.tf" > "$work/modules/projects/ci/main.tf"
+grep -qE '^removed \{' "$work/modules/projects/ci/main.tf" && fail "the test cannot remove the removed block from its copy"
+if plan; then
+  (cd "$stack" && tofu show -json p.tfplan) > "$work/plan.json"
+  [ "$(changes module.ci.google_compute_instance.manager)" = '[{"deposed":null,"actions":["forget"]}]' ] &&
+    ok "without its removed block, the manager is forgotten, not destroyed: the trap the block is for" ||
+    fail "without its removed block, the manager: $(changes module.ci.google_compute_instance.manager)"
+else
+  fail "the stack without the removed block does not plan: $(grep -A4 '^Error' "$work/plan.txt" | cut -c1-400)"
+fi
 
 [ "$failed" = 0 ] && echo "ci_plan_test: all passed" || { echo "ci_plan_test: failed"; exit 1; }

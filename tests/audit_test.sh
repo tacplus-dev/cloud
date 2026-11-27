@@ -4,11 +4,12 @@
 #
 # Tests ci/audit.sh, the drift job's live audit (#7), against a stub gcloud over JSON fixtures (tests/stub/live,
 # tests/fixtures/live): in what the projects hold, made by a stack or by hand, it reports an instance or template with
-# an external address, an allow rule open to the internet, a rule allowing port 22 (the runners' internal rule and
-# GKE's own internal rules excepted), a cluster without private nodes or whose control plane has a public endpoint,
+# an external address, an allow rule open to the internet, a rule allowing port 22 (GKE's own internal rules excepted;
+# the runners' old internal rule too, since #113), a cluster without private nodes or whose control plane has a public endpoint,
 # no authorized networks or a public range among them (#79), and a pool with public nodes or not on COS,
 # each once, saying the project; an external address but the global address gateway (#13); ingress from a public range
-# but Google's proxies' and health checkers' (#21); it reports a list it cannot read; it reports nothing in projects that keep the rules;
+# but Google's proxies' and health checkers' (#21); what is left of the runner pools and their manager (#113): a VM, a
+# disk, an instance template or an instance group named runner-*; it reports a list it cannot read; it reports nothing in projects that keep the rules;
 # it only lists. The drift job audits the projects modules/settings names. Needs bash and jq.
 #
 #   tests/audit_test.sh
@@ -50,13 +51,18 @@ reports "a second global external address" "live dirty-dev: global address hand-
 reports "a regional external address" "live dirty-dev: address hand-lb is an external address (a regional one)"
 reports "ingress from IAP's range" "live dirty-ci: firewall rule hand-iap-ssh allows ingress from 35.235.240.0/20, a public range"
 reports "ingress from a public address" "live dirty-dev: firewall rule gke-dev-1a2b3c4d-ssh allows ingress from 34.9.9.9/32, a public range"
-[ "$(wc -l < "$work/out")" = 18 ] && ok "nothing else is reported (the runners' rule, GKE's internal rules, a deny rule, a proxy LB's rule from Google's ranges, clean VMs and pools, the gateway's address)" ||
-  fail "the report is not those 18 lines: $(cat "$work/out")"
-grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates|addresses)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
+reports "the runners' old SSH rule, no exception left (#113)" "live dirty-ci: firewall rule runner-manager-to-workers-ssh allows port 22"
+reports "what is left of the runner pools and their manager (#113)" \
+  "live dirty-ci: instance runner-manager is left of the runner pools and their manager, retired (#113): in no state, it bills" \
+  "live dirty-ci: instance runner-shared-abcd is left of" "live dirty-ci: instance template runner-shared-1 is left of" \
+  "live dirty-ci: disk runner-manager is left of" "live dirty-ci: instance group runner-shared is left of"
+[ "$(wc -l < "$work/out")" = 24 ] && ok "nothing else is reported (GKE's internal rules, a deny rule, a proxy LB's rule from Google's ranges, clean VMs and pools, the looper VMs' disks and groups, the gateway's address)" ||
+  fail "the report is not those 24 lines: $(cat "$work/out")"
+grep -vE '^gcloud (compute (firewall-rules|instances|instance-templates|addresses|disks|instance-groups managed)|container clusters) list --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
   fail "the audit runs more than the lists" || ok "the audit only lists"
 
 audit clean && [ ! -s "$work/out" ] && ok "projects that keep the rules (the dev cluster's normal, spot and looper pools, #95): nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
-audit missing && reports "a list it cannot read is reported" "live missing: cannot list firewall-rules: " "live missing: cannot list clusters: " "live missing: cannot list addresses: "
+audit missing && reports "a list it cannot read is reported" "live missing: cannot list firewall-rules: " "live missing: cannot list clusters: " "live missing: cannot list addresses: " "live missing: cannot list disks: " "live missing: cannot list instance-groups-managed: "
 "$here/ci/audit.sh" > /dev/null 2>&1 && fail "no project: passed" || ok "no project: usage"
 
 # The drift job audits what modules/settings names, after its plans.

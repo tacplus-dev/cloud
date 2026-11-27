@@ -6,7 +6,9 @@
 # 2026-11-03 that ci/policy.sh refuses in a plan. A drift plan sees only what a stack has in its state; a firewall
 # rule, a VM or a node pool made by hand is in none, so this lists them all (firewall rules, instances, instance
 # templates, clusters and their node pools, addresses), gives them the shape of a plan's changes, and runs the same checks
-# (ci/policy.sh plan) on them. One line per finding, "live <project>: ...", on stdout; a list it cannot read is a
+# (ci/policy.sh plan) on them. And it names what is left of the runner pools and their manager, retired (#113): a VM, a
+# disk, an instance template or an instance group named runner-*, which no stack holds any more (the managers made
+# before #46 were forgotten, not destroyed), so it bills outside every state. One line per finding, "live <project>: ...", on stdout; a list it cannot read is a
 # finding too. It only lists, and exits 0 when it finds something: ci/drift.sh files what it prints.
 #
 # GKE's own firewall rules (gke-*, from the network's private ranges only: its nodes, its pods, its control plane)
@@ -22,13 +24,23 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 for project in "$@"; do
-  for what in "compute firewall-rules" "compute instances" "compute instance-templates" "compute addresses" "container clusters"; do
+  for what in "compute firewall-rules" "compute instances" "compute instance-templates" "compute addresses" "container clusters" \
+    "compute disks" "compute instance-groups managed"; do
     read -ra cmd <<< "$what"
-    if ! gcloud "${cmd[@]}" list --project="$project" --format=json > "$tmp/${cmd[1]}.json" 2> "$tmp/err"; then
-      echo "live $project: cannot list ${cmd[1]}: $(grep -m1 '^ERROR' "$tmp/err" || head -c 300 "$tmp/err" | tr '\n' ' ')"
-      echo '[]' > "$tmp/${cmd[1]}.json"
+    name=${cmd[*]:1}
+    name=${name// /-}
+    if ! gcloud "${cmd[@]}" list --project="$project" --format=json > "$tmp/$name.json" 2> "$tmp/err"; then
+      echo "live $project: cannot list $name: $(grep -m1 '^ERROR' "$tmp/err" || head -c 300 "$tmp/err" | tr '\n' ' ')"
+      echo '[]' > "$tmp/$name.json"
     fi
   done
+  # The runner pools' and their manager's leftovers (#113).
+  jq -nr --arg p "$project" --slurpfile vm "$tmp/instances.json" --slurpfile tpl "$tmp/instance-templates.json" \
+    --slurpfile disk "$tmp/disks.json" --slurpfile mig "$tmp/instance-groups-managed.json" '
+    [["instance", $vm[0]], ["instance template", $tpl[0]], ["disk", $disk[0]], ["instance group", $mig[0]]][] as [$kind, $list]
+    | ($list // [])[] | select(.name | test("^runner-"))
+    | "live \($p): \($kind) \(.name) is left of the runner pools and their manager, retired (#113): in no state, it bills"' ||
+    echo "live $project: cannot read its lists for the runners' leftovers"
   args=(--arg p "$project" --slurpfile fw "$tmp/firewall-rules.json" --slurpfile vm "$tmp/instances.json"
         --slurpfile tpl "$tmp/instance-templates.json" --slurpfile gke "$tmp/clusters.json"
         --slurpfile adr "$tmp/addresses.json")

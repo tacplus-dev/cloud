@@ -27,14 +27,13 @@ for t in gitleaks yq jq git; do command -v "$t" >/dev/null || { echo "FAIL no $t
 # The base repository: what ci/security.sh reads, committed, and a bin/ of the pinned binaries' names (empty files:
 # the govulncheck stub reads none), the stubs and the real gitleaks and yq.
 base=$work/base
-mkdir -p "$base/ci" "$base/bin/tflint.d/x" "$base/bin/providers/x" "$base/bin/scan"
+mkdir -p "$base/ci" "$base/bin/tflint.d/x" "$base/bin/providers/x"
 cp "$here/ci/security.sh" "$here/ci/gitlab-project.gitlab-ci.yml" "$base/ci/"
 printf '/bin/\n/security/\n' > "$base/.gitignore"
 echo "a clean tree" > "$base/README.md"
 printf 'exceptions:\n' > "$base/security-exceptions.yaml"
 for b in tofu tflint tflint.d/x/tflint-ruleset-google providers/x/terraform-provider-gitlab_v1 \
-         providers/x/terraform-provider-google_v8 providers/x/terraform-provider-kubernetes_v3 providers/x/terraform-provider-anthropic_v1 scan/gitlab-runner \
-         scan/fleeting-plugin-googlecloud; do
+         providers/x/terraform-provider-google_v8 providers/x/terraform-provider-kubernetes_v3 providers/x/terraform-provider-anthropic_v1; do
   : > "$base/bin/$b"
 done
 for s in osv-scanner govulncheck trivy; do cp "$here/tests/stub/$s" "$base/bin/$s"; done
@@ -76,7 +75,7 @@ fi
 image=$(yq -r .default.image "$here/ci/gitlab-project.gitlab-ci.yml")
 grep -qx "trivy $image" "$r/stub.log" 2>/dev/null && ok "trivy scans the CI image, by its digest" || fail "trivy scanned: $(cat "$r/stub.log" 2>/dev/null)"
 for b in tofu tflint tflint-ruleset-google yq gitleaks osv-scanner trivy govulncheck terraform-provider-gitlab_v1 \
-         terraform-provider-google_v8 terraform-provider-kubernetes_v3 terraform-provider-anthropic_v1 gitlab-runner fleeting-plugin-googlecloud; do
+         terraform-provider-google_v8 terraform-provider-kubernetes_v3 terraform-provider-anthropic_v1; do
   grep -q "/$b\$" "$r/log" || fail "govulncheck did not scan $b"
 done
 ok "govulncheck scans every pinned binary"
@@ -145,32 +144,32 @@ cat > "$work/gv.json" <<'EOF'
 EOF
 grep -v '"function"' "$work/gv.json" > "$work/gv-module.json"
 echo '{"finding": {"osv": "GO-2026-0002", "fixed_version": "v0.2.0", "trace": [{"module": "golang.org/x/net", "version": "v0.1.0"}]}}' >> "$work/gv-module.json"
-for b in tofu tflint-ruleset-google terraform-provider-google_v8 gitlab-runner fleeting-plugin-googlecloud; do
+for b in tofu tflint-ruleset-google terraform-provider-google_v8 terraform-provider-anthropic_v1; do
   r=$(repo)
   scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=$b && tooling "$r" govulncheck GO-2026-0002 "bin/.*$b (golang.org/x/net@v0.1.0" ||
     fail "govulncheck, bin/…/$b: $(tail -5 "$r/log")"
 done
-ok "a pinned binary's vulnerable symbol with a fix passes, reported as CI tooling (govulncheck: tofu, the ruleset, a provider, GitLab Runner, its plugin)"
+ok "a pinned binary's vulnerable symbol with a fix passes, reported as CI tooling (govulncheck: tofu, the ruleset, two providers)"
 exceptions "$r" CVE-2026-0002 2999-12-31
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=fleeting-plugin-googlecloud &&
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=terraform-provider-anthropic_v1 &&
   [ "$(jq -r '.findings[0].excepted' "$r/security/report.json")" = CVE-2026-0002 ] && ok "an exception naming its alias accepts it" ||
   fail "an alias's exception: $(tail -3 "$r/log")"
 # A where scopes an exception to the binaries it names (looper#182, #103), as a path or a path glob: a tooling finding
 # it does not accept is reported, unexcepted, and a shipped one fails.
 excepted() { jq -r --arg id "$2" '[.findings[] | select(.id == $id)][0].excepted' "$1/security/report.json"; }
 r=$(repo)
-exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/scan/gitlab-runner'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = GO-2026-0002 ] &&
-  ok "an exception whose where is the binary accepts it" || fail "a where on the binary: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tofu'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
-  grep -q '^TOOLING HIGH govulncheck GO-2026-0002: bin/scan/gitlab-runner' "$r/log" &&
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tofu && [ "$(excepted "$r" GO-2026-0002)" = GO-2026-0002 ] &&
+  ok "an exception whose where is the binary accepts it" || fail "a where on the binary: $(tail -3 "$r/log")"
+exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tflint'
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tofu && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
+  grep -q '^TOOLING HIGH govulncheck GO-2026-0002: bin/tofu' "$r/log" &&
   ok "an exception scoped to another binary does not accept it" || fail "a where elsewhere: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/tflint.d/**/tflint-ruleset-google'
 scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=tflint-ruleset-google && [ "$(excepted "$r" GO-2026-0002)" = GO-2026-0002 ] &&
   ok "a where's ** spans the path segments between" || fail "a where glob: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: bin/*'
-scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=gitlab-runner && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
+scan "$r" STUB_GOVULNCHECK_JSON="$work/gv.json" STUB_GOVULNCHECK_FOR=terraform-provider-gitlab_v1 && [ "$(excepted "$r" GO-2026-0002)" = null ] &&
   ok "a where's * stays within its path segment" || fail "a where's *: $(tail -3 "$r/log")"
 exceptions "$r" GO-2026-0002 2999-12-31 '    where: ""'
 scan "$r" && fail "an exception with an empty where passes" ||
@@ -204,9 +203,9 @@ r=$(repo)
 scan "$r" STUB_OSV_RC=128 && ok "a tree with no manifest osv-scanner reads passes" || fail "osv 128: $(tail -3 "$r/log")"
 
 r=$(repo)
-rm "$r/bin/scan/gitlab-runner"
+rm "$r/bin/tflint"
 scan "$r" && fail "a missing pinned binary passes" ||
-  { grep -q 'no bin/scan/gitlab-runner to scan' "$r/log" && ok "a pinned binary missing fails" || fail "missing binary: $(tail -3 "$r/log")"; }
+  { grep -q 'no bin/tflint to scan' "$r/log" && ok "a pinned binary missing fails" || fail "missing binary: $(tail -3 "$r/log")"; }
 r=$(repo)
 scan "$r" STUB_TRIVY_RC=1 && fail "trivy failing passes" ||
   { grep -q 'PROBLEM trivy image' "$r/log" && ok "a tool that cannot run fails" || fail "trivy failing: $(tail -3 "$r/log")"; }
@@ -234,24 +233,6 @@ else
   else
     fixed "$p" github.com/go-jose/go-jose/v4 v4.1.6 && ok "bin/tofu is built with go-jose >= v4.1.6" ||
       fail "bin/tofu: $(go version -m "$p" | grep go-jose | awk '{print $2 "@" $3}' | tr '\n' ' ')"
-  fi
-  # The manager's binaries (ci/runner.sh, #40), as built: with the fixed x/net, klauspost/compress and go-jose
-  # (CVE-2026-116587, in step with tacplus-dev/cluster's runner build, #44), not their upstreams'.
-  for b in gitlab-runner fleeting-plugin-googlecloud; do
-    p=$here/bin/manager/$b
-    [ -f "$p" ] || { fail "no bin/manager/$b (ci/tools.sh)"; continue; }
-    fixed "$p" golang.org/x/net v0.62.0 && fixed "$p" github.com/klauspost/compress v1.20.2 &&
-      fixed "$p" github.com/go-jose/go-jose/v4 v4.1.6 &&
-      ok "bin/manager/$b is built with x/net >= v0.62.0, klauspost/compress >= v1.20.2 and go-jose >= v4.1.6" ||
-      fail "bin/manager/$b: $(go version -m "$p" | grep -E 'x/net|klauspost/compress|go-jose' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
-  done
-  # GitLab Runner v19.6.0, its release built with the fixed OpenTelemetry SDK (GHSA-q7gw-24fr-5p69, no Go vulndb id;
-  # #99). The other pins with it are security-exceptions.yaml's until their releases have it.
-  p=$here/bin/manager/gitlab-runner
-  if [ -f "$p" ]; then
-    fixed "$p" go.opentelemetry.io/otel v1.47.0 && fixed "$p" go.opentelemetry.io/otel/sdk v1.47.0 &&
-      fixed "$p" go.opentelemetry.io/otel/trace v1.47.0 && ok "bin/manager/gitlab-runner is built with otel >= v1.47.0" ||
-      fail "bin/manager/gitlab-runner: $(go version -m "$p" | grep -E 'go.opentelemetry.io/otel(/sdk|/trace)?[[:space:]]' | awk '{print $2 "@" $3}' | tr '\n' ' ')"
   fi
 fi
 

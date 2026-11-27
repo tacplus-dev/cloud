@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The constants every stack shares, in one place: the parent folder this runs in, the region, the projects' IDs, the
-# pipeline's identity and the runner pools. No resource, no provider: each stack reads them with
+# pipeline's identity, the looper VMs and the reserved machines. No resource, no provider: each stack reads them with
 # `module "settings" { source = "../../modules/settings" }`. bootstrap/bootstrap.sh holds the same names for what
 # it creates (tests/settings_test.sh checks they agree).
 
@@ -326,158 +326,15 @@ output "zone" {
   }
 }
 
-output "ubuntu_arm64_image" {
-  description = "The runner manager's boot image: one Ubuntu 24.04 arm64 image by name (never a family). Nothing is installed from Ubuntu's archive at boot (#40)."
-  value = {
-    image = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024"
-  }
-}
-
 output "cos_arm64_image" {
   description = <<-EOT
-    The runner pools' boot image: Google's Container-Optimized OS for arm64, one image by name, never a family
-    (decisions/builds-in-containers-2026-11-03.md, #4). The VM is vanilla: nothing is installed at boot, and the
-    container runtime is the OS's own. A newer COS reaches the workers only as a commit of this pin, its plan and its
-    apply; a revert is the rollback. This one is the build the cos-arm64-stable family served on 2026-11-03.
+    The looper VMs' and the reserved machines' boot image (#108, #111), the runner pools' until #113: Google's
+    Container-Optimized OS for arm64, one image by name, never a family (decisions/builds-in-containers-2026-11-03.md,
+    #4). The VM is vanilla: nothing is installed at boot, and the container runtime is the OS's own. A newer COS
+    reaches the VMs only as a commit of this pin, its plan and its apply; a revert is the rollback. This one is the
+    build the cos-arm64-stable family served on 2026-11-03.
   EOT
   value       = "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12"
-}
-
-locals {
-  # The always-on shared VM's machine type (Jody, #5: "B for now"). Moving to t2a-standard-16, four jobs at once, is
-  # this one line, on Jody's word (if the recap shows jobs queueing): its capacity and its disk follow.
-  shared_machine_type = "t2a-standard-8"
-  # How many jobs a machine type runs at once. Jody, 2026-11-10: "If it's a looper and it wants to run, it runs,
-  # period" (as on his Mac): no slots. A job is not a reservation of CPUs or memory; the jobs share the VM like
-  # processes, and the capacity is a ceiling, not a slot count. But it is the only admission the runner has: a VM
-  # with a free slot gets the job, whatever its load, and a job whose preparation the VM cannot serve fails
-  # (runner_system_failure), it does not wait. So the ceiling is what the VM serves at once (#63; the disk below).
-  # 13 a t2a-standard-8 since #63 (26 over the pool's two VMs): on 2026-11-15 one VM with 24 jobs stopped answering
-  # Docker (containers/create over 120 s) and every new job failed runner_system_failure for hours. A VM starts when
-  # the ones before it are full, so the second starts at the 14th job.
-  shared_capacity = { "t2a-standard-8" = 13, "t2a-standard-16" = 25 }
-
-  # The shared pool's disk: pd-balanced since #63, pd-standard until then. A pd-standard disk serves 0.75 read and 1.5
-  # write IOPS and 0.12 MiB/s a GB (the 350 GB of 2026-11-15: 525 write IOPS, 42 MiB/s; the 206 GB of the stopgap:
-  # 309 and 25), and a VM's jobs share it with Docker, whose containers/create writes the container's config and
-  # layer and commits containerd's metadata, each write waiting its turn behind the jobs'. Read on the VM on
-  # 2026-11-15 06:50Z (the looper of #63, from its job container: /proc/pressure, /proc/diskstats, /proc/meminfo),
-  # with about 16 jobs: the disk busy 92% of a 120 s sample, writing 37.7 MB/s (its cap), 393 writes a second at
-  # 61 ms each, a queue of 25; every task on the VM stalled on IO 15% of the time (PSI io full), 1.5 hours of such
-  # stalls in the 30 hours since boot; CPU contended (load 21 to 35 on 8 CPUs, PSI cpu some 43%) but never stalled;
-  # memory idle (2.4 GB anonymous of 32, 29 GB available, PSI memory full 5 minutes in 30 hours). The disk, not the
-  # memory or the jobs' limits, is what 24 jobs exhausted. pd-balanced serves 3000 IOPS and 140 MiB/s from its
-  # first GB (6 IOPS and 0.28 MiB/s a GB above 500 GB): ten times the writes, five times the bytes, for about
-  # $0.10 a GB-month against $0.04. It counts against SSD_TOTAL_GB (ci_disks below), so the disk is sized under it.
-  shared_disk_type = "pd-balanced"
-
-  # The job containers' settings, the agents' and the builds' kept apart (#5): the shared pool runs both under one
-  # registration, so with one setting, today the builds' (the same as the agents'). If the build jobs need settings
-  # the agents must not get (rootless BuildKit's seccomp and apparmor, tacplus-dev/tacplus#315), the split is a
-  # build pool of its own with job = local.jobs.build, and the shared pool's job = local.jobs.agent. disk_gb is a
-  # job's share of its VM's disk: the disk is bounded per VM, not per job (Container-Optimized OS has no per-container
-  # disk limit, #5), so a job that fills it fails the jobs beside it.
-  jobs = {
-    agent = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
-    build = { cpus = "4", memory = "14g", memory_swap = "14g", disk_gb = 100, security_opt = [] }
-    # The shared pool's (Jody, 2026-11-10, no slots): a job may use the whole VM's CPUs and all but 4 GB of its
-    # memory (the OS's, Docker's and the runner's), so one job can't starve the VM's own processes. Its disk share is
-    # what a looper job needs (its checkout and its tools' caches); the disk is the VM's, shared. 8 GB since #63 (12
-    # until then): the VM of 2026-11-15 held 67 GB for about 16 jobs and its images, under 4 GB a job with the
-    # images, and the pd-balanced disk is sized under SSD_TOTAL_GB (ci_disks below).
-    shared = { cpus = "8", memory = "28g", memory_swap = "28g", disk_gb = 8, security_opt = [] }
-  }
-}
-
-output "runner_pools" {
-  description = <<-EOT
-    The runner pools of the ci project: each a managed instance group of arm64 VMs, sized by the manager's
-    autoscaler, and its runner registration in GitLab. Job containers share a pool's VMs (capacity at once, each
-    within its job's CPU and memory limits, without swap) and the VMs are reused; each job's containers and volumes
-    are discarded (decisions/looper-job-per-issue-2026-11-03.md, #5). idle_count VMs are kept running, never more
-    than max_instances: raising max_instances is a commit, on Jody's word. A VM's disk is capacity times a job's
-    share, plus os_disk_gb for the OS and the jobs' images. A pool with service_account = true runs as an account of
-    its own with no role; false, with no account and no scopes at all. A pool with zones is a regional group over
-    them, each VM made in whichever has the capacity (#49); without, a zonal group in the stack's zone. Registered paused: moving the runners off
-    jody1-328023 is a later issue, which unpauses them.
-  EOT
-  value = {
-    # pd-standard until #63 (not SSD: the project's SSD_TOTAL_GB quota is 500 in us-central1, then two 250 GB balanced disks); pd-balanced since,
-    # sized under that quota (shared_disk_type and ci_disks below). Raised temporarily (Jody, 2026-11-07: "raise the number of nodes temporarily"): three more on-demand
-    # t2a-standard-8 VMs, about $0.93/h, to clear the queue to seatrials' first deploy; back to 1 once the in-cluster
-    # runners take the looper jobs (tacplus-dev/looper#84).
-    # The always-on nodes (Jody, 2026-11-10, then three): every looper and control job, with no slots (capacity
-    # above): "The loopers run as many as needed divided across the 3 always on nodes." Builds are not here: they run
-    # on the spot build pool below. It replaces the jody1-328023 pools, whose settings change only over SSH. The
-    # in-cluster runners take this arrangement over (tacplus-dev/looper#84, tacplus-dev/cluster#18). The build identity is not on the VM: build jobs become it
-    # through Workload Identity Federation (the ci module's build cache).
-    # One always-on node since #55 (Jody, 2026-11-13: "we will need to bring the cost back down ASAP"): three, 24 CPUs
-    # always on, left the build pool's second VM over CPUS_ALL_REGIONS (ci_cpus below), and builds queued for an hour.
-    # A second VM on demand since #63 (Jody, 2026-11-14: "Ok you can raise the VMs"): one stays always on, the second
-    # runs while more than 13 jobs do (about $0.31/h) and goes 30 minutes after. Its 8 CPUs are the build pool's
-    # second VM's (ci_cpus below). Interim, as the pool is: the in-cluster runners replace it (tacplus-dev/looper#84).
-    # No VM kept running since 2026-11-25 (Jody: "make sure you have all the dead stuff cut. I dont want a large
-    # bill"): its last job was 2026-11-25T09:43Z, the reports having moved to the looper VMs and the rest to the
-    # in-cluster runners, and its always-on t2a-standard-8 (about $0.31/h) sat at 0.1% CPU. A job that still comes
-    # gets a VM on demand, gone 30 minutes after. The pools and their manager retire with the merge train (#113).
-    shared = {
-      machine_type    = local.shared_machine_type, disk_type = local.shared_disk_type, os_disk_gb = 50
-      capacity        = local.shared_capacity[local.shared_machine_type], max_instances = 1, idle_count = 0, idle_time = "30m"
-      job             = local.jobs.shared
-      service_account = false
-      spot            = false
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "autoscale", "autoscale-16"], protected = false }
-    }
-    # The builds (Jody, 2026-11-10): "Builds run on the spot instances. And builds can be limited to a few at a time."
-    # Up to two t2a-standard-8s, from zero (no VM while no build waits), four builds a VM, each allowed 4 CPUs and
-    # 14g (they share the VM like processes): eight builds at once (Jody, 2026-11-11, "Yes": two builds at a time left
-    # 13 queued and every manager timing out). 16 CPUs at peak (ci_cpus below). tacplus-dev/build's jobs only.
-    # Spread over every zone of the region with t2a (#49): on 2026-11-12 spot t2a ran out in us-central1-b, its VM
-    # stuck creating for hours and every build with it, while on-demand t2a there was out too until 18:05Z. So an
-    # on-demand fallback in the same zone would have stalled as well, and a second, on-demand runner on the same tags
-    # would take half the builds even while spot has room (and, from zero, take jobs it has no VM for): the group is
-    # regional instead, and makes each VM in whichever of these zones has the capacity.
-    # On demand since #55 (Jody, 2026-11-13: "do whatever you think best"): five spot VMs were preempted that day, each
-    # under 10 minutes old, and the tacplus gates (about 3 hours) never finished on one. On-demand t2a-standard-8 is
-    # about $0.31/h, paid only while builds run: a spot VM that never finishes a build is the dearer one.
-    # One VM, four builds at once, since #63: the second VM's 8 CPUs went to the shared pool's second VM (ci_cpus
-    # below). Back to two when the quota is raised or the shared pool is back to one.
-    # Also tagged build-docker since #70: tacplus-dev/looper#172's BUILD_DOCKER_TAGS ("arm64, build-docker") sends the
-    # jobs that still need host Docker here, never to the in-cluster build runner (no socket), which takes arm64 and
-    # build too. It keeps arm64 and build until #11 removes it.
-    # max_instances 0 since the looper VMs (Jody, 2026-11-25: "Lower the pools by 12"): its runner (58928680) is
-    # paused, the in-cluster build runner takes its jobs, and its 8 CPUs, with the shared pool's second VM's, are the
-    # looper VMs' 12 (ci_cpus below).
-    build = {
-      machine_type    = "t2a-standard-8", disk_type = "pd-standard", os_disk_gb = 50
-      capacity        = 4, max_instances = 0, idle_count = 0, idle_time = "15m"
-      job             = local.jobs.build
-      service_account = false
-      spot            = false
-      zones           = ["us-central1-a", "us-central1-b", "us-central1-f"]
-      runner          = { type = "group_type", group = "tacplus-dev", project = null, tags = ["arm64", "build", "build-docker"], protected = false }
-    }
-    # On demand, protected: their credentials never share a VM with agents. A VM stays for 30 minutes idle.
-    # deploy is a t2a-standard-2 since #55: with a t2a-standard-4 the pools at peak were 34 CPUs, over the quota of 32
-    # (ci_cpus below). Its two jobs share the VM's 2 CPUs and 8 GB like processes.
-    deploy = {
-      machine_type    = "t2a-standard-2", disk_type = "pd-balanced", os_disk_gb = 30
-      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
-      job             = { cpus = "2", memory = "6g", memory_swap = "6g", disk_gb = 25, security_opt = [] }
-      service_account = false
-      runner          = { type = "project_type", group = null, project = "tacplus-dev/fleet-seatrials", tags = ["deploy"], protected = true }
-    }
-    # Also tacplus-dev/cloud's own pipeline (tag cloud), 2026-11-10: its jody1-328023 runner (58307471) stopped taking
-    # jobs, and nothing stays in the thescottsweb.com org. Both are Jody's infrastructure pipelines on protected main,
-    # as on jody1. Two jobs of 2 CPUs and 7g (tofu, trivy, the scanners).
-    cluster = {
-      machine_type    = "t2a-standard-4", disk_type = "pd-balanced", os_disk_gb = 30
-      capacity        = 2, max_instances = 1, idle_count = 0, idle_time = "30m"
-      job             = { cpus = "2", memory = "7g", memory_swap = "7g", disk_gb = 20, security_opt = [] }
-      service_account = false
-      runner          = { type = "project_type", group = null, project = "tacplus-dev/cluster", also_projects = ["tacplus-dev/cloud"], tags = ["cluster", "cloud"], protected = true }
-    }
-  }
 }
 
 # The looper VMs of the ci project (#108; tacplus-dev/roadmap decisions/looper-build-vms-2026-11-24.md), by
@@ -513,37 +370,32 @@ output "reserved_vms" {
 
 output "ci_cpus" {
   description = <<-EOT
-    tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it; a raise is a
-    request to Google, then this line); the manager's machine type, and how many managers run at once at most (a
-    handoff, #48). The ci stack's test refuses pools whose VMs, each at its max_instances, and the managers need more
-    CPUs than quota: a pool's VM over it fails QUOTA_EXCEEDED, as the build pool's second did on 2026-11-13.
-    Today: shared 8, build 0, cluster 4, deploy 2, managers 2, the looper VMs (C4A) 8 + 8: 32 (Jody, 2026-11-25:
-    "Lower the pools by 12", for the looper VMs). The reserved machines (#111) count once they have an image (their
-    group is at 0 until then): 8 + 4 + 1 more. No quota is raised for them (Jody, 2026-11-25: "why do we need a CPU
-    quota request??"): the pools retire with the merge train (#113: 16 CPUs back), and check-tacplus is 8 CPUs until a
-    measurement of the full gates on it says it needs more. Before their images are pinned, the region's C4A family
-    limit (24) and Hyperdisk Balanced GB (500) are met by sizing (the audit's Quotas table), not by a request.
+    tacplus-ci's CPUs (#55): quota, its CPUS_ALL_REGIONS (the project's limit, 32, as Google set it), and c4a_quota,
+    the region's C4A family limit (24, the audit's Quotas table); a raise is a request to Google, then this line. The
+    ci stack's test refuses VMs that need more CPUs than either: a VM over it fails QUOTA_EXCEEDED, as the build pool's
+    second did on 2026-11-13. Every VM is C4A since the runner pools and their manager went (#113, 16 CPUs back): the
+    looper VMs (0..1 each), 8 + 8 = 16 today (Jody, 2026-11-26), and the reserved machines (#111) once they have an
+    image (their group is at 0 until then), 8 + 4 + 1 more: 29, five over the C4A limit. No quota is raised for them
+    (Jody, 2026-11-25: "why do we need a CPU quota request??"): the limits are met by sizing, so the commit that gives
+    them their images sizes them under it (check-tacplus is 8 CPUs until a measurement of the full gates on it says it
+    needs more).
   EOT
   value = {
-    quota                = 32
-    manager_machine_type = "t2a-standard-1"
-    managers             = 2
+    quota     = 32
+    c4a_quota = 24
   }
 }
 
 output "ci_disks" {
   description = <<-EOT
-    tacplus-ci's SSD-backed disks (#63): ssd_quota_gb, its SSD_TOTAL_GB in us-central1 (the project's limit, 500, as
-    Google set it; a raise is a request to Google, then this line), which every pd-balanced, pd-ssd and pd-extreme
-    disk of the region counts against; and manager_disk_gb, the runner manager's pd-balanced boot disk (the ci
-    module's). The ci stack's test refuses pools whose SSD-backed disks, each pool at its max_instances, and the
-    managers' (ci_cpus.managers of them, a handoff) need more GB than the quota: a pool's VM over it fails
-    QUOTA_EXCEEDED, as a VM over the CPU quota did on 2026-11-13, and the shared pool's second VM would never come.
-    Today: shared 154 (one VM since 2026-11-25), deploy 80, cluster 70, managers 2 x 20: 344 of 500. The build pool's 450 GB is pd-standard
-    (its builds share a disk four at a time; pd-balanced for it too is the quota raised first, PROPOSALS.md).
+    tacplus-ci's Hyperdisk Balanced GB in us-central1 (#113; the audit's Quotas table: the region's limit, 500, as
+    Google set it; a raise is a request to Google, then this line), which every looper VM's and reserved machine's boot
+    disk counts against. The ci stack's test refuses VMs whose disks need more GB than the quota: a VM over it fails
+    QUOTA_EXCEEDED and never comes. Today: the looper VMs 200 + 200 = 400 of 500; the reserved machines, once they have
+    an image, 200 + 200 + 10 more, met by sizing as their CPUs are (ci_cpus). No disk counts against SSD_TOTAL_GB since
+    the runner pools and their manager went (#113).
   EOT
   value = {
-    ssd_quota_gb    = 500
-    manager_disk_gb = 20
+    hyperdisk_balanced_quota_gb = 500
   }
 }

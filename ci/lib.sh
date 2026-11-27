@@ -143,7 +143,7 @@ ci_zone() {
   echo "$p $z"
 }
 
-# ci_pools: the ci project and the region its runner pools are in (ci/pools.sh's PROJECT REGION), as modules/settings
+# ci_pools: the ci project and the region its instance groups are in (ci/pools.sh's PROJECT REGION), as modules/settings
 # names them (projects, region).
 ci_pools() {
   local p r

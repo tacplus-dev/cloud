@@ -10,7 +10,7 @@
 # template with an external address (an access config, or one known only after apply), or an SSH key in its metadata,
 # and a looper VM that does not block the project's (#108), an allow rule open to the
 # internet (0.0.0.0/0, ::/0, or no source at all), a rule allowing port 22 (a port, a range or all ports, either
-# direction; the runners' internal rule alone excepted, and only as it is), a cluster without private nodes, one whose
+# direction, with no exception: the runners' internal rule too, since #113), a cluster without private nodes, one whose
 # control plane has a public endpoint, no authorized networks or a public range among them (#79), a pool
 # with public nodes or not on COS, and passes a plan that keeps them; and the one public IP (#13): in the source, a
 # global address without prevent_destroy, and in a plan, an external address but the one global address `gateway`, or
@@ -21,9 +21,7 @@
 # service account, the pipeline's own included (#78), and roles/container.admin to one but the pipeline (#18), in a
 # member, a member list or a policy document, or to a member known only after apply; and in the Anthropic organization (#34), an identity adopted with a change, a
 # rule of another scope than workspace:developer or workspace:inference, an account of another role than developer;
-# and the runner manager (#46, #48): in the source, its instance without create_before_destroy or destroy = false, and
-# in a plan, a VM tagged runner-manager destroyed: first, which would leave the fleet with no manager, or at all, a
-# deposed one too, which would kill its running jobs (an old manager is forgotten, and retires by itself); and hub-audit
+# and it passes the plan that deletes the runner manager and its SSH rule (#113: their guards went with them); and hub-audit
 # (#77), the audit job's account, granted any role but its read roles (its registries role, #115, on its own project,
 # and that role with any permission but listing the repositories and reading their policies); the release registry
 # (#115) written by any account but release-publish, read by any member but a service account, or another role on it; and a gates job's request (#87), a
@@ -60,8 +58,6 @@ refuses "a module with an image at :latest" ":latest" source "$fx/policy/latest"
 refuses "a module booting an image family" "an image family" source "$fx/policy/family"
 refuses "the repository and a bad module together" "google_service_account_key" source "$here/modules" "$fx/policy/key"
 refuses "a global address without prevent_destroy" "google_compute_global_address.gateway has no prevent_destroy" source "$fx/policy/unprotected-address"
-refuses "the runner manager without create_before_destroy" "google_compute_instance.manager is not create_before_destroy" source "$fx/policy/manager-destroy-first"
-refuses "the runner manager without destroy = false (#48)" "google_compute_instance.manager is not destroy = false: an apply would delete the old manager, and its running jobs with it" source "$fx/policy/manager-deleted"
 passes "a clean module" source "$fx/policy/clean"
 passes "this repository's modules and stacks" source "$here/modules" "$here/stacks"
 refuses "a missing directory" "no such directory" source "$fx/policy/none"
@@ -71,7 +67,6 @@ refuses "a plan with member allUsers" "allUsers" plan "$fx/plans/public-member.j
 refuses "a plan with allAuthenticatedUsers in members" "allAuthenticatedUsers" plan "$fx/plans/public-members.json"
 refuses "a plan with allUsers in a policy document" "allUsers" plan "$fx/plans/public-policy.json"
 refuses "a plan with allUsers nested deep" "allUsers" plan "$fx/plans/public-nested.json"
-refuses "a plan opening the manager's binaries to allUsers (#40)" "allUsers" plan "$fx/plans/public-runner-bin.json"
 refuses "a clean plan and a bad one" "allUsers" plan "$fx/plans/clean.json" "$fx/plans/public-member.json"
 passes "a clean plan" plan "$fx/plans/clean.json"
 # The Anthropic organization (#34): an adoption with no change, then a change in a commit of its own, passes; an
@@ -101,7 +96,7 @@ refuses "a plan with SSH from IAP" "port 22" plan "$fx/plans/ssh.json"
 refuses "a plan with a port range covering 22" "port 22" plan "$fx/plans/ssh-range.json"
 refuses "a plan allowing all protocols" "port 22" plan "$fx/plans/ssh-all.json"
 refuses "a plan with egress allowing all tcp ports" "port 22" plan "$fx/plans/ssh-egress.json"
-refuses "a plan widening the runners' SSH rule" "port 22" plan "$fx/plans/ssh-exemption-widened.json"
+refuses "a plan with the runners' old SSH rule, exactly as it was (#113: no exception left)" "port 22" plan "$fx/plans/ssh-runners.json"
 refuses "a plan with a cluster without private nodes" "private nodes" plan "$fx/plans/cluster-public-nodes.json"
 refuses "a plan with a cluster's public endpoint" "google_container_cluster.c has a public control-plane endpoint" plan "$fx/plans/cluster-public-endpoint.json"
 refuses "a plan with a cluster without authorized networks" "google_container_cluster.c has no master authorized networks" plan "$fx/plans/cluster-no-authorized-networks.json"
@@ -131,12 +126,8 @@ passes "a plan with the TCP proxy on gateway, Google's ranges and private ones" 
 passes "a plan building the TCP proxy and the address together" plan "$fx/plans/lb-first-build.json"
 passes "a plan keeping the network rules" plan "$fx/plans/network-clean.json"
 passes "a plan deleting an SSH rule" plan "$fx/plans/ssh-deleted.json"
-# The runner manager (#46): never destroyed before its replacement is up, so the fleet always has one.
-refuses "a plan destroying the runner manager before creating its replacement" "module.ci.google_compute_instance.manager destroys the runner manager before its replacement exists" plan "$fx/plans/manager-destroy-first.json"
-# Nor destroyed at all (#48): an old manager, deposed or replaced, is forgotten, and retires by itself once its jobs are done.
-refuses "a plan replacing the runner manager create-before-destroy (#48)" "module.ci.google_compute_instance.manager destroys a runner manager: its running jobs would die with it" plan "$fx/plans/manager-create-then-delete.json"
-refuses "a plan destroying a deposed runner manager (#48)" "module.ci.google_compute_instance.manager (deposed 01338cc8) destroys a runner manager" plan "$fx/plans/manager-deposed-delete.json"
-passes "a plan forgetting the old managers, deposed too, creating the new one, updating one in place, and replacing another VM" plan "$fx/plans/manager-clean.json"
+# The runner manager and its SSH rule deleted (#113): the guards that kept it (#46, #48) went with it.
+passes "a plan deleting the runner manager and its SSH rule" plan "$fx/plans/manager-delete.json"
 
 refuses "a plan granting a service account container.admin" "grants roles/container.admin to serviceAccount:cluster-admin-pipeline@tacplus-dev" plan "$fx/plans/admin-project-member.json"
 refuses "a plan with a service account in an owner binding" "grants roles/owner to serviceAccount:gke-nodes@tacplus-dev" plan "$fx/plans/admin-owner-binding.json"

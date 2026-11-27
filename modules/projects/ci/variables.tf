@@ -27,107 +27,13 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "The zone of the runner manager and the pools' instance groups (one that has t2a, arm64)."
+  description = "The zone of the looper VMs' and the reserved machines' instance groups (one that has C4A, arm64)."
   type        = string
 }
 
 variable "subnet_cidr" {
-  description = "The runners' subnet."
+  description = "The subnet of the network runners, the looper VMs' and the reserved machines'."
   type        = string
-}
-
-variable "image" {
-  description = "The runner manager's boot image, by name (never a family)."
-  type        = string
-}
-
-variable "pool_image" {
-  description = "The pools' boot image: Container-Optimized OS for arm64, by name (never a family)."
-  type        = string
-  validation {
-    condition     = can(regex("^projects/cos-cloud/global/images/cos-arm64-[0-9]+-[0-9]+-[0-9]+-[0-9]+$", var.pool_image))
-    error_message = "The pools boot Container-Optimized OS for arm64 pinned by its image name (projects/cos-cloud/global/images/cos-arm64-<milestone>-<build>), never a family."
-  }
-}
-
-variable "manager_machine_type" {
-  description = "The runner manager's machine type (arm64)."
-  type        = string
-}
-
-variable "manager_disk_gb" {
-  description = "The runner manager's pd-balanced boot disk, in GB (modules/settings ci_disks: counted against SSD_TOTAL_GB with the pools' SSD-backed disks, #63). Part of the manager's build: a change replaces it (a handoff)."
-  type        = number
-  default     = 20
-}
-
-variable "manager_handoff_minutes" {
-  description = "The cap on a manager handoff (#51): a new manager starts taking jobs at most this long after it boots. The old one drains until 12 minutes before it, then the jobs still on it are cut (failed as runner_interrupted, with up to 8 minutes to tell GitLab, #54; the cloud pipeline's handoff job runs them again); the last minutes delete the old manager and empty the groups."
-  type        = number
-  default     = 30
-  validation {
-    condition     = var.manager_handoff_minutes >= 17 && floor(var.manager_handoff_minutes) == var.manager_handoff_minutes
-    error_message = "The handoff's cap is a whole number of minutes, 17 or more: 12 are kept for the cut, its report and the emptied groups, and 5 left to drain."
-  }
-}
-
-variable "runner" {
-  description = "GitLab Runner on the manager: our builds of its and the googlecloud fleeting plugin's tags (ci/runner.sh: version, branch and commit; plugin_version and plugin_commit), each installed by its SHA-256 (runner_sha256, plugin_sha256); the helper image its jobs run beside, and the default job image, by digest."
-  type = object({
-    version        = string
-    branch         = string
-    commit         = string
-    runner_sha256  = string
-    plugin_version = string
-    plugin_commit  = string
-    plugin_sha256  = string
-    helper_image   = string
-    default_image  = string
-  })
-  validation {
-    condition     = alltrue([for h in [var.runner.runner_sha256, var.runner.plugin_sha256] : can(regex("^[0-9a-f]{64}$", h))]) && alltrue([for c in [var.runner.commit, var.runner.plugin_commit] : can(regex("^[0-9a-f]{40}$", c))]) && alltrue([for i in [var.runner.helper_image, var.runner.default_image] : can(regex("@sha256:[0-9a-f]{64}$", i))])
-    error_message = "Every build is pinned by its SHA-256, each source by its commit, and the helper and default images by digest."
-  }
-}
-
-variable "runner_bin" {
-  description = "The directory of our builds of GitLab Runner and the fleeting plugin (ci/runner.sh; the tools job's bin/manager), uploaded to the manager's bucket."
-  type        = string
-}
-
-variable "pools" {
-  description = "The runner pools (modules/settings runner_pools): one instance template and managed instance group each, a runner-token secret, and with service_account, an account of its own with no role. Each VM runs capacity jobs at once (more than one), each container within its job's limits; its disk is capacity times a job's disk_gb, plus os_disk_gb."
-  type = map(object({
-    machine_type  = string
-    disk_type     = string
-    os_disk_gb    = number
-    capacity      = number
-    max_instances = number
-    idle_count    = number
-    idle_time     = string
-    job = object({
-      cpus         = string
-      memory       = string
-      memory_swap  = string
-      disk_gb      = number
-      security_opt = list(string)
-    })
-    service_account = bool
-    # Spot VMs (Jody, 2026-11-10: "builds run on the spot instances"): GCP may reclaim one at any time, and the job on
-    # it fails and is retried; the always-on nodes are never spot.
-    spot = optional(bool, false)
-    # The zones of the region the pool spreads over (#49): its group is regional, and makes each VM in whichever of
-    # them has the capacity. Empty: a zonal group in zone.
-    zones = optional(list(string), [])
-  }))
-  validation {
-    condition     = alltrue([for p in values(var.pools) : length(p.zones) == 0 || (length(p.zones) > 1 && length(distinct(p.zones)) == length(p.zones) && alltrue([for z in p.zones : can(regex("^${var.region}-[a-z]$", z))]))])
-    error_message = "A pool spreads over two zones or more of the region, each once (one zone is the stack's zone's job)."
-  }
-  validation {
-    condition     = alltrue([for p in values(var.pools) : p.capacity > 1 && p.idle_count <= p.max_instances && can(regex("^[0-9.]+$", p.job.cpus)) && can(regex("^[0-9]+[mg]$", p.job.memory)) && p.job.memory_swap == p.job.memory && p.job.disk_gb > 0])
-    error_message = "Every pool runs more than one job per VM, keeps no more idle VMs than its maximum, and limits each job's CPUs, memory (no swap: memory_swap the same) and disk share."
-  }
 }
 
 variable "build_cache" {
@@ -271,7 +177,7 @@ variable "looper_vms" {
 }
 
 variable "looper_vm_os_image" {
-  description = "The looper VMs' boot image: stock Container-Optimized OS for arm64, by name (never a family), as pool_image."
+  description = "The looper VMs' boot image: stock Container-Optimized OS for arm64, by name (never a family)."
   type        = string
   validation {
     condition     = can(regex("^projects/cos-cloud/global/images/cos-arm64-[0-9]+-[0-9]+-[0-9]+-[0-9]+$", var.looper_vm_os_image))

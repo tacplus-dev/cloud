@@ -7,8 +7,7 @@
 # Found by `govulncheck -mode=binary` (symbols present) in the pinned binaries, each at its latest upstream release,
 # none with a fixed one (#3); enforced by the security job (ci/security.sh, #10), which fails on an expired entry.
 # The gitlab and kubernetes providers are not here: they are built from source with the fixes (ci/gitlab-provider.sh;
-# ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are GitLab Runner and its fleeting plugin,
-# built from source with go1.27.4, x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6 (ci/runner.sh, #40, #44); nor are the Go
+# ci/kubernetes-provider.sh, kin-openapi v0.152.0 with its port, #23); nor are the Go
 # standard library findings of what we build (the tools, the scanners and the four providers, ci/tools.sh: GO-2026-6859
 # among them, #39), fixed by building them with the latest Go, nor is the google provider, built with x/net v0.62.0
 # (ci/google-provider.sh, #39) and x/crypto v0.59.0 (GO-2026-5932, #76), nor gitleaks' and
@@ -26,14 +25,13 @@
 #   gitleaks v8.30.1 (ci/tools.sh, #10)                   GO-2025-3922
 #   OSV-Scanner v2.7.0 (ci/tools.sh)                      GHSA-q7gw-24fr-5p69
 #   Trivy 0.76.2 (ci/tools.sh, #10, #62)                  GO-2026-5932 6865 6975, GHSA-q7gw-24fr-5p69
-#   the fleeting plugin v1.3.1 (ci/runner.sh)             GHSA-q7gw-24fr-5p69
-#   GitLab Runner v19.6.0 (ci/runner.sh, #99)             GO-2026-6984
 #   the CI image build:2.6 of 2026-11-23 (#97): its gh    GO-2026-5932 (Trivy)
 #
 # GHSA-q7gw-24fr-5p69 (otel < v1.47.0, #99) has no Go vulndb id: the nightly's OSV-Scanner of the pins' go.mod found it,
-# not govulncheck. GitLab Runner is past it (v19.6.0, built with otel v1.47.0).
+# not govulncheck. GitLab Runner and its fleeting plugin are no longer built or scanned here: the runner manager went
+# with its pools (#113).
 #
-# GO-2026-6975 (otel < v1.47.0, W3C baggage) and GO-2026-6984 (fastzip < v0.2.1) are scoped by where to the binaries
+# GO-2026-6975 (otel < v1.47.0, W3C baggage) is scoped by where to the binaries
 # they were found in (#103): CI tooling, excepted 14 days by the decision that its findings never block
 # (tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md) until tacplus-dev/looper#225 reports them only.
 exceptions:
@@ -82,7 +80,7 @@ exceptions:
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#3, 2026-11-03)"
     expires: 2026-12-03
   - id: GO-2026-6865
-    reason: "klauspost/compress panic on two-block frames, fse/huff0 (OpenTofu 1.13.2, Trivy 0.76.2, upstream's downloads): they decode only pinned, trusted inputs (lock-file hashes, this repository, the CI image by digest), no untrusted compressed stream. Fixed in v1.20.2; no release of them with it yet (OpenTofu 1.13.9 and Trivy 0.76.2 still lack it). gitleaks, OSV-Scanner (ci/tools.sh) and GitLab Runner (ci/runner.sh, #40) are built here with v1.20.2."
+    reason: "klauspost/compress panic on two-block frames, fse/huff0 (OpenTofu 1.13.2, Trivy 0.76.2, upstream's downloads): they decode only pinned, trusted inputs (lock-file hashes, this repository, the CI image by digest), no untrusted compressed stream. Fixed in v1.20.2; no release of them with it yet (OpenTofu 1.13.9 and Trivy 0.76.2 still lack it). gitleaks and OSV-Scanner (ci/tools.sh) are built here with v1.20.2."
     decided_by: "jodydadescott (tacplus-dev/cloud#24, 2026-11-06)"
     expires: 2026-12-06
   - id: GO-2025-3922
@@ -98,7 +96,7 @@ exceptions:
     decided_by: "jodydadescott (hub, in chat, 2026-11-20: 14 days, the cloud CI image only)"
     expires: 2026-12-04
   - id: GHSA-q7gw-24fr-5p69
-    reason: "OpenTelemetry Go SDK < v1.47.0, AttributeValueLengthLimit bypassed by U+FFFD runes (CVE-2026-128085, MODERATE; no Go vulndb id, so unseen by govulncheck), in these pins only: OpenTofu 1.13.2, tflint 0.66.0, tflint-ruleset-google 0.41.0, OSV-Scanner v2.7.0, Trivy 0.76.2 (ci/tools.sh) and the fleeting plugin v1.3.1 (stacks/ci/main.tf): CI-only tools, none exporting telemetry here. GitLab Runner moved to v19.6.0, built with v1.47.0. Waits on a release of each built with otel >= v1.47.0 (OpenTofu 1.13.9, tflint 0.66.0, the ruleset 0.41.0, OSV-Scanner v2.7.1, Trivy 0.76.2 and the plugin v1.3.1, the latest, have v1.45.0 or v1.46.0)."
+    reason: "OpenTelemetry Go SDK < v1.47.0, AttributeValueLengthLimit bypassed by U+FFFD runes (CVE-2026-128085, MODERATE; no Go vulndb id, so unseen by govulncheck), in these pins only: OpenTofu 1.13.2, tflint 0.66.0, tflint-ruleset-google 0.41.0, OSV-Scanner v2.7.0 and Trivy 0.76.2 (ci/tools.sh): CI-only tools, none exporting telemetry here. Waits on a release of each built with otel >= v1.47.0 (OpenTofu 1.13.9, tflint 0.66.0, the ruleset 0.41.0, OSV-Scanner v2.7.1 and Trivy 0.76.2, the latest, have v1.45.0 or v1.46.0)."
     decided_by: "jodydadescott (hub, tacplus-dev/cloud#99, 2026-11-23: 30 days, these pins only)"
     expires: 2026-12-23
   - id: GO-2026-6975
@@ -121,8 +119,3 @@ exceptions:
     decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
     expires: 2026-12-08
     where: bin/trivy
-  - id: GO-2026-6984
-    reason: "saracen/fastzip v0.2.0 (< v0.2.1; GHSA-8gwq-33fg-g56p): its Extractor writes outside its chroot through an existing symbolic link, in our GitLab Runner v19.6.0 build (ci/runner.sh), the manager's binary. The manager extracts no archive: artifacts and caches are extracted by the helper image in the job VMs, and are this repository's own jobs'. Waits on a GitLab Runner release requiring fastzip >= v0.2.1 (v19.6.0, the latest, requires v0.2.0); raising it in ci/runner.sh alone would change the runner's SHA-256, which tacplus-dev/cluster's runner images must match (PROPOSALS.md)."
-    decided_by: "jodydadescott (tacplus-dev/cloud#103, 2026-11-24, by tacplus-dev/roadmap decisions/security-gates-ship-only-2026-11-23.md: 14 days, this binary only)"
-    expires: 2026-12-08
-    where: bin/scan/gitlab-runner

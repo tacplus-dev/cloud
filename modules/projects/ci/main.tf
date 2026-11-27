@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The ci project: GitLab runners (a manager VM and its pools of arm64 VMs, shared by job containers), the build
-# cache, the GitHub Apps' keys in Cloud KMS (github-apps.tf) and the Admiral's credentials (admiral.tf).
+# The ci project: the looper VMs (looper-vms.tf) and the reserved machines (reserved-vms.tf) on the network runners and
+# its NAT, the build cache, the GitHub Apps' keys in Cloud KMS (github-apps.tf), the Admiral's credentials (admiral.tf)
+# and the audit's account (hub-audit.tf). Its GitLab runner pools and their manager are gone (#113): GitLab's jobs run
+# on the in-cluster runners of the dev project (README, What runs where).
 
 resource "google_project" "ci" {
   project_id          = var.project_id
@@ -61,6 +63,8 @@ locals {
   ]
 }
 
+# The network, its subnet, router and NAT are still named runners, for the runner pools they were made for (#113 removed
+# the pools): the looper VMs and the reserved machines are on them, and a new name would replace every one of those.
 resource "google_compute_network" "runners" {
   project                 = google_project.ci.project_id
   name                    = "runners"
@@ -77,7 +81,7 @@ resource "google_compute_subnetwork" "runners" {
   private_ip_google_access = true
 }
 
-# No VM has an external address: they reach gitlab.com, the registries and the Ubuntu archive through NAT.
+# No VM has an external address: they reach gitlab.com, GitHub, the registries and the model API through NAT.
 resource "google_compute_router" "runners" {
   project = google_project.ci.project_id
   name    = "runners"
@@ -92,33 +96,29 @@ resource "google_compute_router_nat" "runners" {
   router                             = google_compute_router.runners.name
   nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-  # Ports per VM grow with its connections (2026-11-11): with no slots, a VM runs up to 25 jobs that open connections
-  # at once (image pulls, git, the model API), and NAT's default of 64 ports a VM ran out ("Get https://ghcr.io/v2/:
-  # context deadline exceeded" on every new job). Dynamic allocation from 1024 up to 16384 a VM.
+  # Ports per VM grow with its connections (2026-11-11): a VM's jobs open connections at once (image pulls, git, the
+  # model API), and NAT's default of 64 ports a VM ran out on the shared runner VM ("Get https://ghcr.io/v2/: context
+  # deadline exceeded" on every new job). Dynamic allocation from 1024 up to 16384 a VM.
   enable_dynamic_port_allocation      = true
   enable_endpoint_independent_mapping = false
   min_ports_per_vm                    = 1024
   max_ports_per_vm                    = 16384
-  # A connection NAT drops (no port left, an allocation failed) is logged, errors only (#61): the pools' VMs log nothing
-  # of their own (no account), and a fresh VM's first pull timed out with no record of why.
+  # A connection NAT drops (no port left, an allocation failed) is logged, errors only (#61): a runner pool's fresh VM's
+  # first pull timed out with no record of why.
   log_config {
     enable = true
     filter = "ERRORS_ONLY"
   }
 }
 
-# The manager reaches its workers over SSH (the docker-autoscaler executor): the one port-22 rule, internal and by
-# network tag, which ci/policy.sh admits exactly as it is until the runner VMs go (#11). Nothing else reaches port 22,
-# not even IAP (decisions/network-exposure-2026-11-03.md): break-glass on a VM is its serial console and its logs.
-resource "google_compute_firewall" "manager_to_workers" {
-  project     = google_project.ci.project_id
-  name        = "runner-manager-to-workers-ssh"
-  network     = google_compute_network.runners.id
-  direction   = "INGRESS"
-  source_tags = ["runner-manager"]
-  target_tags = ["runner-worker"]
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
+# The runner manager (#113): #48's destroy = false is in its state (OpenTofu keeps it there), so a resource block taken
+# away would forget it, not destroy it, and its VM and disk would bill on outside every state (tests/ci_plan_test.sh).
+# This destroys it, with the rest of the pools; once applied it is in no state and the block is a no-op, which goes in
+# a later commit (PROPOSALS.md). The managers made before #46 were forgotten by their own destroy = false: the drift
+# job's audit names any runner-* VM, disk, template or group still in the project (ci/audit.sh).
+removed {
+  from = google_compute_instance.manager
+  lifecycle {
+    destroy = true
   }
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # A stub gcloud for tests/audit_test.sh: it answers the lists ci/audit.sh runs, each from
-# STUB_LIVE/<project>/<what>.json (what: firewall-rules, instances, instance-templates, addresses, clusters); a list with no file
+# STUB_LIVE/<project>/<what>.json (what: firewall-rules, instances, instance-templates, addresses, clusters, disks,
+# instance-groups-managed); a list with no file
 # is refused, as the API refuses one. Every call is logged (STUB_LOG, one line each); any other command fails loudly.
 set -euo pipefail
 echo "gcloud $*" >> "$STUB_LOG"
@@ -20,6 +21,8 @@ case "${words[*]}" in
   "compute instance-templates list") what=instance-templates ;;
   "compute addresses list") what=addresses ;;
   "container clusters list") what=clusters ;;
+  "compute disks list") what=disks ;;
+  "compute instance-groups managed list") what=instance-groups-managed ;;
   *) echo "stub gcloud: not a command ci/audit.sh runs: $*" >&2; exit 99 ;;
 esac
 f=$STUB_LIVE/$project/$what.json

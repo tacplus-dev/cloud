@@ -2,9 +2,10 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The drift job's pool check (#53): why a runner pool makes no VM, where a report can read it. Only the pipeline
-# reads the ci project's instance groups; on 2026-11-13 the build pool made no VM from 10:25Z, every build stalled,
-# and nobody else could see why (a zone out of spot t2a, a quota, a recreation stuck in its zone). So each group of
+# The drift job's pool check (#53): why an instance group of the ci project (a looper VM's, a reserved machine's; the
+# runner pools' until #113) makes no VM, where a report can read it. Only the pipeline reads the ci project's instance
+# groups; on 2026-11-13 the build pool made no VM from 10:25Z, every build stalled, and nobody else could see why (a
+# zone out of spot t2a, a quota, a recreation stuck in its zone). So each group of
 # PROJECT, zonal or regional, is read: each VM its group cannot make (a creation or a recreation whose last attempt
 # failed: its action, its status, the error) and each stopped VM it keeps; the group's errors of the last 24 hours
 # (Compute's own list of them), counted by error and zone, with the last one's time and message; then each quota of

@@ -6,11 +6,6 @@ output "project_id" {
   value       = google_project.ci.project_id
 }
 
-output "runner_token_secrets" {
-  description = "Each pool's runner-token secret (projects/P/secrets/S), which the gitlab stack writes."
-  value       = { for k, s in google_secret_manager_secret.runner_token : k => s.id }
-}
-
 output "app_keys" {
   description = "Each GitHub App's KMS key (import-only, no version until its app's key is imported), by name."
   value       = { for k, key in google_kms_crypto_key.app : k => "${google_kms_key_ring.looper.id}/cryptoKeys/${key.name}" }

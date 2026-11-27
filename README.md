@@ -17,9 +17,8 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 - **Folders and projects,** all under the parent folder:
   - `bootstrap` / `tacplus-bootstrap`: this pipeline's state bucket, its identity and the secrets it reads (made by the
     bootstrap script, below);
-  - `ci` / `tacplus-ci`: the GitLab runner manager VM and its pools (arm64 Container-Optimized OS VMs shared by job
-    containers, one always on: below, The runners' image), the build cache (below, The build cache), the release
-    registry `releases` (below, The release registry), and the GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader`, `tacplus-admiral`, `tacplus-check`
+  - `ci` / `tacplus-ci`: no GitLab runner since #113 (below, What runs where), the build cache (below, The build cache), the
+    release registry `releases` (below, The release registry), and the GitHub Apps' KMS keys (`tacplus-manager`, `tacplus-looper`, `tacplus-reader`, `tacplus-admiral`, `tacplus-check`
     and `tacplus-merger`, import-only),
     their import jobs, the federation that signs with them and the reader's account `fleet-seatrials-reader` (below, The
     GitHub Apps' keys), the Admiral's account `admiral` and its secret `admiral-triage-gitlab` (below, The
@@ -61,11 +60,11 @@ Work arrives as issues; see github.com/tacplus-dev/looper.
 | Path | What |
 |---|---|
 | `bootstrap/bootstrap.sh` | Jody's one-time script (below). |
-| `modules/settings` | The names every stack shares: the parent folder (an input, never written here), region, project IDs, the pipeline's identity, the runner pools. |
+| `modules/settings` | The names every stack shares: the parent folder (an input, never written here), region, project IDs, the pipeline's identity, the looper VMs and the reserved machines, tacplus-ci's quotas. |
 | `modules/folder`, `modules/projects/ci`, `modules/projects/dev`, `modules/gitlab` | The modules. |
 | `stacks/<folder\|ci\|dev\|gitlab\|anthropic>` | The five roots, each its own state (`gs://tacplus-bootstrap-tofu-state/<stack>`), OpenTofu and providers pinned exactly, `.terraform.lock.hcl` with every provider's hashes, `tests/` (its plan against mock providers). |
 | `ci/gitlab-project.gitlab-ci.yml` | The GitLab project's `.gitlab-ci.yml`, with `CLOUD_COMMIT` set (`ci/pin.sh`). |
-| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `hub-audit` (the audit job's report, below, The hub's audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
+| `ci/*.sh` | `tools` (pinned tools, by checksum), `security` (the security job), `gitlab-provider`, `kubernetes-provider` and `anthropic-provider` (those providers, built from source), `anthropic-token` (the anthropic provider's ID tokens, one per exchange), `tofurc` (OpenTofu installs those builds only), `lint`, `checks`, `policy`, `tofu` (plan, apply, drift), `drift`, `audit` (the drift's live audit), `hub-audit` (the audit job's report, below, The hub's audit), `iam-ready` (a new project's IAM gate), `dns` (the drift's DNS check), `pools` (the drift's pool check), `idle-runners` (`plan:ci`'s check that the retired pools' runners are idle, #113), `expiry` (the drift's expiry check), `build-ci` (tacplus-dev/build's `.gitlab-ci.yml`, checked and linted), `lib` (credentials), `lock`, `pin`. |
 | `stacks/gitlab/files/build.gitlab-ci.yml` | tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's copied as is (below, The build pipeline). |
 | `build.lock`, `gates.yaml` | The build image by digest (the CI image), and the gates run in it (below, How a change flows). |
 | `security-exceptions.yaml` | The known vulnerabilities accepted until a fixed release exists, each with its reason and expiry; the `security` job enforces them (below). |
@@ -82,8 +81,8 @@ repository it plans and applies. Every job fetches this repository at that commi
   branch `main`). No keys anywhere. The gitlab stack's GitLab token is read from Secret Manager, by the version
   `modules/settings` names. The `audit` job alone is `hub-audit@tacplus-ci.iam.gserviceaccount.com` instead, read-only,
   through the same provider (below, The hub's audit).
-- **Runner:** a project runner locked to the GitLab project, tag `cloud`, a fresh VM per job with no Google account. Every
-  job is tagged for it.
+- **Runner:** the in-cluster `infra` runner (below, The cluster pipeline), tag `cloud`, a pod per job in the dev
+  cluster, protected refs only. Every job is tagged for it.
 - **The parent folder:** the protected project variable `GCP_PARENT_FOLDER`, its numeric ID; `ci/lib.sh` gives it to the
   stacks as their variable `parent_folder`, and refuses a job without one. No file here holds it.
 - **Order:** the checks, then `folder` (the folders), then `ci` and `dev` (the projects), then `gitlab` (whose runner
@@ -101,10 +100,10 @@ repository it plans and applies. Every job fetches this repository at that commi
 | `fmt`, `validate`, `tflint`, `shellcheck`, `policy` | every push and merge request | `ci/lint.sh <job>`: no credential, no cloud. `policy` refuses a service-account key, `allUsers`/`allAuthenticatedUsers`, and what a commit does not fix (`timestamp()`, `uuid()`, an image at `:latest`, an image family). |
 | `test` | every push and merge request | `ci/checks.sh`: the shell tests, and `tofu test` of each stack: its plan under a stub parent folder, with empty projects (mock providers). The gitlab stack is also planned with its real providers against a stub of gitlab.com's API (`tests/gitlab_plan_test.sh`, #17): gitlab.com is an Enterprise instance to the provider, on Free too; and the anthropic stack against a stub of Anthropic's (`tests/anthropic_plan_test.sh`, #34). |
 | `security` | every push and merge request, and the nightly schedule | `ci/tools.sh security && ci/security.sh`: OSV-Scanner, govulncheck, gitleaks and Trivy, the policy and `security-exceptions.yaml` (below, Security checks): it fails on what ships, never on CI tooling (#101); its report the artifact `src/security/`. `plan:folder` needs it: no plan, so no apply, unless it passes. |
-| `plan:<stack>` | main (push, web, API) | `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), an Anthropic identity adopted with a change (below, The Anthropic organization), another writer, a reader not a service account or another role on the release registry (#115; below, The release registry), or a `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi (#87; below, The build pipeline: its settings). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
+| `plan:<stack>` | main (push, web, API) | `plan:ci` first: the tacplus-ci pools' runners idle for a day, if any is still registered (`ci/idle-runners.sh`, with the GitLab token, #113; below, What runs where). `ci/tofu.sh plan`: the plan, saved as the artifact `plans/<stack>.tfplan` with its `.txt` (to read), `.json` and `.sha256`; refused, and so never applied, if `ci/policy.sh` refuses the plan: a key, a public member, `roles/owner` or `roles/editor` to any service account, the pipeline's own included (#78), `roles/container.admin` to one but the pipeline (below, The cluster pipeline), a break of the network rules (below), an Anthropic identity adopted with a change (below, The Anthropic organization), another writer, a reader not a service account or another role on the release registry (#115; below, The release registry), or a `BUILD_GATES_REQUESTS_*` requesting more than 3 CPU or 10Gi (#87; below, The build pipeline: its settings). A failing check is said, not refused. The artifacts are for project members only (a plan can hold secret values). |
 | `apply:<stack>` | main, **automatically** once its plan succeeds | `ci/tofu.sh apply`: applies **exactly that saved plan** (its SHA-256 checked; OpenTofu refuses it if the state changed since). Environment `<stack>`, one at a time. |
 | `audit` | the hourly schedule `audit`, and on demand (web or API, `CLOUD_AUDIT` `true`) | Alone in its pipeline: the hub's report of `tacplus-ci` and `tacplus-dev` (exposure, inventory, quotas, utilization, secrets' names, registries' IAM), read as the read-only `hub-audit` (`ci/hub-audit.sh`); its artifact `src/audit/` (`audit.json`, `audit.md`), 30 days. Red on an ingress rule open to `0.0.0.0/0`, a VM's external IP or a public registry (below, The hub's audit). |
-| `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below), the pool check (`ci/pools.sh`: why a runner pool makes no VM, below, The pools) and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
+| `drift` | the nightly schedule | A plan of every stack (`anthropic` once its bootstrap rule is set), saved nowhere, no lock, with its failing checks, then the live audit of the projects against the network rules (`ci/audit.sh`, below) and of what is left of the runner pools (any `runner-*` VM, disk, template or group, #113), the pool check (`ci/pools.sh`: why an instance group of the ci project makes no VM) and the expiry check (`ci/expiry.sh`: an expiry within 30 days, below, Memberships); if anything differs, breaks them or expires, an issue here (one open at a time; a new drift is a comment). Never applies. |
 
 The cloud jobs run only on main, because Workload Identity Federation admits only this project's protected main: a merge
 request gets the checks, and its plan runs once it is merged. Only `apply-prod` (not built) will be a protected manual job
@@ -116,9 +115,8 @@ that Jody plays, on a commit already applied to dev.
   0.41.0, shellcheck 0.11.0, Trivy 0.76.2 (each by SHA-256, `ci/tools.sh`); yq by module version (the Go checksum
   database); gitleaks v8.30.1, OSV-Scanner v2.7.0 and govulncheck v1.1.4 by module version and hash, built with Go 1.27.3; the
   `google` 8.9.0, `kubernetes` 3.4.0 (the dev stack), `gitlab` 19.5.0 and `anthropic` 1.92.0 (ippontech's, the anthropic stack) providers, by hash in each lock file (`ci/lock.sh` writes them; jobs init with
-  `-lockfile=readonly`), the `gitlab`, `kubernetes`, `google` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest; the manager's Ubuntu image by name, with no package installed at boot;
-  the pools' Container-Optimized OS image by name (below, The runners' image); GitLab Runner and its fleeting plugin,
-  our builds, by commit and SHA-256 (below, The manager's binaries); the runners' helper and default images by digest.
+  `-lockfile=readonly`), the `gitlab`, `kubernetes`, `google` and `anthropic` ones our own reproducible builds (below), by its commit and its SHA-256; the CI image by digest;
+  the looper VMs' and the reserved machines' Container-Optimized OS image by name (`modules/settings`' `cos_arm64_image`).
 - The same commit produces the same plan: nothing in the source resolves at plan time what a commit does not fix
   (`ci/policy.sh`), and the only inputs are the commit, the pins, and the cloud's state.
 - Nothing is applied that isn't in a reviewed commit: `apply` applies only the plan its pipeline saved, of `CLOUD_COMMIT`,
@@ -148,9 +146,8 @@ is applied:
   needs only Google's. The dev stack's one such rule is the load balancer's (below, The public entry). A deny rule is not
   refused.
 - **No SSH anywhere, not even IAP:** a firewall rule allowing port 22 in either direction (`tcp` or `all` with no ports,
-  `22`, or a range covering it) is refused. The one exception, exactly as it is, is the runners' internal rule
-  `runner-manager-to-workers-ssh` (the manager to its workers, by network tag), which goes with the runner VMs (#11).
-  Break-glass on a VM is its serial console and its logs.
+  `22`, or a range covering it) is refused, with no exception: the runners' internal rule
+  `runner-manager-to-workers-ssh` went with the runner VMs (#113). Break-glass on a VM is its serial console and its logs.
 - **Private nodes, on Container-Optimized OS:** a cluster without `private_cluster_config.enable_private_nodes`, a node pool
   with public nodes, or one whose `image_type` is not `COS_CONTAINERD`, is refused.
 - **No public control plane** (Jody, 2026-11-18, #79: only load balancers are public; until then it was public, Jody,
@@ -159,7 +156,7 @@ is applied:
   authorized networks enforced on the private endpoint too, Google Cloud's public ranges off. The cloud, cluster and
   deploy pipelines reach it from inside, on the in-cluster runner `infra` (below, The cluster pipeline), whose job pods
   are in the pods' range; `get-credentials` gives the private endpoint, which is the cluster's only one. Nothing on the
-  internet, the runner VMs in `tacplus-ci` and the hub's own machine included, reaches it. A cluster with a public
+  internet, the VMs in `tacplus-ci` and the hub's own machine included, reaches it. A cluster with a public
   endpoint, with no master authorized networks, or authorizing a public range or Google Cloud's public ranges, is
   refused in a plan, and the live audit reports one.
 - **The pools:** `normal`, 3 x c4a-standard-2, on demand and fixed, runs the platform in the cluster's zone; `spot`,
@@ -249,9 +246,9 @@ moves to the first upstream release with the fix (#3):
   (`srcbuild`) requiring go-jose v4.1.6, checked against the Go checksum database, in place of the release's v4.1.4
   (GHSA-mgcc-cww5-fp2q, HIGH, a DoS parsing JWKs with RSA keys; GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4), whose
   advisories have no Go vulndb id yet, so govulncheck cannot see them; `tests/security_test.sh` checks `bin/tofu`'s.
-- **GitLab Runner and its fleeting plugin are built here** (#40; below, The manager's binaries): go1.27.4, x/net v0.62.0,
-  klauspost/compress v1.20.2 and go-jose v4.1.6 (#44), so neither has a Go vulndb entry; the runner is v19.6.0 (#99), built
-  with OpenTelemetry v1.47.0, the plugin v1.3.1 is under GHSA-q7gw-24fr-5p69's exception (its latest release, otel v1.45.0); the jobs' helper image, upstream's, is not scanned here.
+- **GitLab Runner and its fleeting plugin are no longer built or scanned here** (#113): the runner manager that ran
+  them went with its pools (below, What runs where), and with them their exceptions (GO-2026-6984, the plugin's
+  GHSA-q7gw-24fr-5p69).
 - **The CI image is the 2.6 line's build:20261126-57a6521 by digest** (#102; build:2.6's rebuild of 2026-11-26; before it
   build:20261123-57a6521, #104; build:20261123-ef62327, #97, from Debian's fixes of that day,
   krb5 1.21.3-5+deb13u2 among them, after 159 HIGH advisories in 2.6.13's packages turned the security job red; 2.6.13, #91;
@@ -274,8 +271,7 @@ request and nightly schedule:
   the providers' lock files are OpenTofu's, and their binaries are scanned below);
 - **`govulncheck -mode=binary`** on every pinned binary the pipeline runs or installs, symbols present: OpenTofu, tflint
   and its google ruleset, yq, gitleaks, OSV-Scanner, Trivy and govulncheck, the `gitlab`, `kubernetes` and `google`
-  providers (`bin/`), and GitLab Runner and its fleeting plugin (our builds, the very bytes the manager installs, from
-  `bin/manager/`) (`bin/scan/`, `ci/tools.sh security`). shellcheck is not Go;
+  providers (`bin/`). shellcheck is not Go;
 - **gitleaks** on the tree and its whole history (the job fetches it: a shallow clone fails);
 - **Trivy** on the CI image the jobs run in, by its digest (`default.image`).
 
@@ -365,9 +361,9 @@ The host organization's admin (its own pipeline, outside this repository) provid
   - `roles/container.admin`: the cluster and its node pool, and through GKE's RBAC its `cluster-admin` binding (below,
     The cluster pipeline): the one service account that holds it;
   - `roles/dns.admin`: the zones, their records and IAM;
-  - `roles/secretmanager.admin`: the secrets, their versions (the runners' tokens) and IAM;
+  - `roles/secretmanager.admin`: the secrets, their versions (the in-cluster runners' tokens) and IAM;
   - `roles/cloudkms.admin`: the apps' key ring, keys, import job and IAM;
-  - `roles/storage.admin`: the buckets (the build cache, the manager's binaries), their objects and IAM;
+  - `roles/storage.admin`: the buckets (the build cache), their objects and IAM;
   - `roles/artifactregistry.admin`: the registries and their IAM;
   - `roles/logging.configWriter`: the log views, `hub-audit-autoscaler` on each project's `_Default` bucket (#85; below,
     The hub's audit). Granted before `modules/settings`' `autoscaler_log` is set `true`, in a commit of its own: until
@@ -595,7 +591,7 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
 
 - **Its runners** (#35): group runners on, gitlab.com's shared runners off (`gitlab_project.build`, the project adopted
   by its ID, never destroyed, nothing else of it managed). Its jobs are tagged `build`, which only tacplus-dev's group
-  runners (the pools) take: with group runners off, every build job waits about 1.5 h and fails
+  runners (the in-cluster ones, below, What runs where) take: with group runners off, every build job waits about 1.5 h and fails
   `stuck_pending_no_matching_runners`. Any project that takes `build`-tagged jobs needs group runners on.
 - **Its `.gitlab-ci.yml`** is tacplus-dev/looper's `ci/build.gitlab-ci.yml` at the commit the stack names
   (`build_ci_commit`), copied as is into `stacks/gitlab/files/build.gitlab-ci.yml` and written to tacplus-dev/build's
@@ -691,245 +687,53 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
 **Not yet:** nothing is applied before the first pipeline; the builds need the build runner (tags `arm64`, `build`),
 which the hub registers for tacplus-dev/looper#84.
 
-## The runners' image
+## What runs where
 
-The pools' VMs are vanilla: Google's **Container-Optimized OS** for arm64, pinned by image name, with nothing installed
-at boot and the OS's own container runtime (#4; `tacplus-dev/roadmap:decisions/builds-in-containers-2026-11-03.md`,
-which replaced the baked image of tacplus-dev/looper#43). No job is placed on a VM before that runtime answers. Job
-containers share the VMs, which are reused (#5, `decisions/looper-job-per-issue-2026-11-03.md`; below, The pools).
+#113 (Jody, 2026-11-25: "make sure you have all the dead stuff cut. I dont want a large bill"): tacplus-ci's GitLab
+runner pools (`shared`, `build`, `deploy`, `cluster`), their manager VM `runner-manager-*` and its disk, their
+registrations, token secrets (`runner-token-<pool>`), accounts, IAM, the manager's binaries' bucket
+(`tacplus-ci-runner-bin`) and its SSH rule (`runner-manager-to-workers-ssh`) are gone. By the audit of 2026-11-26 the
+always-on shared VM sat at 0.1% CPU, its runner's last job 2026-11-25T09:43Z, and the build pool was at 0, paused.
+What runs now:
 
-- **The readiness gate.** Every pool's `instance_ready_command` waits, at most ten minutes, until the OS's container
-  runtime has pulled the runner's helper image, by digest, for the user the manager connects as
-  (`files/config.toml.tftpl`; each pull bounded to two minutes): the job's first step, through the daemon's own path
-  (its DNS, its proxy, Cloud NAT). A fresh VM is up before its egress works, and its first job failed pulling the
-  helper image (#50); an HTTPS answer from the VM itself was not enough, and it failed again (#61, twice on
-  2026-11-14). A VM not ready by then is removed. That user, `runner`, is created by the OS's guest agent from the
-  SSH key the fleeting plugin sets, in the OS's `docker` group. Cloud NAT logs the connections it drops (errors only,
-  #61): a pull that still fails on NAT leaves its cause in the ci project's Cloud Logging.
-- **The VM.** No startup-script, and no OS update (`cos-update-strategy = update_disabled`): the image changes only
-  with its pin. COS's root is read-only, so a job's builds stay in the executor's own volume (no host `/builds`); the
-  jobs still get the host's Docker socket until looper's build jobs replace it (PROPOSALS.md).
-- **The pin.** The pools boot the image `modules/settings` names (`cos_arm64_image`), **by name, never its family**
-  (`decisions/deterministic-deployments-2026-11-02.md`: a family resolves the newest image at each VM's creation, so
-  Google's release would change every worker without a commit). The module refuses anything but a COS arm64 image
-  name, and `ci/policy.sh` refuses an image family anywhere in the source.
-- **A bump** is a normal pin commit: pick the build (`gcloud compute images list --project cos-cloud
-  --no-standard-images --filter="family~^cos-arm64-"`, the release notes at
-  cloud.google.com/container-optimized-os/docs/release-notes), change `cos_arm64_image`, and let the pipeline run:
-  `plan:ci` shows the templates replaced and `apply:ci` applies them; new VMs boot the new image. A VM already up
-  keeps the image it booted until it is replaced, the always-on one included (PROPOSALS.md, replace the always-on VM
-  on a bump). **Rollback** is a revert, through the same plan and apply.
+| What | Where | Runner (tags) |
+|---|---|---|
+| This repository's pipeline (`cloud`), tacplus-dev/cluster's (`cluster`), the deployments' (`deploy`, fleet-seatrials') | the dev cluster, `ci` namespace, normal pool, protected refs only | in-cluster `infra` (`cloud`, `cluster`, `deploy`), the gitlab stack's |
+| tacplus-dev/build's land builds: gates, security | the dev cluster, spot pool | in-cluster `build` (`arm64`, `build`), the hub's (tacplus-dev/cluster) |
+| tacplus-dev/build's report builds | the dev cluster, spot pool, below a land's | in-cluster `build-report` (`arm64`, `build-report`) |
+| tacplus-dev/build's light jobs (pending, plan, report-pass, report-fail) | the dev cluster, normal pool | in-cluster `build-light` (`arm64`, `build-light`) |
+| tacplus-dev/build's nightly fan-out | the dev cluster, spot pool, above the reports, below a land's | in-cluster `nightly` (`arm64`, `build-nightly`, #116) |
+| The looper's control jobs; its kicker and plan; its managers | the dev cluster | in-cluster `control`, `kick` (`arm64`, `kick`), `manager` (`arm64`, `manager`) |
+| The looper's reports (a looper and its builder per project) | tacplus-ci, outside GitLab | the looper VMs (below, The looper VMs) |
+| The rolling check of main, the merger | tacplus-ci, outside GitLab | the reserved machines (below, The reserved machines) |
 
-### The pools
+The tags only the pools carried run nowhere: `autoscale` and `autoscale-16` (the shared pool's, which no job had used
+for a day), and `build-docker`, the build pool's (#70), for a release's publish that needs host Docker
+(tacplus-dev/looper#172's `BUILD_DOCKER_TAGS`): no in-cluster runner has a Docker socket, so such a publish waits for a
+builder image with rootless BuildKit (tacplus-dev/tacplus#315; PROPOSALS.md).
 
-`modules/settings` (`runner_pools`), decided on #5:
+The ci project keeps what the looper VMs and the reserved machines use: the network `runners`, its subnet
+`runners-us-central1`, its router and NAT `runners`, still named for the pools (a new name would replace those VMs),
+and the Container-Optimized OS pin (`modules/settings`' `cos_arm64_image`). GitLab Runner is no longer built, pinned
+or scanned here: tacplus-dev/cluster builds its runner and helper images from upstream itself (cluster#21, #44).
 
-| Pool | Runner | VMs | Jobs per VM, each |
-|---|---|---|---|
-| `shared` | tacplus-dev group runner, not protected; tags `arm64`, `autoscale`, `autoscale-16` (loopers and control jobs) | **one always on, a second on demand** (`idle_count = 1`, `max_instances = 2` since #63; three until #55, one until #63): t2a-standard-8, 154 GB pd-balanced (#63; 350 GB pd-standard until then) | no slots (Jody, 2026-11-10): up to 13 jobs a VM (#63; 25 until then), each may use all 8 CPUs and 28g, no swap, 8 GB of disk (12 until #63) |
-| `build` | tacplus-dev group runner, not protected; tags `arm64`, `build` (tacplus-dev/build's jobs) and `build-docker` (#70: the jobs that still need host Docker, which the in-cluster build runner has not) | **on demand, from zero** (`idle_count = 0`, `max_instances = 1` since #63, two until then; spot until #55): t2a-standard-8, 450 GB pd-standard, in whichever of us-central1-a, -b and -f has the capacity (#49) | 4 builds a VM (4 at once), each may use 4 CPUs and 14g |
-| `deploy` | tacplus-dev/fleet-seatrials, protected; tag `deploy` | on demand (at most 1, kept 30 minutes idle): t2a-standard-2 (#55), 80 GB | 2: 2 CPUs, 6g, 25 GB |
-| `cluster` | tacplus-dev/cluster, also tacplus-dev/cloud's own pipeline, protected; tags `cluster`, `cloud` | on demand (at most 1, kept 30 minutes idle): t2a-standard-4, 70 GB | 2: 2 CPUs, 7g, 20 GB |
+**How it was retired, safely.** One land, two commits: the gitlab stack's drops the registrations, the ci stack's the
+rest. Either apply order holds: a token version whose secret is already gone is a 404, which the google provider's
+read and delete take as gone. Before the ci stack's plan, `plan:ci` runs `ci/idle-runners.sh`: with the GitLab token,
+each pool runner still registered (described `tacplus-ci <pool> ...`) must have no job running and none created in
+the last 24 hours; it prints each one's last job, and fails the plan, so no apply, otherwise; with none left it
+passes. The manager's `destroy = false` (#48) is kept in its state by OpenTofu, so taking its resource block away would
+have forgotten it, not destroyed it, and its VM would have billed on outside every state: a `removed` block with
+`destroy = true` (`modules/projects/ci/main.tf`) destroys it, and `tests/ci_plan_test.sh` plans from that state to
+show it (and that without the block it is forgotten). The managers made before #46 were forgotten by their own
+`destroy = false`; the drift job's live audit (`ci/audit.sh`) names any `runner-*` VM, disk, instance template or
+instance group still in a project, which no stack holds: it bills, and goes by hand, on Jody's word, or by an import
+and a destroy. The hourly audit's inventory (below, The hub's audit) is the check that none is left: no `runner-*` VM
+in tacplus-ci, its CPU use the looper VMs' alone.
 
-- **The shared VM** is the one always-on node (Jody, 2026-11-10, then three; one since #55, to bring the cost down; a second on demand past 13 jobs since #63): every looper and control job runs on
-  it, with no slots; builds run on the `build` pool, a few at a time. "If it's a looper and it wants to run, it runs, period": a job is not a reservation of
-  CPUs or memory, and the jobs share a VM like processes on a laptop (13 a VM since #63, 25 before, is a ceiling, not a slot count). They
-  replace the jody1-328023 pools (whose settings change only over SSH); tacplus-dev/looper#84 moves the same
-  arrangement into the cluster. One VM is one runner registration
-  (GitLab does not share an instance group between `[[runners]]` entries), so these jobs share one set of container
-  settings: the build jobs' (`jobs.build` in `modules/settings`, today the same as the agents'). If builds need
-  settings agents must not get (rootless BuildKit, tacplus-dev/tacplus#315), the split is a `build` pool of its own.
-- **A zone out of capacity (#49).** On 2026-11-12 spot t2a ran out in us-central1-b: the build pool's VM stayed
-  `CREATING` (`ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`) for hours, and every build waited on it. The build pool is
-  therefore spread over the region's three zones with t2a (`zones` in `runner_pools`): its group is a regional one,
-  `runner-build-region` (not `runner-build`: a regional group makes a zonal group of its name in each zone, which
-  collided with the old zonal one, 409, on the first apply),
-  target shape `ANY`, which makes each new VM in a zone that has the capacity and never moves one to even the zones out
-  (redistribution off), and the plugin is pointed at the region. Spread, not an on-demand fallback: on-demand t2a in
-  us-central1-b was out too that day (the shared pool came back about 18:05Z), and a second, on-demand runner on the
-  same tags would take half the builds even while spot has room, and, from zero, take jobs it has no VM for. The other
-  pools stay in us-central1-b, the manager's zone. A VM already stuck creating is not moved by its group, which
-  retries it in its zone forever, and the autoscaler counts it as coming: the manager's **reaper** (`runner-reap`,
-  which the startup script installs beside the watcher) lists every pool's group each minute (`runner-groups` in its
-  metadata) and deletes a VM that has been creating on a capacity or quota error for five minutes; the autoscaler then
-  asks for another, which a spread pool makes where there is room (a zonal pool, in its zone again, five minutes
-  later). A VM its group *recreates* stalls the same way, in its own zone, and goes too (#53). It deletes nothing else.
-- **A reclaimed VM is not repaired (#53).** On 2026-11-13 from about 10:25Z the build pool made no VM: every build
-  job logged `unable to acquire instance within the configured timeout of 15m0s` every 15 minutes, and the 3-hour
-  tacplus full gates lost their VM at 10:26:40Z (`runner_system_failure`), as a spot reclaim does. Nobody but the
-  pipeline could read the group, so the cause was not confirmed; but the groups repaired a VM they did not stop
-  (GCP's default), which recreates a reclaimed spot VM in its own zone, retried there for as long as that zone is out
-  of spot t2a, and counted by the autoscaler as coming, while the reaper took only creations. Each group's
-  `instance_lifecycle_policy` now does nothing on a failure (`DO_NOTHING`, what the fleeting plugin's README
-  recommends): a reclaimed VM stays stopped, the plugin deletes it, as it does every stopped VM, and the autoscaler's
-  next one goes where there is capacity; its jobs are lost either way (a recreated VM is a blank disk).
-- **Why a pool makes no VM, where a report reads it (#53).** The drift job's pool check (`ci/pools.sh`) reads every
-  group of `tacplus-ci` as the pipeline: each VM its group cannot make (a creation or recreation whose last attempt
-  failed, with the error: `ZONE_RESOURCE_POOL_EXHAUSTED*` is a zone out of capacity, `QUOTA_EXCEEDED` names the
-  quota) and each stopped VM it keeps; the group's errors of the last 24 hours, by error and zone; and every quota of
-  `us-central1` and of the project 80% used or more. What it finds is in the drift issue on GitHub (`pools`), which
-  the hub and the reports read. It runs nightly; for it now, run the drift schedule in the GitLab project (Build,
-  Pipeline schedules, run), which plans and never applies.
-- **The CPU quota (#55).** `ci_cpus` in `modules/settings` keeps tacplus-ci's `CPUS_ALL_REGIONS` (32) and the
-  manager's machine type; the ci stack's test refuses pools whose VMs, each pool at its `max_instances`, and two
-  managers (a handoff) need more: shared 16, build 8, cluster 4, deploy 2 and the managers 2 are 32. A pool over it
-  makes its last VM fail `QUOTA_EXCEEDED` (the build pool's second, 2026-11-13). Raising a pool, or a machine type,
-  needs room under it, or the quota raised first (a request to Google, then `ci_cpus.quota`).
-- **A full shared VM queues its jobs, it does not fail them (#63).** The capacity is the runner's only admission: a
-  VM with a free slot gets the job whatever its load, and a job whose preparation the VM cannot serve fails
-  (`runner_system_failure`), it does not wait; so the capacity must be what the VM serves at once. On 2026-11-15 from
-  03:03Z, 24 looper jobs on the one shared VM: from 03:28Z every job placed on it failed at preparation, Docker not
-  answering `containers/create` within 120 s (`creating cache volume: set volume permissions: create permission
-  container`), 18 in the first hour and every new job from 04:28Z, while the running jobs ran on. The cause, read on
-  the VM at 06:50Z with about 16 jobs (the looper of #63, from its job container: `/proc/pressure`,
-  `/proc/diskstats`, `/proc/meminfo`): its 350 GB pd-standard disk (525 write IOPS, 42 MiB/s) at its cap, busy 92%
-  of a 120 s sample, 393 writes a second at 61 ms each behind a queue of 25, every task on the VM stalled on IO 15%
-  of the time (1.5 hours of such stalls in the 30 hours since boot); CPU contended (load 21 to 35 on 8 CPUs) but never
-  stalled; memory idle (2.4 GB anonymous of 32, 29 GB available). Docker's `containers/create` writes the container's
-  config and layer and commits containerd's metadata, each write waiting its turn behind the jobs'. Not the memory,
-  and not the jobs' limits (a looper job's container used 200 to 260 MB of its 28g). So the shared pool's disk is
-  **pd-balanced** (3000 IOPS and 140 MiB/s from its first GB: ten times the writes, five times the bytes), 8 GB a job
-  (the VM held 67 GB for 16 jobs and its images) and 50 GB for the OS and the images: 154 GB a VM, under the SSD quota
-  (next). The stopgap's 13 jobs a VM stands (26 over two VMs). The always-on VM up at the time keeps its pd-standard
-  disk until it is replaced (PROPOSALS.md, replace the always-on VM on a bump): the second VM, and every VM after,
-  boot the new template. Cloud Monitoring's series for 03:00Z–04:30Z (`instance/disk/write_ops_count`,
-  `throttled_write_ops_count`, `cpu/utilization`; no memory series: COS runs no agent) are the hub's to read, with
-  its viewer role; the pipeline's pool check does not read them yet (PROPOSALS.md).
-- **The SSD quota (#63).** `ci_disks` in `modules/settings` keeps tacplus-ci's `SSD_TOTAL_GB` in us-central1 (500) and
-  the manager's boot disk (20 GB pd-balanced); the ci stack's test refuses pools whose pd-balanced, pd-ssd or
-  pd-extreme disks, each pool at its `max_instances`, and two managers (a handoff) need more: shared 2 x 154, deploy
-  80, cluster 70 and the managers 40 are 498. A pool over it makes its last VM fail `QUOTA_EXCEEDED`, as over the CPU
-  quota. The build pool's 450 GB is pd-standard: pd-balanced for it too is the quota raised first (PROPOSALS.md).
-- **The build pool on demand (#55).** On 2026-11-13 five build VMs were preempted, each under 10 minutes old, taking
-  their builds with them (`runner_system_failure`), and the tacplus gates (about 3 hours) never finished on spot. The
-  build pool is on demand since, still from zero: about $0.31/h a VM, paid only while builds run.
-- **Scaling.** Moving the shared VM to t2a-standard-16, four jobs at once, is one line (`shared_machine_type`), on
-  Jody's word; so is raising `max_instances`. Scaling down needs no ask.
-- **Deploy and cluster** are protected and on demand: their credentials never share a VM with agents, and they cost
-  nothing while no deploy runs.
-- **Each job:** its container within its CPU and memory limits, without swap; no privileged mode, no host Docker
-  socket (`decisions/builds-in-containers-2026-11-03.md`: agents never build; builds use rootless BuildKit); its
-  containers and volumes removed when it ends (`disable_cache`: no cache volume outlives its job). No pool's VM has a
-  Google account.
-- **Disk is bounded per VM, not per job:** COS has no per-container disk limit (overlay2's needs XFS with project
-  quotas, which vanilla COS does not have). A VM's disk is its jobs' shares plus 50 GB (30 for the on-demand pools)
-  for the OS and the jobs' images; a job that fills it fails the jobs beside it (PROPOSALS.md, per-job disk limits).
-
-### The manager's binaries
-
-#40 (Jody's rule on #39: nothing the VMs run comes from upstream at boot). GitLab Runner and its googlecloud fleeting
-plugin are **our builds** of upstream's tags (v19.6.0 since #99, its OpenTelemetry v1.47.0, GHSA-q7gw-24fr-5p69;
-v1.3.1), not upstream's releases, which are built with go1.26.10
-(GO-2026-6859):
-
-- **The build.** `ci/runner.sh`, in the tools job (`bin/manager/`): each tag at its pinned commit, with go1.27.4 and
-  at least x/net v0.62.0, klauspost/compress v1.20.2 and go-jose v4.1.6, raised, never lowered (every module checked against the Go checksum database;
-  `tests/security_test.sh` checks the builds' modules), as upstream
-  builds it (`CGO_ENABLED=0`, its ldflags) with `-trimpath`, no VCS stamp and the commit's date as the build's, for
-  linux/arm64; the runner with Go's own crypto, not the frozen FIPS 140 module v1.0.0 its release has (which go1.27
-  would also turn on). It is reproducible: a build whose SHA-256 is not the one
-  `stacks/ci/main.tf`'s `runner` block pins is refused. A bump changes the version, branch, commit and SHA-256 there
-  (the build's SHA-256 is what `ci/runner.sh` prints when it refuses a build). **One release with tacplus-dev/cluster**
-  (cluster#21, #44): its runner and helper images are built from the same commit with the same Go and modules, so a
-  bump here names the cluster issue that moves its pins, and the other way round.
-- **The bucket.** `tacplus-ci-runner-bin` (`modules/projects/ci/runner-bin.tf`): uniform access, public access
-  prevention enforced, and `roles/storage.objectViewer` bound authoritatively to the manager's account alone, so no
-  VM's or job's account but the manager's reads it (the pipeline, which uploads the builds, and break-glass reach it
-  through their project roles). The ci stack uploads `bin/manager/` there, each object named by its SHA-256
-  (`gitlab-runner/<sha256>`): a new build is a new object, created before the old one is deleted, and refused unless
-  it is the pinned build.
-- **The manager** (`files/manager-startup.sh`) fetches both from the bucket with the VM's token (the subnet has Private
-  Google Access), by the SHA-256s in its metadata, refusing any object that is not that build, and installs them with
-  no package and no apt: `/usr/bin/gitlab-runner`, `/usr/local/bin/fleeting-plugin-googlecloud`, and the service as
-  upstream's package's post-install sets it up (the `gitlab-runner` user, `gitlab-runner install`). At boot it asks
-  only the metadata server, the bucket and Secret Manager.
-- **Never without a manager (#46).** Every runner of the fleet is the manager's, `apply:ci`'s own among them. A **new
-  config** (a pool's idle VMs or its jobs' limits, a tag moved: `runner-config`, `runner-pools`, `runner-groups`) is an in-place metadata update of the running
-  manager: its watcher (`runner-config-watch`, which the startup script installs) sees the metadata change and runs
-  the startup script again, which rewrites `config.toml`; gitlab-runner reloads it by itself, with no restart and no
-  job lost. A **new build** (GitLab Runner or the plugin, the startup script, the image, the machine type, the disk,
-  the zone, or a pool's `[runners.autoscaler]` but its policy) replaces the manager `create_before_destroy`, after its
-  objects are in the bucket: its name is the build's hash (`runner-manager-<8 hex>`), so the new one is up before the
-  old one goes. The autoscaler is the build (#61): gitlab-runner reads it once, at a pool's first job, and a reload
-  changes only its policy (v19.5.3, `executors/internal/autoscaler/provider.go`), so #50's ready check, pushed in
-  place, was not live until gitlab-runner restarted; and a restart in place would remove every pool VM, jobs and all
-  (below), which a new manager's handoff drains first.
-- **No job lost to a new manager (#48).** A new manager's gitlab-runner removes every pool VM it did not create, jobs
-  and all (`no data on pre-existing instance so removing for safety`: it cannot resume another manager's jobs), and
-  deleting the old manager kills its jobs anyway; on 2026-11-12 the two together killed every looper job. So the old
-  one drains first, and the new one starts on empty groups (rather than the new one taking the old one's instance
-  state: with it the VMs would live on, but not their jobs, which only the old process can finish). `apply:ci` never
-  deletes a manager (`destroy = false`): it forgets the old one, deposed ones too, and creates the new one. Before its
-  gitlab-runner starts, the new one's startup script tells each older manager to retire (its metadata
-  `runner-successor`, and the new startup script, which the old one's watcher runs: a manager older than #48 learns
-  how), and waits until none is left. A manager told to retire runs `runner-retire`: gitlab-runner stops on SIGQUIT,
-  taking no new job and finishing its running ones until the drain's end, below (`apply:ci`'s own among them, which runs
-  through the old manager: that job now ends well), then the VM deletes itself. The SIGQUIT is gitlab-runner's alone
-  (`KillMode=mixed`): its fleeting plugin, which those jobs reach their VMs through, goes only after it (the #49 apply
-  died with `Plugin did not respond` when its manager went). Then the new one resizes each pool's group
-  (`runner-groups`, zonal or regional) to zero and waits until it has no instance, a creation stuck on an error of the
-  old fleet's time too (#29: `QUOTA_EXCEEDED`, retried by the group only about every 90 minutes), and starts
-  gitlab-runner: the shared pool's idle VMs are created at once, the quota freed (the old fleet's VMs gone first, both
-  managers within it). While the old one drains, no new job starts anywhere, so the drain is capped (#51): the new
-  manager takes jobs at most `manager_handoff_minutes` (30, the ci stack's; metadata `runner-handoff-limit`) after its
-  handoff began, a re-run of its startup script keeping that start. It tells each older one when its drain ends
-  (`runner-drain-until`, 12 minutes before the cap); then `runner-retire` cuts the jobs still running (SIGTERM, to
-  gitlab-runner alone: a forced stop) and the VM goes. gitlab-runner 19.5.3 aborts them as `runner_interrupted` (its
-  `common/build.go`) and has 7 minutes to tell GitLab (`shutdown_timeout` in `config.toml`, #54: at the default 30
-  seconds it exited before most had, and they stayed `running`, holding their resource groups); `runner-retire` kills
-  it only after 8. A job still waiting for a VM when the cut comes does not see the abort, and one gitlab-runner did
-  not report is left `running` all the same: the **handoff job** (`ci/handoff.sh`, #54) fails those back and runs
-  every cut job again. It runs 35 minutes after `apply:ci` (the cap, and 5 minutes), so on the new manager, which by
-  then alone runs the fleet's runners (those whose managers include its own); on each, for every other manager of
-  this handoff (one that contacted GitLab since an hour before its pipeline began, not every one the runner ever had:
-  #57), it cancels a job still `running` and force-cancels one `canceling` (a plain cancel waits for a runner that is gone:
-  on 2026-11-13 the hub had to force them), then retries it, and retries each job failed there as
-  `runner_interrupted` since its pipeline began that is still its pipeline's (not run again by its own `retry` or a
-  person). GitLab's `retry: when:` does accept `runner_interrupted` (reason 33), but tacplus-dev/looper's jobs name
-  only `runner_system_failure`, `scheduler_failure` and `unknown_failure` (PROPOSALS.md), and on 2026-11-13 its
-  hourly kicker restarted only what was ready then: the handoff job does not wait for either. GitLab's rate limit
-  (HTTP 429, 18 calls of the first live handoff on 2026-11-14, #57) it waits out, as `Retry-After` says or backing off,
-  and makes the call again, while the wait ends 5 minutes before the job's time limit. It uses the gitlab
-  stack's token (Owner of tacplus-dev, `api`), so a job it retries runs as that token's user. An older manager still
-  there 2 minutes before the cap (its watcher or `runner-retire` not running) the new one deletes itself, and its
-  jobs, unreported, are the handoff job's too. What the cap trades: a job longer than the drain (a repository
-  manager's, a looper report's of hours) loses the work since its last checkpoint, and starts again behind the queue,
-  against the whole fleet waiting up to the longest job's timeout (11 hours) for it.
-  `ci/policy.sh` refuses any plan that would destroy a manager (first, or at all) and a source without
-  `create_before_destroy` and `destroy = false`; `tests/manager_startup_test.sh` pins the handoff and the retirement,
-  a drain that ends early and one that hits the cap, and that the cut's windows leave room for its report, against a
-  stub Compute API; `tests/handoff_test.sh` the handoff job, on the 2026-11-13 handoff in small, against a stub
-  GitLab API; and the plan tests pin the names (a config change keeps it, a new build changes it). Each apply's OpenTofu log (its core at DEBUG, the providers at
-  INFO) is in the apply job's artifacts, `plans/<stack>.apply.log`.
-- **If an old manager does not retire** (its watcher not running), the new one waits until 2 minutes before the
-  handoff's cap, and says so in its serial log (`waiting for the older managers to finish their jobs, or cut them at
-  ...`), then deletes it (`deleted runner-manager-<old>: still there past its drain's end`): its jobs die with it,
-  unreported, and the handoff job fails them back and runs them again. To end a handoff sooner, delete the old one by
-  hand (`gcloud compute instances delete runner-manager-<old> --zone us-central1-b --project tacplus-ci`), which
-  kills its remaining jobs the same way; the new one then goes on by itself.
-- **A handoff with jobs in flight** (the drill, #54): what a new build's `apply:ci` should show, in order, and what to
-  do when it does not. (1) The new manager's serial log: `told runner-manager-<old> to retire`, then `waiting for the
-  older managers ...` until the old one goes: its drain ends 18 minutes after the boot, and it is gone 8 later at
-  most. (2) The old one's journal (`journalctl -u runner-retire -u gitlab-runner`): at its drain's end `the drain's end (...): gitlab-runner cuts its running jobs`,
-  gitlab-runner's `Starting forceful shutdown`, one `Job failed: aborted: ...` (`runner_interrupted`) per job it
-  reports, then `deleting runner-manager-<old>`; a kill (`still running 480s after the cut`) means some went
-  unreported. (3) In GitLab, jobs of that manager failed `runner interrupted`, and perhaps some still `running` (one
-  that was waiting for a VM). (4) Within 30 minutes of the boot the new one starts gitlab-runner (`no older manager
-  left, the groups empty`). (5) 35 minutes after `apply:ci`, the pipeline's `handoff` job: a line `job N (project P)
-  ... run again as job M` for each job it failed back or cut, and `no job left running on an old manager`. Then no
-  job of an old manager is `running` or `canceling` (`GET /runners/:id/jobs?system_id=<old>&status=running`, for each
-  of the fleet's runners). If the handoff job fails, its log names each job it could not fail back or run again: do
-  those by hand (force-cancel, then retry, as on 2026-11-13), then retry the job, which only acts on what is left. If
-  it did not run (its `apply:ci` failed, so it was skipped), do what it does by hand, as above.
-- **The helper image** each job runs beside (git, artifacts, caches) is upstream's for v19.6.0, pinned by digest in
-  `runner.helper_image`; the pools' VMs pull it from registry.gitlab.com when a job starts, as they pull the default
-  image, and the manager installs no helper-images package. It is still built with go1.26.10: building it here, into a
-  registry only the workers read, is a follow-up (PROPOSALS.md); `runner.helper_image` moves to the helper
-  tacplus-dev/cluster builds (cluster#21) once it is published.
-- **If a new manager does not come up**, no runner is left to run the pipeline that would revert it (`apply:ci` runs on
-  the `cluster` pool, through this manager): revert the commit and apply the ci stack from a workstation (Break-glass).
-  #40 landed in two steps for this reason: the builds and the bucket first, the switch second, so the revert of the
-  switch returns to pins already applied.
+Outside this repository: jody1-328023's `gitlab-runner-mgr` and its runner VMs (runners 57939705 and 58307468, paused)
+are in no stack here and in no audit of this pipeline. If they still exist, they still bill: they are Jody's to check
+and delete (ROADMAP.md, Later: jody1-328023 drained).
 
 ## The build cache
 
@@ -1015,32 +819,27 @@ the hub does, steps 4 and 7, are this pipeline's):
   gitlab-runner-build --project=tacplus-dev --data-file=-`); a new token is a new version, and a pull request in
   tacplus-dev/cluster naming it. The dev stack's output `runner_tokens` names the eight secrets.
 - **The `infra` runner (#64; tacplus-dev/cluster#25, its README, The infra runner):** the in-cluster runner of the
-  cloud, cluster and deploy pipelines, so the runner VMs can go (#11). The **gitlab stack registers it** (`stacks/gitlab/main.tf`,
+  cloud, cluster and deploy pipelines, which let the runner VMs go (#113). The **gitlab stack registers it** (`stacks/gitlab/main.tf`,
   `infra`), and nothing else does: a tacplus-dev group runner, tags `cloud`, `cluster` and `deploy` and no other, "run
   untagged jobs" off, protected refs only (`ref_protected`), registered paused and **unpaused at the switch-over**
   (#66, below); and it writes the runner's authentication
   token as `gitlab-runner-infra`'s **version 1** (the first version of the empty secret the dev stack made, the version
-  cluster's `infra.yaml` names), as this pipeline (its `roles/secretmanager.admin` from the parent folder), the way it keeps the VM pools' tokens
-  in `tacplus-ci`. **The token never leaves the pipeline:** GitLab gives it to the stack's apply, which writes it to
+  cluster's `infra.yaml` names), as this pipeline (its `roles/secretmanager.admin` from the parent folder). **The token never leaves the pipeline:** GitLab gives it to the stack's apply, which writes it to
   Secret Manager, where `cluster-admin-pipeline` alone reads it into the runner's Secret; it is in the gitlab stack's
   state (PROPOSALS.md, Secret values out of plans and state), in no output, log or plan file, and no person or agent
   types it. A re-registration (the runner replaced) writes a new version and disables the old: its number moves, and a
   pull request in tacplus-dev/cluster moves `tacplus.token` to it. **The switch-over** (#66; cluster's README): once
   `apply:gitlab` had written the token and cluster's pipeline had applied `infra`, one commit to `stacks/gitlab/main.tf`
   unpaused `infra` and paused the `cluster` and `deploy` pools' runners, which carry the same tags, so no job goes to a
-  VM and a green pipeline is `infra`'s; then one cloud and one cluster pipeline green on it, then #11 removes the
-  pools' runners and VMs. `paused` is the stack's: a runner paused or unpaused in GitLab's UI is drift the next
+  VM and a green pipeline is `infra`'s; then one cloud and one cluster pipeline green on it; #113 removed the pools'
+  runners and VMs. `paused` is the stack's: a runner paused or unpaused in GitLab's UI is drift the next
   `apply:gitlab` undoes. Pausing stops new pickups, not a running job, so the `apply:gitlab` that pauses the `cluster`
   pool finishes on it. Since then the `cloud`, `cluster` and `deploy` jobs run inside the cluster they apply: a plan
   replacing the cluster, its normal pool or the `ci` namespace stops its own job mid-apply. **Break-glass, if `infra`
-  takes no job** (its token, image or node): the `cloud` jobs, a revert's apply among them, stay pending, so the hub
-  unpauses the `cluster` pool's runner by hand in GitLab, lands the revert of the switch-over, whose `apply:gitlab`
-  runs on that pool, and the stack matches GitLab again. A job on the pools' VMs does not reach the control plane
-  (#79): `apply:gitlab` needs none, but `plan:dev`, `apply:dev` and cluster's pipeline do, so to repair `infra` from
-  there the hub, as owner, opens the public endpoint to the runners' NAT address by hand (`gcloud container clusters
-  update dev --zone us-central1-a --project tacplus-dev --no-enable-private-endpoint` and
-  `--enable-master-authorized-networks --master-authorized-networks 10.20.0.0/20,10.24.0.0/14,<that address>/32`), and the first `apply:dev` on
-  `infra` again closes it (drift the stack undoes).
+  takes no job** (its token, image or node): the `cloud` jobs, a revert's apply among them, stay pending. Until #113 the
+  hub unpaused the `cluster` pool's runner by hand and landed the revert on it; with the pools gone, `infra` has no
+  stand-in, so its repair is tacplus-dev/cluster's pipeline (its own runner) or, failing that, Jody's break-glass
+  (below, Break-glass).
 - **The `kick` runner (#81; tacplus-dev/cluster#36, its `gitlab-runner/runners/kick.yaml`):** the in-cluster runner
   of the looper's kicker and plan alone (tacplus-dev/looper's `.control` jobs), so one always runs while `control`'s
   slots are full of reports. The gitlab stack registers it (`stacks/gitlab/main.tf`, `kick`) and writes its token as
@@ -1283,7 +1082,7 @@ Nothing of it is tested end to end here: the first exchange is the Admiral's (ad
 deployment cluster, in `tacplus-ci` (`modules/projects/ci/looper-vms.tf`; the projects in `modules/settings`'
 `looper_vms`, tacplus first). Each is a zonal instance group `looper-vm-<repo>`, at 0 until the kicker
 (tacplus-dev/looper#241) sizes it to 1, of one C4A VM (spot or not, its Hyperdisk Balanced boot disk only a cache) on
-stock Container-Optimized OS for arm64 (the pools' pin). The VM has no external address (NAT), no SSH key, the
+stock Container-Optimized OS for arm64 (`modules/settings`' `cos_arm64_image`). The VM has no external address (NAT), no SSH key, the
 project's keys blocked and no firewall rule to it; its window is Cloud Logging. One cloud-init for every project
 (`files/looper-vm-cloud-init.yaml`, `files/looper-vm.sh`, tested by `tests/looper_vm_test.sh`) reads the repository,
 the image (by digest; empty: nothing runs) and the VM's group from the metadata, pulls the image and runs it with the

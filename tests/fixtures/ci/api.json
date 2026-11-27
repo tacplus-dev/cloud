@@ -41,14 +41,14 @@
     "billingAccountName": "billingAccounts/000000-111111-222222",
     "billingEnabled": true
   },
-  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager": {
+  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager-d510c62b": {
     "kind": "compute#instance",
     "id": "1000000000000000001",
-    "name": "runner-manager",
+    "name": "runner-manager-d510c62b",
     "status": "RUNNING",
     "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b",
     "machineType": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/machineTypes/t2a-standard-1",
-    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager",
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/instances/runner-manager-d510c62b",
     "tags": {
       "items": [
         "runner-manager"
@@ -76,7 +76,7 @@
         "mode": "READ_WRITE",
         "type": "PERSISTENT",
         "interface": "SCSI",
-        "source": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager",
+        "source": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager-d510c62b",
         "diskSizeGb": "20"
       }
     ],
@@ -103,15 +103,15 @@
       "provisioningModel": "STANDARD"
     }
   },
-  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager": {
+  "GET /compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager-d510c62b": {
     "kind": "compute#disk",
     "id": "1000000000000000002",
-    "name": "runner-manager",
+    "name": "runner-manager-d510c62b",
     "sizeGb": "20",
     "status": "READY",
     "zone": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b",
     "type": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/diskTypes/pd-balanced",
     "sourceImage": "https://www.googleapis.com/compute/v1/projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-arm64-v20261024",
-    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager"
+    "selfLink": "https://www.googleapis.com/compute/v1/projects/tacplus-ci/zones/us-central1-b/disks/runner-manager-d510c62b"
   }
 }

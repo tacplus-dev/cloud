@@ -12,7 +12,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   cluster without a default pool (`initial_node_count = 0`) instead of `remove_default_node_pool`, which google 8.x
   deprecates. Why: the release channel picks the version at creation and upgrades it unasked, which the
   deterministic-deployments rule does not allow for what we deploy on it.
-- **Restart the runner manager when a token changes** (looper, #1). What: the manager reads its pools' tokens from
+- **Restart the runner manager when a token changes** (looper, #1). Moot since #113, which deleted the runner pools and their manager. What: the manager reads its pools' tokens from
   Secret Manager at boot only; a re-registered runner (the gitlab stack replaces the token's version) needs the
   manager's config re-rendered: a systemd timer comparing versions, or the gitlab stack resetting the VM. Why: otherwise
   a re-registration leaves the pool on a dead token until someone reboots it by hand.
@@ -112,11 +112,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   images of the pin's LTS family (`cos-arm64-<milestone>-lts`) and files an issue when a newer build than
   `cos_arm64_image` exists, naming it and its release notes. Why: COS's security fixes ship as new builds; with the pin
   by name (and updates off), the workers keep the old kernel and runtime until someone bumps it, and nothing says when.
-- **Per-job disk limits** (looper, #5, 2026-11-03; option (b) on #5). What: an XFS data disk for Docker's
+- **Per-job disk limits** (looper, #5, 2026-11-03; option (b) on #5). Moot since #113, which deleted the runner pools and their manager. What: an XFS data disk for Docker's
   `/var/lib/docker`, mounted with `pquota` at boot (cloud-init on COS), and the readiness gate also checking the backing
   filesystem, so the runners' `storage_opt size` gives each job a disk limit. Why: today the disk is bounded per VM, so
   a job that fills it fails the jobs beside it; the decision on #5 kept the VM vanilla for now.
-- **Reused VMs collect images** (looper, #5). What: bound what a reused VM keeps: a large `max_use_count` on the shared
+- **Reused VMs collect images** (looper, #5). Moot since #113, which deleted the runner pools and their manager. What: bound what a reused VM keeps: a large `max_use_count` on the shared
   pool (the VM replaced after N jobs), or a pruning step the manager runs between jobs. Why: the always-on VM is never
   replaced, so every image a job pulls stays on its disk until it fills; the 50 GB set aside for images is a guess.
 - **Replace the always-on VM on a bump** (looper, #5): done by #29 (every pool's group has a PROACTIVE update policy,
@@ -124,11 +124,11 @@ the looper then marks it `promoted` or `declined` here with the date.
   What: a COS bump (or a change to the pool's template) also
   replaces the shared pool's running VM: the instance group's update policy, or a step in the apply. Why: with VMs
   reused, a VM already up keeps the image it booted, so the bump does not reach the always-on VM until it goes.
-- **The rest of the job containers' hardening** (looper, #5). What: `cap_drop = ["ALL"]`, a non-root user and a
+- **The rest of the job containers' hardening** (looper, #5). Moot since #113, which deleted the runner pools and their manager. What: `cap_drop = ["ALL"]`, a non-root user and a
   read-only root where the jobs allow (`decisions/looper-job-per-issue-2026-11-03.md`: no capabilities, non-root,
   read-only root where possible), once the jobs' images are checked against them. Why: #5 removed the privileged mode
   and the host socket; Docker's default capabilities remain, which the decision asks to drop.
-- **GitLab's own `cache:` in the build cache** (looper, #5). What: a `[runners.cache]` on the GCS bucket, so a job's
+- **GitLab's own `cache:` in the build cache** (looper, #5). Moot since #113, which deleted the runner pools and their manager. What: a `[runners.cache]` on the GCS bucket, so a job's
   `cache:` keyword survives its VM's volumes being discarded. Why: with `disable_cache`, a job's `cache:` is lost
   when the job ends, as it was with one job per VM; it would need an identity of its own on the manager, which the
   rule that only the build identity holds a role on the cache does not allow: a decision.
@@ -173,7 +173,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   address (#13), and Cloud NAT allocates its own (`AUTO_ONLY`). Why: a regional external address is for a VM or a
   passthrough load balancer, both of which the rules exclude; today only `compute.vmExternalIpAccess` and the access-config
   check stand in the way, and they do not see a passthrough LB's forwarding rule.
-- **Drop the runners' SSH exception with the runner VMs** (looper, #7, 2026-11-04). What: when #11 removes the runner
+- **Drop the runners' SSH exception with the runner VMs** (looper, #7, 2026-11-04). Moot since #113, which deleted the runner pools and their manager. What: when #11 removes the runner
   VMs, remove `runner_ssh` from `ci/policy.sh` and its fixture case, and the README's exception. Why: it is admitted by
   name only while those VMs exist.
 - **`GCP_PARENT_FOLDER` adopted by the gitlab stack** (looper, #8, 2026-11-03). What: the gitlab stack manages the
@@ -360,7 +360,7 @@ the looper then marks it `promoted` or `declined` here with the date.
 - **GitLab Runner and its fleeting plugin built here, served from a private bucket** (looper, #40, 2026-11-11;
   Jody's follow-up A of #39): done by #40 (README, The manager's binaries; the helper image by digest, option (a),
   its build the entry below; the service set up by `gitlab-runner install` as upstream's package does, not a unit file
-  kept here). What: both built from source with go1.27.4 by `ci/tools.sh` (`srcbuild`, #39: arm64,
+  kept here). Moot since #113, which deleted the runner pools and their manager. What: both built from source with go1.27.4 by `ci/tools.sh` (`srcbuild`, #39: arm64,
   CGO off, `-trimpath`, upstream's ldflags, x/net v0.62.0 and klauspost/compress v1.20.2), pinned by commit and
   SHA-256 in `stacks/ci/main.tf`; uploaded by the ci stack to a bucket in tacplus-ci only the manager's account
   reads, by content-addressed names; `manager-startup.sh` installs the binary and our own systemd unit from there by
@@ -368,7 +368,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   `GO-2026-6859` entry and the runner's and plugin's x/net and klauspost/compress entries go. Two lands: build and
   bucket, then the switch. Why: upstream's v19.5.2 and v1.3.1 are built with go1.26.10 (GO-2026-6859), whose
   exception expires 2026-11-25, and Jody's rule on #39: nothing the VMs run comes from upstream at boot.
-- **The jobs' helper image built here** (looper, #40, 2026-11-11; option (b) of #40's design). What: build
+- **The jobs' helper image built here** (looper, #40, 2026-11-11; option (b) of #40's design). Moot since #113, which deleted the runner pools and their manager. What: build
   `gitlab-runner-helper` from the runner's pinned commit with the Go `ci/runner.sh` uses, its image from upstream's
   Dockerfile on a pinned base, pushed by digest to an Artifact Registry repository in tacplus-ci that only the pools'
   accounts read (the `no-account` pools would need one, or the repository a public-access rule this repository refuses
@@ -378,7 +378,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   Build, or the cluster's builds, #20). Since #44 (2026-11-12): tacplus-dev/cluster#21 builds the v19.5.3 helper (the
   hub's decision, its `runner-images` job, into `ci-images` in tacplus-dev); once it is published, `runner.helper_image`
   is its digest, and this entry is that move.
-- **Drop the runner's and the plugin's Go and module bumps** (looper, #40, 2026-11-11). What: when a GitLab Runner and
+- **Drop the runner's and the plugin's Go and module bumps** (looper, #40, 2026-11-11). Moot since #113, which deleted the runner pools and their manager. What: when a GitLab Runner and
   a fleeting-plugin-googlecloud release are built with a fixed Go and require x/net >= v0.62.0 and klauspost/compress
   >= v1.20.2, move `stacks/ci/main.tf`'s `runner` pins to them and drop `ci/runner.sh`'s `go get`s (keep building them
   here: the manager still installs from the bucket). Why: our builds are upstream's source with newer dependencies than
@@ -408,25 +408,25 @@ the looper then marks it `promoted` or `declined` here with the date.
   its discovery document; once it does, set `jwks_polling_disabled = false` on the llmproxy issuers so that a paused
   poller is re-enabled by the next apply. Why: Anthropic pauses polling after repeated failures, and today nothing
   turns it back on.
-- **Drain the old runner manager before it goes** (looper, #46, 2026-11-12). What: on a new build, the old manager
+- **Drain the old runner manager before it goes** (looper, #46, 2026-11-12). Moot since #113, which deleted the runner pools and their manager. What: on a new build, the old manager
   stops taking jobs and finishes its running ones before it is deleted: a shutdown that sends gitlab-runner SIGQUIT
   (graceful) rather than SIGTERM (which aborts its jobs), or a step between the create and the delete (a
   `terraform_data` the old instance's destroy depends on, waiting until it has no job). Why: `create_before_destroy`
   keeps the fleet up, but the jobs on the old manager are still lost, `apply:ci`'s own among them, which can leave
   the state locked (README, Never without a manager). Done by #48 (2026-11-12): the stack forgets the old manager,
   which drains on SIGQUIT and deletes itself.
-- **Two managers on the same groups, briefly** (looper, #46). What: check how the new manager's autoscaler treats
+- **Two managers on the same groups, briefly** (looper, #46). Moot since #113, which deleted the runner pools and their manager. What: check how the new manager's autoscaler treats
   the VMs the old one made in the same managed instance groups during the overlap (adopted, or removed as unknown),
   and if it removes busy ones, give a new build its own groups or pause the old runners first. Why: the overlap is
   a minute or two, but it is new with #46. Answered by #48 (2026-11-12): it removes them, busy or not (it cannot
   resume another's jobs); the new manager now starts only once the old one has gone.
-- **A shorter handoff between managers** (looper, #48, 2026-11-12). What: while the old manager drains, no new job
+- **A shorter handoff between managers** (looper, #48, 2026-11-12). Moot since #113, which deleted the runner pools and their manager. What: while the old manager drains, no new job
   starts anywhere (the new one waits on its groups). With quota for two fleets, a new build could get groups of its
   own (named by the build, forgotten with its manager, which deletes them once drained) and take jobs at once. Why:
   the queue waits for the old manager's longest job, up to a looper's four hours; today CPUS_ALL_REGIONS (32) holds
   one fleet only. #51 (2026-11-13) caps that wait at 30 minutes by cutting the jobs still running then; this would end
   it, and the cut with it.
-- **Retry a looper job cut by a manager handoff at once** (looper, #51, 2026-11-13). What: add `runner_interrupted`
+- **Retry a looper job cut by a manager handoff at once** (looper, #51, 2026-11-13). Moot since #113, which deleted the runner pools and their manager. What: add `runner_interrupted`
   to the `retry: when:` of tacplus-dev/looper's jobs (`ci/looper.gitlab-ci.yml`, `ci/tacplus-dev.gitlab-ci.yml`, now
   `[runner_system_failure, scheduler_failure, unknown_failure]`). Why: at the handoff's cap the old manager's
   gitlab-runner (19.5.3) aborts its jobs as `runner_interrupted`, not `runner_system_failure` (`common/build.go`), a
@@ -435,12 +435,12 @@ the looper then marks it `promoted` or `declined` here with the date.
   (2026-11-13) the cloud pipeline's handoff job runs them again 35 minutes after `apply:ci`, as the gitlab stack's
   token's user (`ci/handoff.sh`); their own retry would do it within seconds of the cut, as their own user, and the
   handoff job would find them already run again.
-- **The handoff job's token of its own** (looper, #54, 2026-11-13). What: give `ci/handoff.sh` a GitLab token of its
+- **The handoff job's token of its own** (looper, #54, 2026-11-13). Moot since #113, which deleted the runner pools and their manager. What: give `ci/handoff.sh` a GitLab token of its
   own (Maintainer of tacplus-dev, `api`: what listing a runner's jobs, a force-cancel and a retry need), in Secret
   Manager, made and rotated by the pipeline, instead of the gitlab stack's Owner token. Why: the handoff job reads
   and acts on jobs only, and needs no Owner rights; and the jobs it runs again run as that token's user, which a
   token of its own would name plainly in their logs. Needs the token made (decisions/secrets-by-pipeline-2026-11-05.md).
-- **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). What: once an `apply:ci`
+- **Drop the `removed` block of `terraform_data.manager_config`** (looper, #47, 2026-11-12). Moot since #113, which deleted the runner pools and their manager. What: once an `apply:ci`
   of it has succeeded (the state no longer holds the resource), delete the block in `modules/projects/ci/runners.tf`
   and the half of `tests/ci_plan_test.sh` that needs it. Why: it is a no-op after that apply, kept only until the one
   state that holds the resource has forgotten it.
@@ -449,15 +449,15 @@ the looper then marks it `promoted` or `declined` here with the date.
   old dependencies, as `tests/ci_plan_test.sh` does for the manager: `removed` (forget) for what has no remote object.
   Why: the stacks' tests plan from an empty state, where a removed resource's destroy is no node, and #46's removal
   reached main and failed only on `plan:ci` against the real state.
-- **Spread the shared pool over the region's zones too** (looper, #49, 2026-11-12). What: `zones` on `shared` (and
+- **Spread the shared pool over the region's zones too** (looper, #49, 2026-11-12). Moot since #113, which deleted the runner pools and their manager. What: `zones` on `shared` (and
   `deploy`, `cluster`), as on `build`. Why: on-demand t2a in us-central1-b ran out the same day (the shared pool came
   back about 18:05Z); #49 spread only the build pool, as asked. A regional group's VMs are in other zones than the
   manager's, which changes nothing for the runners (one regional subnet, NAT and firewall by tag), but replaces the
   always-on VMs once, so it wants its own apply window.
-- **Another arm64 shape for the build pool** (looper, #49). What: the regional group's instance flexibility (t2a and
+- **Another arm64 shape for the build pool** (looper, #49). Moot since #113, which deleted the runner pools and their manager. What: the regional group's instance flexibility (t2a and
   c4a, both arm64, the same COS image), so a stockout of one series still makes a VM. Why: all three zones can run out
   of spot t2a at once. c4a takes Hyperdisk only, not pd-standard: the template's disk changes with it, and the quota.
-- **A creation timeout in fleeting upstream** (looper, #49). What: propose to gitlab-org/fleeting that an instance
+- **A creation timeout in fleeting upstream** (looper, #49). Moot since #113, which deleted the runner pools and their manager. What: propose to gitlab-org/fleeting that an instance
   creating longer than a set time be removed (the provisioner keeps it forever today), and drop `runner-reap` once our
   build has it. Why: every googlecloud (and other) plugin user meets a VM stuck on a stockout; the reaper does it from
   outside the runner, by polling.
@@ -497,19 +497,19 @@ the looper then marks it `promoted` or `declined` here with the date.
   until tacplus rebuilds and this repository moves its digest. (b) is what #59 did: tacplus#711 rebuilt every line
   within two hours of the red job, and the pin moved to build:2.6.12 the same morning; the job was red, and every
   plan and apply skipped, for the hours between. This changes nothing in the scan's policy.
-- **The pool VMs' and the manager's journals in Cloud Logging** (looper, #61, 2026-11-15). What: a logging account
+- **The pool VMs' and the manager's journals in Cloud Logging** (looper, #61, 2026-11-15). Moot since #113, which deleted the runner pools and their manager. What: a logging account
   for the pools' VMs (`logging.logWriter` only, no other right: today `service_account = false` on most pools) or COS's
   `google-logging-enabled`, and the Ops Agent (or journald forwarding) on the runner manager. Why: a pool VM is deleted
   after `idle_time` and the manager's gitlab-runner journal stays on it, so #61's two failed helper pulls left only the
   job trace; the cause could not be shown from the VM's own evidence, and the hub logs in to no VM.
 - **The SSD quota raised, the build pool on pd-balanced, the shared share back to 12 GB** (looper, #63, 2026-11-15).
-  What: `SSD_TOTAL_GB` in us-central1 raised from 500 to 1500 or so (a request to Google, Jody's; then
+  Moot since #113, which deleted the runner pools and their manager. What: `SSD_TOTAL_GB` in us-central1 raised from 500 to 1500 or so (a request to Google, Jody's; then
   `ci_disks.ssd_quota_gb`), then the build pool's 450 GB disk pd-balanced like the shared pool's (four builds share
   it: 337 read and 675 write IOPS, 54 MiB/s today, against 3000 IOPS and 140 MiB/s), and the shared pool's job share
   back to 12 GB (8 since #63, to fit two 154 GB disks, deploy, cluster and two managers in 498 of 500). Why: #63's
   cause was a pd-standard disk shared by a VM's jobs and its Docker, and the build pool is the same shape; the shared
   pool fits the quota only with 2 GB to spare, which the drift's quota check reports from 80% used.
-- **The pool check reads the VMs' load** (looper, #63). What: `ci/pools.sh` also reads, for each pool VM, Cloud
+- **The pool check reads the VMs' load** (looper, #63). Moot since #113, which deleted the runner pools and their manager. What: `ci/pools.sh` also reads, for each pool VM, Cloud
   Monitoring's `compute.googleapis.com/instance/disk/throttled_write_ops_count` and `throttled_read_ops_count`
   against `write_ops_count` and `read_ops_count`, and `instance/cpu/utilization`, over the last 24 hours (the
   Monitoring API, `gcloud auth print-access-token`, curl and jq; a stub for `tests/pools_test.sh`), and reports a VM
@@ -517,7 +517,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   read the VM, and the looper named the cause from `/proc` inside a job container on it; a reported throttled disk
   would have named it the morning before. Memory needs an agent COS does not run: a job's own `/proc/meminfo` is the
   only memory reading, and the looper's recap could log it.
-- **What writes a terabyte a day on the shared VM** (looper, #63). What: find what the shared VM writes (1.18 TB in
+- **What writes a terabyte a day on the shared VM** (looper, #63). Moot since #113, which deleted the runner pools and their manager. What: find what the shared VM writes (1.18 TB in
   its first 30 hours on 2026-11-15, about 11 MB/s sustained, 37 MB/s in a 120 s sample with 16 jobs: Docker's
   json-file logs of the jobs' output, the loopers' checkpoints and transcripts, the tools' caches, or the overlay's
   copy-up), and cut what need not be written (a `tmpfs` for a cache, a `log-opts` size, fewer checkpoints). Why: the
@@ -646,14 +646,14 @@ the looper then marks it `promoted` or `declined` here with the date.
   binary: GHSA-q7gw-24fr-5p69's six pins, `bin/tofu` for OpenTofu's x/mod, grpc and x/net ones, and so on). Why: #99's
   decision asks for an exception "for that pin only", which today only its reason can say: the entry would accept the
   same id in any other pin, the runner's included.
-- **GitLab Runner built with saracen/fastzip v0.2.1** (looper, #103, 2026-11-24). What: add
+- **GitLab Runner built with saracen/fastzip v0.2.1** (looper, #103, 2026-11-24). Moot since #113, which deleted the runner pools and their manager. What: add
   `github.com/saracen/fastzip@v0.2.1` to `ci/runner.sh`'s `deps` (GO-2026-6984: its Extractor follows an existing
   symbolic link out of its chroot), with the new `runner_sha256` in `stacks/ci/main.tf` and its plan test (and so a
   new manager name), in one release with tacplus-dev/cluster's runner and helper images (its `gitlab-runner/pin.yaml`
   build:, which `gitlab-runner/fetch.sh` requires to have cloud main's runner SHA-256), and drop the exception. Why:
   #103 accepted it 14 days (until 2026-12-08) rather than move the runner's SHA-256 alone, which would turn cluster's
   gates red while seatrials waited on its apply; the helper image, which does the extracting, carries v0.2.0 too.
-- **What the ci stack deploys, scanned as shipped** (looper, #101, 2026-11-24; tacplus-dev/looper#225). What: since
+- **What the ci stack deploys, scanned as shipped** (looper, #101, 2026-11-24; tacplus-dev/looper#225). Moot since #113, which deleted the runner pools and their manager. What: since
   #101 every pin of `ci/security.sh` is `tooling` (reported, never failing), as #101 and Jody's direction on #103 have
   it, GitLab Runner and its fleeting plugin (`bin/scan/`) among them; give those two, and the runners' default and
   helper images (deployed by digest, today not scanned here), the scope `shipped`. Why: they are not CI tools here but
@@ -714,20 +714,33 @@ the looper then marks it `promoted` or `declined` here with the date.
   to them is a commit. Why: today the README's commands are their only record. It belongs to moving off jody1-328023
   (ROADMAP.md, Later), and it changes the published image path that every `tacplus.lock` pins, so it needs its own
   design.
-- **Retire tacplus-ci's runner pools and their manager** (looper, #113, 2026-11-26). What: first confirm from GitLab
-  that nothing ran for a day on the four pools' runners (shared 58534919, build 58928680, deploy, cluster) and that each
-  tag they carry is served elsewhere. Then two applies. The gitlab stack's commit drops the pools' registrations and
-  token versions. The ci stack's commit then drops the pools, the manager (a plain destroy, with its `destroy = false`
-  and `ci/policy.sh`'s manager and runner-SSH rules), `runner-token-<pool>`, `tacplus-ci-runner-bin`, the SSH firewall
-  rule, `ci/runner.sh` and its scans and exceptions, the `handoff` job, the settings `runner_pools` and the manager's
-  quota lines. The quota tests then count the looper VMs and the reserved machines alone. A check for `runner-*`
-  strays outside the state follows (managers forgotten before #46). Kept: the `runners` network and its NAT, used by
-  the looper VMs; the COS pin; `ci/pools.sh`. README and STATE say what runs where. Why: the always-on shared VM and the
-  manager bill around the clock with nothing on them (the audit of 2026-11-26; Jody, 2026-11-25: "I dont want a large
-  bill"). Open (#113's design): `build-docker`, the host-Docker publish's tag, is the VM build pool's alone (already
-  at 0 and paused), so is the build pool removed now or kept until `BUILD_BUILDER_IMAGE` is pinned; the plain destroy
-  of the manager; deleting strays; jody1-328023's `gitlab-runner-mgr` and runners 57939705 and 58307468, outside this
-  repository; the quota raise's size.
+- **Retire tacplus-ci's runner pools and their manager** (looper, #113, 2026-11-26): built by #113 (README, What runs
+  where), its design approved (the hub, for Jody, 2026-11-26). Two changes from the design: one land, not two applies
+  in order (a token version whose secret is gone is a 404, which the google provider takes as gone, so either order
+  holds), and the manager goes by a `removed` block with `destroy = true`, not a plain destroy: its `destroy = false`
+  is in its state, so a resource block taken away would have forgotten it (tests/ci_plan_test.sh). The confirmation
+  runs in `plan:ci` (`ci/idle-runners.sh`), with the pipeline's GitLab token, which the looper has not. The build pool
+  went too (Jody: "all the dead stuff"): `build-docker` runs nowhere (below). It lands after tacplus-dev/cluster#65,
+  which drops cluster's check against the ci stack's `runner` block.
+- **Drop the manager's removed block and the idle check** (looper, #113, 2026-11-26). What: once an `apply:ci` has
+  destroyed the manager and an `apply:gitlab` has deleted the pools' registrations, remove the `removed` block of
+  `google_compute_instance.manager` (`modules/projects/ci/main.tf`), `ci/idle-runners.sh`, its test and stub, and
+  `plan:ci`'s step and GitLab token, and the `tests/ci_plan_test.sh` fixture with it (`tests/fixtures/ci/`). Why:
+  both are no-ops once nothing is left (no state holds the manager, no pool runner is registered), and `plan:ci` then
+  needs no GitLab token.
+- **A host-Docker publish without the build pool** (looper, #113, 2026-11-26). What: tacplus-dev/build's
+  `BUILD_DOCKER_TAGS` ("arm64, build-docker", tacplus-dev/looper#172) sent a release's publish to the VM build pool,
+  the one runner with host Docker; #113 removed it, so such a job waits with no runner. Pin `BUILD_BUILDER_IMAGE` to a
+  builder image with rootless BuildKit (tacplus-dev/tacplus#315) so publishes run on the in-cluster build runner, or
+  give them another runner. Why: #112's release builds by branch publish; until then a publish needing host Docker
+  does not run (it did not run since the pool was paused at 0 either).
+- **The network `runners` renamed** (looper, #113, 2026-11-26). What: `looper-vms` (or `ci`) for the network, its
+  subnet, router and NAT, when the looper VMs and the reserved machines are next replaced anyway. Why: the name is
+  the retired pools'; a rename replaces every VM on it, so it waits for a replacement that happens for its own reason.
+- **jody1-328023's runner manager** (looper, #113, 2026-11-26; Jody's, outside this repository). What: check whether
+  `gitlab-runner-mgr` and the runner VMs of runners 57939705 and 58307468 (paused) still exist in jody1-328023, and
+  delete them and unregister the runners. Why: this pipeline neither manages nor audits that project; if they exist,
+  they bill (ROADMAP.md, Later: jody1-328023 drained).
 - **The dev cluster as one fixed pool of 3 small nodes, deployments only** (looper, #114, 2026-11-26;
   tacplus-dev/roadmap `decisions/looper-build-vms-2026-11-24.md` point 8). What, in four steps: (1) drop the `looper`
   pool, its `cluster.looper` field and `looper_*` outputs, after tacplus-dev/cluster drops `pool.yaml`'s `looper`

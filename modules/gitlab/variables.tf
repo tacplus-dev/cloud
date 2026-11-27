@@ -37,7 +37,7 @@ variable "projects" {
 }
 
 variable "runners" {
-  description = "The runner registrations, by runner: a group or project runner, its tags, protected refs only or not, and the Secret Manager secret its token is written to as a new version (the ci project's runner-token-<pool> for a VM pool's; the dev project's gitlab-runner-infra, gitlab-runner-kick, gitlab-runner-build-report, gitlab-runner-build-light, gitlab-runner-manager and gitlab-runner-nightly for the in-cluster infra, kick, build-report, build-light, manager and nightly runners', #64, #81, #93, #100, #106, #116), and its description in GitLab (unset: a pool's, run by the ci project's runner manager). Registered paused: a runner takes jobs only once it is unpaused (paused = false)."
+  description = "The runner registrations, by runner: a group or project runner, its tags, protected refs only or not, and the Secret Manager secret its token is written to as a new version (the dev project's gitlab-runner-infra, gitlab-runner-kick, gitlab-runner-build-report, gitlab-runner-build-light, gitlab-runner-manager and gitlab-runner-nightly for the in-cluster infra, kick, build-report, build-light, manager and nightly runners', #64, #81, #93, #100, #106, #116), and its description in GitLab. Registered paused: a runner takes jobs only once it is unpaused (paused = false)."
   type = map(object({
     type         = string
     group        = optional(string)
@@ -46,10 +46,7 @@ variable "runners" {
     protected    = bool
     paused       = bool
     token_secret = string
-    description  = optional(string)
-    # More projects a project runner serves (gitlab_project_runner_enablement), e.g. the cluster pool's runner also
-    # running tacplus-dev/cloud's own pipeline (2026-11-10, off jody1-328023).
-    also_projects = optional(list(string), [])
+    description  = string
   }))
   validation {
     condition     = alltrue([for r in values(var.runners) : (r.type == "group_type" && r.group != null && r.project == null) || (r.type == "project_type" && r.project != null && r.group == null)])

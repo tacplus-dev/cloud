@@ -7,14 +7,14 @@
 #
 #   osv-scanner   the tree's dependency manifests and lock files (the commit's tree: git archive of HEAD)
 #   govulncheck   -mode=binary, every pinned binary the pipeline runs or installs: OpenTofu, tflint and its google
-#                 ruleset, yq, the scanners, the gitlab, kubernetes, google and anthropic providers (bin/), GitLab
-#                 Runner and its fleeting plugin (bin/scan/); symbols present only. shellcheck is not Go.
+#                 ruleset, yq, the scanners, the gitlab, kubernetes, google and anthropic providers (bin/); symbols
+#                 present only. shellcheck is not Go.
 #   gitleaks      the tree, and its history (every commit: a shallow clone is refused)
 #   trivy         the CI image the jobs run in (ci/gitlab-project.gitlab-ci.yml's default image, by digest)
 #
 # The policy (looper-scan's, tacplus-dev/looper#225): each finding has a scope, where it is. shipped: the tree's
-# manifests and lock files (osv-scanner) and the tree and its history (gitleaks); tooling: the pinned binaries (bin/,
-# bin/scan/) and the CI image, which only our pipelines run. A shipped secret fails, and so does a shipped HIGH or
+# manifests and lock files (osv-scanner) and the tree and its history (gitleaks); tooling: the pinned binaries (bin/)
+# and the CI image, which only our pipelines run. A shipped secret fails, and so does a shipped HIGH or
 # CRITICAL finding with a fixed version, unless an unexpired entry of security-exceptions.yaml names it (its id, or an
 # alias) and, with a where, its place; a tooling finding never fails: it is reported (the "CI tooling (reported, never
 # failing)" section), and an exception accepts it as it does a shipped one (tacplus-dev/roadmap
@@ -75,8 +75,7 @@ step "govulncheck -mode=binary: the pinned binaries"
 shopt -s globstar nullglob
 pinned=(tofu tflint 'tflint.d/**/tflint-ruleset-google' yq gitleaks osv-scanner trivy govulncheck
   'providers/**/terraform-provider-gitlab*' 'providers/**/terraform-provider-kubernetes*'
-  'providers/**/terraform-provider-google*' 'providers/**/terraform-provider-anthropic*' scan/gitlab-runner
-  scan/fleeting-plugin-googlecloud)
+  'providers/**/terraform-provider-google*' 'providers/**/terraform-provider-anthropic*')
 i=0
 for p in "${pinned[@]}"; do
   found=()
