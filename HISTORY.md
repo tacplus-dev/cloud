@@ -96,3 +96,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-25 looper issue Copy looper's ci/build.gitlab-ci.yml once it folds a build to 4 jobs (BUILD_CHILD_VERDICT, looper#237) (#109)
 - 2026-11-27 looper issue tests/ci_test.sh: accept the CI image at a tacplus line's dated build tag (build:<YYYYMMDD>-<commit>@digest), so the nightly re-pin lands (looper#226) (#102)
 - 2026-11-27 looper issue A land that changes only PROPOSALS.md or ROADMAP.md runs the full gate set: map them to docs (#118)
+- 2026-11-27 looper issue dev: the test-idp listener ready (ready = true) once the NEG seatrials-test-idp exists (split from #32) (#42)
