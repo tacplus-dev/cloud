@@ -98,3 +98,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-27 looper issue A land that changes only PROPOSALS.md or ROADMAP.md runs the full gate set: map them to docs (#118)
 - 2026-11-27 looper issue dev: the test-idp listener ready (ready = true) once the NEG seatrials-test-idp exists (split from #32) (#42)
 - 2026-11-27 looper issue Seatrials' trust domain is tacplus.dev: the llmproxy-seatrials rule and the Admiral's provider name spiffe://tacplus.dev/… (#119)
+- 2026-11-27 looper issue The nightly security fan-out needs a runner a land's build preempts: register nightly (arm64, build-nightly) and its token secret gitlab-runner-nightly (cluster#46) (#116)
