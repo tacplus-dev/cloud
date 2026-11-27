@@ -11,10 +11,11 @@
 # account has only the implicit default-workspace one, as the first live plan found, 2026-11-12); it only reads; the
 # bootstrap rule is read and passes the check; the apply's one write is that membership. That adoption is replayed as it
 # was applied, with the rule's scope as the Console held it; then the repository's settings narrow it to
-# workspace:inference, an update in place that the policy passes and whose apply writes the rule only. Then, from that
-# state: a Console edit of the rule plans the update that puts it back, with the same ID; a membership removed in the Console is
-# made again; an identity archived in the Console fails the plan rather than making a new one; a widened bootstrap
-# rule fails the check, and the drift lists it. Needs bin/ (ci/tools.sh), go, jq.
+# workspace:inference, an update in place that the policy passes and whose apply writes the rule only; then its subject
+# moves to seatrials' trust domain tacplus.dev (#119), in place too. Then, from that state: a Console edit of the rule
+# plans the update that puts it back, with the same ID; a membership removed in the Console is made again; an identity
+# archived in the Console fails the plan rather than making a new one; a widened bootstrap rule fails the check, and
+# the drift lists it. Needs bin/ (ci/tools.sh), go, jq.
 #
 #   tests/anthropic_plan_test.sh
 set -uo pipefail
@@ -47,10 +48,17 @@ edit() { jq "$2" "$fixture" > "$work/$1.json" && echo "$work/$1.json"; }
 mkdir -p "$work/repo" && cp -r "$here/stacks" "$here/modules" "$here/ci" "$work/repo/" && ln -s "$here/bin" "$work/repo/bin"
 find "$work/repo/stacks" -name .terraform -prune -exec rm -rf {} +
 # The adoption as it was planned and applied (b83660e, apply:anthropic job 18024991252): seatrials' rule as the Console
-# held it, workspace:developer. Its narrowing to workspace:inference, the repository's own settings, comes after.
+# held it, workspace:developer, its subject in the trust domain local.dev. Its narrowing to workspace:inference, then
+# its move to tacplus.dev (#119), the repository's own settings, come after.
 settings=$work/repo/modules/settings/main.tf
+# local_dev: the settings' llmproxy subject in local.dev, as seatrials' fleet minted it before #119.
+local_dev() {
+  sed -i 's#subject                = "spiffe://tacplus.dev/system/services/llmproxy"#subject                = "spiffe://local.dev/system/services/llmproxy"#' "$settings"
+  grep -q 'subject                = "spiffe://local.dev/system/services/llmproxy"' "$settings" || { echo "FAIL seatrials' rule is not spiffe://tacplus.dev/system/services/llmproxy in modules/settings"; exit 1; }
+}
 sed -i 's/oauth_scope            = "workspace:inference"/oauth_scope            = "workspace:developer"/' "$settings"
 grep -q 'oauth_scope            = "workspace:developer"' "$settings" || { echo "FAIL seatrials' rule is not workspace:inference in modules/settings"; exit 1; }
+local_dev
 stack=$work/repo/stacks/anthropic
 printf 'terraform {\n  backend "local" {}\n}\n' > "$stack/stub_override.tf"
 # shellcheck source=ci/tofurc.sh
@@ -126,7 +134,7 @@ fixture=$added
 
 # The narrowing, from the adopted state: the rule's scope to workspace:inference, in place, the same ID, nothing else; the
 # policy passes it (no adoption now); the apply's one write is the rule's update. Then nothing is left to change.
-cp "$here/modules/settings/main.tf" "$settings"
+cp "$here/modules/settings/main.tf" "$settings" && local_dev
 rule='GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8'
 narrowed=$(edit narrowed ".[\"$rule\"] |= (.oauth_scope = \"workspace:inference\" | .updated_at = \"2026-11-14T02:00:00Z\" | .updated_by_actor_id = \"svac_01CloudAdmin\") |
   .[\"POST /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8\"] = .[\"$rule\"]")
@@ -151,12 +159,37 @@ else
 fi
 fixture=$narrowed
 
-# A Console edit of the rule (its subject widened to a prefix) is planned back, in place, with the same ID.
-serve "$(edit console-edit '.["GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"].match.subject_prefix = "spiffe://local.dev/*"')"
+# The trust domain's move (#119): seatrials' kernel mints spiffe://tacplus.dev/... (fleet-seatrials#16), so the rule's
+# subject follows, in place, the same ID, nothing else; the policy passes it; the apply's one write is the rule's update.
+cp "$here/modules/settings/main.tf" "$settings"
+moved=$(edit moved ".[\"$rule\"] |= (.match.subject_prefix = \"spiffe://tacplus.dev/system/services/llmproxy\" | .updated_at = \"2026-11-26T22:00:00Z\" | .updated_by_actor_id = \"svac_01CloudAdmin\") |
+  .[\"POST /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8\"] = .[\"$rule\"]")
 if plan; then
   c=$(change 'anthropic_federation_rule.llmproxy["seatrials"]')
-  jq -e '.actions == ["update"] and .importing == null and .before.match.subject_prefix == "spiffe://local.dev/*" and
-    .after.match.subject_prefix == "spiffe://local.dev/system/services/llmproxy" and .after.id == "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"' <<< "$c" > /dev/null &&
+  jq -e '.actions == ["update"] and .importing == null and .before.match.subject_prefix == "spiffe://local.dev/system/services/llmproxy" and
+    .after.match.subject_prefix == "spiffe://tacplus.dev/system/services/llmproxy" and .after.id == "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8" and
+    .after.oauth_scope == "workspace:inference" and .after.match.audience == "https://api.anthropic.com"' <<< "$c" > /dev/null &&
+    [ "$(others)" = 'anthropic_federation_rule.llmproxy["seatrials"]' ] &&
+    ok "seatrials' rule moves to spiffe://tacplus.dev/system/services/llmproxy in place, the same ID, nothing else" || fail "the move: $(others) $c"
+  "$here/ci/policy.sh" plan "$work/plan.json" > /dev/null 2>&1 && ok "ci/policy.sh passes the move" || fail "ci/policy.sh refuses the move: $("$here/ci/policy.sh" plan "$work/plan.json" 2>&1)"
+  serve "$moved"
+  if anthropic apply p.tfplan && [ "$(grep -v '^GET \|^POST /v1/oauth/token ' "$work/requests")" = 'POST /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8 200' ]; then
+    ok "the move applies, its one write the rule's update"
+  else
+    fail "the move's apply: $(tail -5 "$work/out.txt" "$work/err.txt") $(grep -v '^GET ' "$work/requests")"
+  fi
+  plan && [ -z "$(others)" ] && ok "after the move, nothing to change" || fail "after the move: $(others) $(tail -3 "$work/err.txt")"
+else
+  fail "the move: no plan: $(grep -A4 Error "$work/err.txt" | head)"
+fi
+fixture=$moved
+
+# A Console edit of the rule (its subject widened to a prefix) is planned back, in place, with the same ID.
+serve "$(edit console-edit '.["GET /v1/organizations/federation_rules/fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"].match.subject_prefix = "spiffe://tacplus.dev/*"')"
+if plan; then
+  c=$(change 'anthropic_federation_rule.llmproxy["seatrials"]')
+  jq -e '.actions == ["update"] and .importing == null and .before.match.subject_prefix == "spiffe://tacplus.dev/*" and
+    .after.match.subject_prefix == "spiffe://tacplus.dev/system/services/llmproxy" and .after.id == "fdrl_01Fvxu1oSKHN6rwtdZmRbGY8"' <<< "$c" > /dev/null &&
     [ "$(others)" = 'anthropic_federation_rule.llmproxy["seatrials"]' ] &&
     ok "a Console edit of the rule: planned back in place, the same ID" || fail "the Console edit: $(others) $c"
 else

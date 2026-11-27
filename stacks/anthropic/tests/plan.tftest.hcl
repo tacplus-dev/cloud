@@ -31,7 +31,7 @@ run "stack" {
     error_message = "seatrials' issuer is not its fleet's (https://seatrials.tacplus.dev, by OIDC discovery)."
   }
   assert {
-    condition     = anthropic_federation_rule.llmproxy["seatrials"].match.subject_prefix == "spiffe://local.dev/system/services/llmproxy" && anthropic_federation_rule.llmproxy["seatrials"].match.claims == null && anthropic_federation_rule.llmproxy["seatrials"].match.condition == null
+    condition     = anthropic_federation_rule.llmproxy["seatrials"].match.subject_prefix == "spiffe://tacplus.dev/system/services/llmproxy" && anthropic_federation_rule.llmproxy["seatrials"].match.claims == null && anthropic_federation_rule.llmproxy["seatrials"].match.condition == null
     error_message = "seatrials' rule matches other tokens than llmproxy's own (an exact subject, no prefix)."
   }
   assert {

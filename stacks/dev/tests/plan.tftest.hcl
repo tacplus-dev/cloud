@@ -221,7 +221,7 @@ run "dev" {
       gateway  = { port = 443, neg = "seatrials-gateway", endpoint_port = 8443, ready = true }
       test-idp = { port = 8443, neg = "seatrials-test-idp", endpoint_port = 8443, ready = true }
     }
-    admiral = { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral" }
+    admiral = { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://tacplus.dev/system/services/admiral" }
     # As the stack gives GCP_QUOTA_CONTACT (#88).
     quota_contact = "jody@example.com"
   }
@@ -255,7 +255,7 @@ run "dev" {
     error_message = "The Admiral's provider is not seatrials, in the pool fleet-kernels, for the seatrials kernel's issuer by discovery, with the provider's own audience."
   }
   assert {
-    condition     = google_iam_workload_identity_pool_provider.admiral[0].attribute_condition == "assertion.sub == 'spiffe://local.dev/system/services/admiral'" && google_iam_workload_identity_pool_provider.admiral[0].attribute_mapping == tomap({ "google.subject" = "assertion.sub" })
+    condition     = google_iam_workload_identity_pool_provider.admiral[0].attribute_condition == "assertion.sub == 'spiffe://tacplus.dev/system/services/admiral'" && google_iam_workload_identity_pool_provider.admiral[0].attribute_mapping == tomap({ "google.subject" = "assertion.sub" })
     error_message = "The Admiral's provider admits more than its SPIFFE ID, or maps more than its subject."
   }
   override_resource {

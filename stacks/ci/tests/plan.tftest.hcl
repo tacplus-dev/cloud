@@ -78,7 +78,7 @@ run "stack" {
     condition = output.admiral == {
       wif_provider    = "projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
       audience        = "//iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/fleet-kernels/providers/seatrials"
-      subject         = "spiffe://local.dev/system/services/admiral"
+      subject         = "spiffe://tacplus.dev/system/services/admiral"
       service_account = "admiral@tacplus-ci.iam.gserviceaccount.com"
       key             = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral"
       key_version     = "projects/tacplus-ci/locations/us-central1/keyRings/looper/cryptoKeys/tacplus-admiral/cryptoKeyVersions/1"
@@ -216,7 +216,7 @@ run "settings" {
   # The Admiral's (#84; tacplus-dev/admiral#5): the seatrials fleet's kernel, by its one issuer URL, for the Admiral's
   # SPIFFE ID alone; its account, its App's key (no GitLab job signs with it, above) and its secret.
   assert {
-    condition     = output.admiral == { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://local.dev/system/services/admiral", account_id = "admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" } && contains(keys(output.github_apps.apps), output.admiral.key)
+    condition     = output.admiral == { pool = "fleet-kernels", provider = "seatrials", issuer = "https://seatrials.tacplus.dev", subject = "spiffe://tacplus.dev/system/services/admiral", account_id = "admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" } && contains(keys(output.github_apps.apps), output.admiral.key)
     error_message = "The Admiral's credentials are not seatrials' kernel's provider for its SPIFFE ID, the account admiral, the key tacplus-admiral and the secret admiral-triage-gitlab."
   }
   assert {
@@ -1297,7 +1297,7 @@ run "admiral" {
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] }, tacplus-admiral = { import = true, namespace = false, environments = [] } } }
     # As GCP_KMS_KEY_IMPORTERS and GCP_ADMIRAL_SECRET_ADDERS give them: accounts of the host's directory.
     kms_key_importers     = ["user:jody@example.com"]
-    admiral               = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+    admiral               = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://tacplus.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
     admiral_secret_adders = ["user:jody@example.com"]
   }
   override_resource {
@@ -1313,7 +1313,7 @@ run "admiral" {
     error_message = "The Admiral's account is not admiral in tacplus-ci."
   }
   assert {
-    condition     = google_service_account_iam_binding.admiral["admiral"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_binding.admiral["admiral"].members == toset(["principal://iam.googleapis.com/projects/444/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://local.dev/system/services/admiral"])
+    condition     = google_service_account_iam_binding.admiral["admiral"].role == "roles/iam.workloadIdentityUser" && google_service_account_iam_binding.admiral["admiral"].members == toset(["principal://iam.googleapis.com/projects/444/locations/global/workloadIdentityPools/fleet-kernels/subject/spiffe://tacplus.dev/system/services/admiral"])
     error_message = "Someone besides the Admiral's SPIFFE ID, through the fleet kernels' pool, becomes its account."
   }
   # Its key is an app's like the others: import-only, no version, imported through its own job by the importers.
@@ -1373,7 +1373,7 @@ run "admiral_without_adders" {
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = [] } } }
-    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://tacplus.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
   assert {
     condition     = keys(google_secret_manager_secret_iam_binding.admiral) == ["roles/secretmanager.secretAccessor"] && google_secret_manager_secret_iam_binding.admiral["roles/secretmanager.secretAccessor"].members == toset(["serviceAccount:admiral@tacplus-ci.iam.gserviceaccount.com"])
@@ -1409,7 +1409,7 @@ run "admiral_other_signer_refused" {
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-admiral = { import = true, namespace = false, environments = ["looper-report"] } } }
-    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://tacplus.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
   expect_failures = [google_kms_crypto_key_iam_binding.admiral]
 }
@@ -1441,7 +1441,7 @@ run "admiral_unknown_key_refused" {
     build_cache = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     hub_audit   = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-looper = { import = true, namespace = false, environments = ["looper-report"] } } }
-    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://local.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
+    admiral     = { account_id = "admiral", pool = "projects/444/locations/global/workloadIdentityPools/fleet-kernels", subject = "spiffe://tacplus.dev/system/services/admiral", key = "tacplus-admiral", secret = "admiral-triage-gitlab" }
   }
   expect_failures = [var.admiral]
 }
