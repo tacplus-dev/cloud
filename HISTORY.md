@@ -104,3 +104,4 @@ Append-only: add entries at the end, never edit or remove one (CI enforces it). 
 - 2026-11-27 looper issue No VMs outside GKE: remove the runner manager, runner pools, templates, MIGs and SSH rules from the stacks; a plan check refuses any (#11)
 - 2026-11-27 looper issue apply:ci fails: the release registry's location "us" violates the organization policy on tacplus-ci (#115) (#120)
 - 2026-11-27 looper issue STATE.md: Blocked on names closed #113 and tacplus-dev/cluster#65 (the runner manager's retirement, landed): the line is stale (#123)
+- 2026-11-27 looper issue looper VMs on the looper image of main-9f279d9: a local build's gates get a dockerd of their own (looper#267) (#122)
