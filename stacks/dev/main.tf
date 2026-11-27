@@ -91,11 +91,7 @@ module "dev" {
     # Jody, 2026-11-23 (#96): to 8; on 2026-11-22 it sat at 5 with 18 builds queued, a tacplus batch candidate waiting 1h17m.
     normal = { machine_type = "c4a-standard-2", nodes = 3 }
     spot   = { machine_type = "c4a-standard-4", max_nodes = 8 }
-    # Jody, 2026-11-22 (#95): the looper runs' overflow on a pool from 0 to X, on demand, X = 2 (at most the $130/month
-    # Jody approved; a larger X needs Jody's yes).
-    # Jody, 2026-11-24 (#107): to 4 (at most about $260/month); at 19:59Z the control runner sat at its 17 (cluster#53)
-    # with 18 jobs pending, 5 of them managers, the looper pool at its 2.
-    looper = { machine_type = "c4a-standard-2", max_nodes = 4 }
+    # Jody, 2026-11-25 (#114): no looper pool (#95, #107): one pool of 3 small nodes, no autoscaling, once the builds go too.
   }
   network = {
     nodes         = "10.20.0.0/20"

@@ -1,8 +1,7 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# The dev project: the dev GKE cluster (arm64, Axion, private COS nodes in a normal pool, a spot build pool and a looper
-# pool from 0), the DNS zone for dev hostnames, the cluster pipeline's identity, cluster-admin-pipeline, federated from
+# The dev project: the dev GKE cluster (arm64, Axion, private COS nodes in a normal pool and a spot build pool), the DNS zone for dev hostnames, the cluster pipeline's identity, cluster-admin-pipeline, federated from
 # tacplus-dev/cluster's protected main, with its cluster-admin in the cluster (cluster-pipeline.tf) and the runners'
 # token secrets it reads (runner-tokens.tf), each deployment's
 # certificate secrets and challenge zone (certificates.tf), the gateway's address and the domain's zone (dns.tf), and
@@ -203,10 +202,8 @@ data "google_compute_machine_types" "spot" {
 
 # The nodes (decisions/cluster-node-pools-2026-11-03.md): private, Container-Optimized OS, arm64 (Axion C4A). The normal
 # pool, fixed and on demand, runs the platform in the cluster's zone; the build pool, spot and from 0, runs build pods
-# only: they alone tolerate its taint (tacplus-dev/cluster#6); the looper pool, on demand and from 0 in the cluster's
-# zone, runs the looper runs that overflow the normal nodes (the control runner's job pods alone tolerate its taint,
-# tacplus-dev/cluster#47) and empties back to 0 when they end (#95, the decision's addendum of 2026-11-22): on demand,
-# as a looper run lasts hours and spot would preempt it. The pools share the rest.
+# only: they alone tolerate its taint (tacplus-dev/cluster#6). The pools share the rest. The looper pool of #95 is gone
+# (#114; Jody, 2026-11-25: one pool of 3 small nodes, no autoscaling): the looper runs moved to the looper VMs.
 # The build pool spreads over every zone of the region with its machine type (#85): on 2026-11-20 spot c4a ran out in
 # us-central1-a, its only zone, and gates pods waited Pending at 2 nodes of 5. Its maximum is the pool's in all zones
 # (total_max), not each zone's, and GKE makes each node in whichever zone has the capacity (location policy ANY).
@@ -230,15 +227,6 @@ locals {
       spot           = true
       labels         = { spot = "true" }
       taints         = [{ key = "spot", value = "true", effect = "NO_SCHEDULE" }]
-    }
-    looper = {
-      machine_type   = var.cluster.looper.machine_type
-      node_count     = null
-      node_locations = null
-      autoscaling    = { total_min = 0, total_max = var.cluster.looper.max_nodes, location_policy = "BALANCED" }
-      spot           = false
-      labels         = { looper = "true" }
-      taints         = [{ key = "looper", value = "true", effect = "NO_SCHEDULE" }]
     }
   }
 }
@@ -307,7 +295,7 @@ resource "google_container_node_pool" "pool" {
 # The quotas the pools need (#88), as Cloud Quotas preferences of the project in the region, computed from the pools,
 # never typed: on 2026-11-21 the build pool stopped at 2 nodes of 5, its scale-ups refused QUOTA_EXCEEDED, C4A CPUs
 # (CPUS_PER_VM_FAMILY, 24) and Hyperdisk Balanced (HDB_TOTAL_GB, 500 GB, all used). C4A CPUs: each pool's at its
-# maximum (the normal pool's nodes, the build and looper pools' max_nodes, #95), and one node's of the largest machine
+# maximum (the normal pool's nodes, the build pool's max_nodes), and one node's of the largest machine
 # type for a node being replaced (a surge upgrade, a repair), rounded up to a multiple of 8.
 # Hyperdisk Balanced: a disk of disk_gb for each of those nodes, rounded up to a multiple of 500. An increase may wait
 # on Google's review (reconciling, until granted); ci/policy.sh refuses a plan whose pools these do not cover. The

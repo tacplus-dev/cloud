@@ -7,14 +7,12 @@ output "project_id" {
 }
 
 output "cluster" {
-  description = "The dev cluster's name and zone, the spot build pool's node label and taint, which only build pods tolerate (tacplus-dev/cluster#6), and the looper pool's, which only the control runner's job pods tolerate (tacplus-dev/cluster#47)."
+  description = "The dev cluster's name and zone, the spot build pool's node label and taint, which only build pods tolerate (tacplus-dev/cluster#6)."
   value = {
-    name         = google_container_cluster.dev.name
-    zone         = google_container_cluster.dev.location
-    spot_label   = local.pools.spot.labels
-    spot_taint   = local.pools.spot.taints[0]
-    looper_label = local.pools.looper.labels
-    looper_taint = local.pools.looper.taints[0]
+    name       = google_container_cluster.dev.name
+    zone       = google_container_cluster.dev.location
+    spot_label = local.pools.spot.labels
+    spot_taint = local.pools.spot.taints[0]
   }
 }
 
