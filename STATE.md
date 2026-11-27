@@ -546,7 +546,9 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-26 by th
   Tested by `tests/security_test.sh` (a planted secret, in the tree and in history, an expired exception, a clean tree,
   the policy, a `where`) with stubs for OSV-Scanner, govulncheck and Trivy; never run in GitLab yet (no pipeline has run).
 - **Pinned for the build pipeline (#25; looper#71, #84):** `build.lock` names the CI image by digest at its dated build tag (#102)
-  and `gates.yaml` its one set, full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), so tacplus-dev/build builds
+  and `gates.yaml` its sets: full (`ci/tools.sh && ci/lint.sh all && ci/checks.sh`), and since #118 docs
+  (`tests/hosting_test.sh`) for a change to PROPOSALS.md, ROADMAP.md, STATE.md, HISTORY.md or LICENSE alone
+  (`tests/gates_test.sh`), so tacplus-dev/build builds
   this repository in that image, with no Docker, and runs its security checks; `tests/ci_test.sh` refuses a
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
   tacplus-dev/looper#113 (2026-11-15): ca0e523's, pipeline 3070014440, green on the gates full, its security report one
