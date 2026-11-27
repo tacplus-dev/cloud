@@ -72,8 +72,8 @@ run "stack" {
   # The release registry (#115): tacplus-dev/build's BUILD_REGISTRY for a release, the publish account and provider it
   # federates as, and its one reader, seatrials' deploy identity in the dev project.
   assert {
-    condition     = output.releases.registry == "us-docker.pkg.dev/tacplus-ci/releases" && output.releases.service_account == "release-publish@tacplus-ci.iam.gserviceaccount.com" && output.releases.wif_provider == "projects/333/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release" && output.releases.readers == tolist(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])
-    error_message = "The stack does not give the release registry us-docker.pkg.dev/tacplus-ci/releases, its publish account and provider, and seatrials-deploy@tacplus-dev as its one reader."
+    condition     = output.releases.registry == "us-central1-docker.pkg.dev/tacplus-ci/releases" && output.releases.service_account == "release-publish@tacplus-ci.iam.gserviceaccount.com" && output.releases.wif_provider == "projects/333/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release" && output.releases.readers == tolist(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"])
+    error_message = "The stack does not give the release registry us-central1-docker.pkg.dev/tacplus-ci/releases, its publish account and provider, and seatrials-deploy@tacplus-dev as its one reader."
   }
   # The Admiral's Config (#84): the dev project's provider for its fleet kernel and its audience, its account, its
   # App's key and IDs, and its secret, none of them secret.
@@ -220,7 +220,7 @@ run "ci" {
     }
     # As GCP_KMS_KEY_IMPORTERS gives it: an account of the host's directory, which no file here names.
     kms_key_importers = ["user:jody@example.com"]
-    releases          = { repository = "releases", location = "us", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"] }
+    releases          = { repository = "releases", location = "us-central1", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"] }
   }
   override_resource {
     target = google_service_account.release_publish
@@ -400,8 +400,8 @@ run "ci" {
   # through a provider of its own in the build cache's pool (not the build cache's, which admits any ref); one reader,
   # seatrials' deploy identity. Every binding authoritative.
   assert {
-    condition     = google_artifact_registry_repository.releases[0].repository_id == "releases" && google_artifact_registry_repository.releases[0].location == "us" && google_artifact_registry_repository.releases[0].format == "DOCKER" && length(google_artifact_registry_repository.releases[0].cleanup_policies) == 0 && length(google_artifact_registry_repository.releases[0].labels) == 1 && google_artifact_registry_repository.releases[0].labels["managed-by"] == "tacplus-dev-cloud"
-    error_message = "The release registry is not releases, DOCKER in us, labelled, with no cleanup policy."
+    condition     = google_artifact_registry_repository.releases[0].repository_id == "releases" && google_artifact_registry_repository.releases[0].location == "us-central1" && google_artifact_registry_repository.releases[0].format == "DOCKER" && length(google_artifact_registry_repository.releases[0].cleanup_policies) == 0 && length(google_artifact_registry_repository.releases[0].labels) == 1 && google_artifact_registry_repository.releases[0].labels["managed-by"] == "tacplus-dev-cloud"
+    error_message = "The release registry is not releases, DOCKER in us-central1, labelled, with no cleanup policy."
   }
   assert {
     condition     = google_service_account.release_publish[0].account_id == "release-publish" && google_service_account.release_publish[0].project == "tacplus-ci"
@@ -416,11 +416,11 @@ run "ci" {
     error_message = "Something other than tacplus-dev/build's jobs in its environment registry may become release-publish."
   }
   assert {
-    condition     = google_artifact_registry_repository_iam_binding.releases_writer[0].role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_binding.releases_writer[0].members == toset(["serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_writer[0].location == "us" && google_artifact_registry_repository_iam_binding.releases_writer[0].repository == "releases"
+    condition     = google_artifact_registry_repository_iam_binding.releases_writer[0].role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_binding.releases_writer[0].members == toset(["serviceAccount:release-publish@tacplus-ci.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_writer[0].location == "us-central1" && google_artifact_registry_repository_iam_binding.releases_writer[0].repository == "releases"
     error_message = "The release registry's writer is not release-publish alone."
   }
   assert {
-    condition     = google_artifact_registry_repository_iam_binding.releases_reader[0].role == "roles/artifactregistry.reader" && google_artifact_registry_repository_iam_binding.releases_reader[0].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_reader[0].location == "us" && google_artifact_registry_repository_iam_binding.releases_reader[0].repository == "releases"
+    condition     = google_artifact_registry_repository_iam_binding.releases_reader[0].role == "roles/artifactregistry.reader" && google_artifact_registry_repository_iam_binding.releases_reader[0].members == toset(["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"]) && google_artifact_registry_repository_iam_binding.releases_reader[0].location == "us-central1" && google_artifact_registry_repository_iam_binding.releases_reader[0].repository == "releases"
     error_message = "The release registry's reader is not seatrials-deploy@tacplus-dev alone."
   }
   # The cluster autoscaler's log (#85): no view and no grant on one until autoscaler_log is true, which waits for the
@@ -509,7 +509,30 @@ run "release_reader_not_service_account_refused" {
     build_cache     = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
     hub_audit       = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
-    releases        = { repository = "releases", location = "us", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["user:someone@example.com"] }
+    releases        = { repository = "releases", location = "us-central1", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["user:someone@example.com"] }
+  }
+  expect_failures = [var.releases]
+}
+
+# The release registry is in the region (#120): the host's gcp.resourceLocations, in:us-central1-locations, admits
+# the region alone, and the multi-region us failed apply:ci (Error 400: Location "us" violates organization policy).
+run "release_location_outside_region_refused" {
+  command = plan
+  module {
+    source = "../../modules/projects/ci"
+  }
+  variables {
+    project_id      = "tacplus-ci"
+    name            = "tacplus ci"
+    folder          = "folders/222"
+    billing_account = "000000-111111-222222"
+    region          = "us-central1"
+    zone            = "us-central1-b"
+    subnet_cidr     = "10.10.0.0/20"
+    build_cache     = { name = "build-cache", days = 30, gitlab_project = "tacplus-dev/build", account_id = "build-cache", wif_pool = "gitlab-com", wif_provider = "tacplus-dev-build" }
+    hub_audit       = { account_id = "hub-audit", projects = ["tacplus-ci", "tacplus-dev"], roles = ["roles/compute.viewer", "roles/container.viewer", "roles/monitoring.viewer", "roles/serviceusage.serviceUsageConsumer", "roles/secretmanager.viewer", "roles/cloudquotas.viewer"], pool = "projects/111/locations/global/workloadIdentityPools/gitlab-com", gitlab_project = "tacplus-dev/cloud" }
+    github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-reader = { import = false, namespace = true, environments = [] }, tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] } } }
+    releases        = { repository = "releases", location = "us", account_id = "release-publish", gitlab_project = "tacplus-dev/build", environment = "registry", wif_provider = "tacplus-dev-build-release", readers = ["serviceAccount:seatrials-deploy@tacplus-dev.iam.gserviceaccount.com"] }
   }
   expect_failures = [var.releases]
 }

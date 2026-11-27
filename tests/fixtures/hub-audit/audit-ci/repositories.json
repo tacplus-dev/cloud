@@ -5,7 +5,7 @@
   "labels": {"managed-by": "tacplus-dev-cloud"}
  },
  {
-  "name": "projects/audit-ci/locations/us/repositories/releases",
+  "name": "projects/audit-ci/locations/us-central1/repositories/releases",
   "format": "DOCKER",
   "labels": {"managed-by": "tacplus-dev-cloud"}
  }

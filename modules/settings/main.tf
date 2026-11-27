@@ -150,8 +150,9 @@ output "admiral" {
 
 output "releases" {
   description = <<-EOT
-    The release registry (#115; Jody's approval of its design B, 2026-11-26): the Docker repository repository of the
-    ci project in location (us, multi-region, as the releases' first home us-docker.pkg.dev/jody1-328023/tacplus was),
+    The release registry (#115; the hub's approval of its design B, on Jody's standing word, 2026-11-26:
+    tacplus-dev/looper#265): the Docker repository repository of the ci project in location, the region (#120: the
+    host's gcp.resourceLocations, in:us-central1-locations, admits it alone; the multi-region us failed apply:ci),
     no cleanup policy, where tacplus-dev/build's release builds publish <repo>:<branch>-<commit, 12 hex> by digest
     (tacplus-dev/looper#252). Its one writer, the ci project's account account_id, which only gitlab_project's jobs on
     its protected main in its GitLab environment environment (the publish jobs) become, through the ci project's
@@ -162,7 +163,7 @@ output "releases" {
   EOT
   value = {
     repository       = "releases"
-    location         = "us"
+    location         = "us-central1"
     account_id       = "release-publish"
     gitlab_project   = "tacplus-dev/build"
     environment      = "registry"

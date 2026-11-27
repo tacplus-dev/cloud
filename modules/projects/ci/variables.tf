@@ -109,7 +109,7 @@ variable "admiral" {
 }
 
 variable "releases" {
-  description = "The release registry (releases.tf, #115): a Docker repository named repository in location (us: multi-region), with no cleanup policy, which only the service account account_id writes, and only the jobs of gitlab_project on its protected main, in its GitLab environment environment, become it, through the build cache's pool (build_cache.wif_pool) and a provider of its own, wif_provider; readers, the members (serviceAccount:, written out) who alone read it, each deployment's that copies the releases into its own registry. Null: none."
+  description = "The release registry (releases.tf, #115): a Docker repository named repository in location (the region: #120), with no cleanup policy, which only the service account account_id writes, and only the jobs of gitlab_project on its protected main, in its GitLab environment environment, become it, through the build cache's pool (build_cache.wif_pool) and a provider of its own, wif_provider; readers, the members (serviceAccount:, written out) who alone read it, each deployment's that copies the releases into its own registry. Null: none."
   type = object({
     repository     = string
     location       = string
@@ -127,6 +127,12 @@ variable "releases" {
   validation {
     condition     = var.releases == null ? true : alltrue([for m in var.releases.readers : can(regex("^serviceAccount:[a-z][a-z0-9-]{4,28}[a-z0-9]@[a-z][a-z0-9-]+\\.iam\\.gserviceaccount\\.com$", m))])
     error_message = "A release reader is not a service account (serviceAccount:<id>@<project>.iam.gserviceaccount.com): only a deployment's account copies the releases."
+  }
+  # The host's gcp.resourceLocations (in:us-central1-locations, README) admits the region alone: the multi-region us
+  # failed apply:ci (#120).
+  validation {
+    condition     = var.releases == null ? true : var.releases.location == var.region
+    error_message = "The release registry is not in the region: the host organization's gcp.resourceLocations admits no other location (#120)."
   }
 }
 

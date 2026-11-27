@@ -755,12 +755,13 @@ first-job image-pull failure (#4's acceptance).
 
 ## The release registry
 
-#115 (Jody's approval of its design B, 2026-11-26; tacplus-dev/looper#252, tacplus-dev/fleet-seatrials#82): the images
-tacplus-dev/build's release builds publish by digest, `<repo>:<branch>-<commit, 12 hex>`, in `tacplus-ci` rather than
-jody1-328023 (#15 empties it). `modules/projects/ci/releases.tf`, its names in `modules/settings` (`releases`).
+#115 (the hub's approval of its design B, on Jody's standing word, 2026-11-26, tacplus-dev/looper#265;
+tacplus-dev/looper#252, tacplus-dev/fleet-seatrials#82): the images tacplus-dev/build's release builds publish by
+digest, `<repo>:<branch>-<commit, 12 hex>`, in `tacplus-ci` rather than jody1-328023 (#15 empties it). `modules/projects/ci/releases.tf`, its names in `modules/settings` (`releases`).
 
-- **Where:** the Docker repository `us-docker.pkg.dev/tacplus-ci/releases` (multi-region `us`, as the releases' first
-  home `us-docker.pkg.dev/jody1-328023/tacplus`). No cleanup policy: a deployment pins a release by digest, and nothing
+- **Where:** the Docker repository `us-central1-docker.pkg.dev/tacplus-ci/releases`, in the region (#120: the host's
+  `gcp.resourceLocations` admits it alone; the multi-region `us` of the releases' first home,
+  `us-docker.pkg.dev/jody1-328023/tacplus`, failed `apply:ci`). No cleanup policy: a deployment pins a release by digest, and nothing
   it pins is deleted.
 - **Its writer:** `release-publish@tacplus-ci.iam.gserviceaccount.com` alone (`artifactregistry.writer`, an
   authoritative binding). Only tacplus-dev/build's publish jobs become it: its protected `main`, in its GitLab
