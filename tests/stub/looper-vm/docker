@@ -2,17 +2,24 @@
 # Copyright (c) 2026 Jody Scott
 # SPDX-License-Identifier: Apache-2.0
 #
-# A stub docker for tests/looper_vm_test.sh: logs each call to STUB_LOOPER_VM/docker. pull fails while
+# A stub docker for tests/looper_vm_test.sh: logs each call to STUB_LOOPER_VM/docker, one line. pull fails while
 # STUB_LOOPER_VM/pull-fails holds a number above 0 (one less each time); run exits STUB_LOOPER_VM/exit (0 without it),
 # and with STUB_LOOPER_VM/preempt, first marks the stop as the unit's ExecStop does (a spot preemption's shutdown
-# during the run).
-echo "docker $*" >> "$STUB_LOOPER_VM/docker"
+# during the run); a run of the orchestrator's question (bash -c ... needed) exits STUB_LOOPER_VM/needed-exit (1
+# without it), saying so.
+a="$*"
+echo "docker ${a//$'\n'/ }" >> "$STUB_LOOPER_VM/docker"
 case ${1:-} in
   pull)
     n=$(cat "$STUB_LOOPER_VM/pull-fails" 2>/dev/null || echo 0)
     [ "$n" -gt 0 ] && { echo $((n - 1)) > "$STUB_LOOPER_VM/pull-fails"; exit 1; }
     exit 0 ;;
   run)
+    if [[ " $* " == *" bash -c "*" needed "* ]]; then
+      n=$(cat "$STUB_LOOPER_VM/needed-exit" 2>/dev/null || echo 1)
+      echo "stub: needed exit $n"
+      exit "$n"
+    fi
     [ -f "$STUB_LOOPER_VM/preempt" ] && bash "$LOOPER_VM_SCRIPT" stop
     exit "$(cat "$STUB_LOOPER_VM/exit" 2>/dev/null || echo 0)" ;;
 esac

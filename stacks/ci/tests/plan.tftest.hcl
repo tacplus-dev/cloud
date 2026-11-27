@@ -138,22 +138,23 @@ run "stack" {
 }
 
 # tacplus-ci's quotas (#55, #63), with no runner pool and no manager since #113: what runs there at its peak is the
-# looper VMs (0..1 each) and the reserved machines with an image (#111: one VM each; none without), all C4A.
+# looper VMs (0..1 each, C4A) and the reserved machines with an image (#111: one VM each, C4A or T2A; none without).
 run "settings" {
   command = plan
   module {
     source = "../../modules/settings"
   }
-  # Their CPUs fit CPUS_ALL_REGIONS and the region's C4A family limit, or a VM fails QUOTA_EXCEEDED (the second build
-  # VM, 2026-11-13). A c4a-standard-N has N CPUs.
+  # Their CPUs fit CPUS_ALL_REGIONS and the region's C4A and T2A limits, or a VM fails QUOTA_EXCEEDED (the second build
+  # VM, 2026-11-13). A c4a-standard-N or t2a-standard-N has N CPUs; a looper VM is C4A.
   assert {
-    condition     = output.ci_cpus == { quota = 32, c4a_quota = 24 } && sum(concat([for v in values(output.looper_vms) : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])], [for v in values(output.reserved_vms) : v.image == "" ? 0 : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])])) <= min(output.ci_cpus.quota, output.ci_cpus.c4a_quota)
-    error_message = "The looper VMs and the reserved machines with an image need more CPUs than tacplus-ci's CPUS_ALL_REGIONS (32) or C4A (24) quota, or a machine type is no c4a-standard-N."
+    condition     = output.ci_cpus == { quota = 32, c4a_quota = 24, t2a_quota = 24 } && alltrue([for v in values(output.reserved_vms) : can(regex("^(c4a|t2a)-standard-[0-9]+$", v.machine_type))]) && sum(concat([for v in values(output.looper_vms) : tonumber(regex("^c4a-standard-([0-9]+)$", v.machine_type)[0])], [for v in values(output.reserved_vms) : v.image == "" || !startswith(v.machine_type, "c4a-") ? 0 : tonumber(regex("-([0-9]+)$", v.machine_type)[0])])) <= output.ci_cpus.c4a_quota && sum([for v in values(output.reserved_vms) : v.image == "" || !startswith(v.machine_type, "t2a-") ? 0 : tonumber(regex("-([0-9]+)$", v.machine_type)[0])]) <= output.ci_cpus.t2a_quota && sum(concat([for v in values(output.looper_vms) : tonumber(regex("-([0-9]+)$", v.machine_type)[0])], [for v in values(output.reserved_vms) : v.image == "" ? 0 : tonumber(regex("-([0-9]+)$", v.machine_type)[0])])) <= output.ci_cpus.quota
+    error_message = "The looper VMs and the reserved machines with an image need more CPUs than tacplus-ci's CPUS_ALL_REGIONS (32), C4A (24) or T2A (24) quota, or a machine type is no c4a-standard-N or t2a-standard-N."
   }
-  # Their boot disks, all Hyperdisk Balanced, fit its GB in us-central1, or a VM fails QUOTA_EXCEEDED and never comes.
+  # Their boot disks fit its GB in us-central1, a C4A VM's Hyperdisk Balanced and a T2A VM's pd-balanced (SSD_TOTAL_GB),
+  # or a VM fails QUOTA_EXCEEDED and never comes.
   assert {
-    condition     = output.ci_disks == { hyperdisk_balanced_quota_gb = 500 } && sum(concat([for v in values(output.looper_vms) : v.disk_gb], [for v in values(output.reserved_vms) : v.image == "" ? 0 : v.disk_gb])) <= output.ci_disks.hyperdisk_balanced_quota_gb
-    error_message = "The looper VMs' and the reserved machines' (with an image) disks need more GB than tacplus-ci's Hyperdisk Balanced quota in us-central1 (500)."
+    condition     = output.ci_disks == { hyperdisk_balanced_quota_gb = 500, ssd_total_quota_gb = 500 } && sum(concat([for v in values(output.looper_vms) : v.disk_gb], [for v in values(output.reserved_vms) : v.image == "" || !startswith(v.machine_type, "c4a-") ? 0 : v.disk_gb])) <= output.ci_disks.hyperdisk_balanced_quota_gb && sum([for v in values(output.reserved_vms) : v.image == "" || !startswith(v.machine_type, "t2a-") ? 0 : v.disk_gb]) <= output.ci_disks.ssd_total_quota_gb
+    error_message = "The looper VMs' and the reserved machines' (with an image) disks need more GB than tacplus-ci's Hyperdisk Balanced (500) or SSD_TOTAL_GB (500) quota in us-central1."
   }
   # The apps Jody created on 2026-11-05 (#19), and who signs with each: the looper app for the reports, the scans, the
   # plan and the kicker; the manager app for the manager and the scans (their commits to main) alone; the reader for
@@ -190,11 +191,12 @@ run "settings" {
     error_message = "The looper VMs are not tacplus's alone, a spot c4a-standard-8 with 200 GB and no image yet."
   }
   # The reserved machines (#111; decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8, Jody's yes of
-  # 2026-11-25): tacplus's rolling check (8 CPUs until the full gates are measured on it), the org's, and the merger's small machine, none spot, with
-  # no image until tacplus-dev/looper#249 and #251 run them (their groups at 0), each signing with its role's key.
+  # 2026-11-25): tacplus's rolling check (C4A, 8 CPUs until the full gates are measured on it), the org's and the
+  # merger's small machine (T2A), none spot, on the looper image of main-c0d53ba (tacplus-dev/looper#249, #251), each
+  # signing as tacplus-manager until tacplus-check and tacplus-merger exist (the hub, for Jody, 2026-11-25).
   assert {
-    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 200, image = "", key = "tacplus-check" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "", key = "tacplus-merger" } }
-    error_message = "The reserved machines are not tacplus's check (c4a-standard-8 until measured), the org's (c4a-standard-4) and the merger's (c4a-standard-1), with no image yet."
+    condition     = output.reserved_vms == { check-tacplus = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 100, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" }, check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "t2a-standard-4", disk_gb = 100, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" }, merger = { role = "merger", org = "tacplus-dev", machine_type = "t2a-standard-1", disk_gb = 30, image = "ghcr.io/tacplus-dev/looper@sha256:c61c27e6656694aca63a70addbc3cd40ab172a9b4ea23eb579745ef68ae41246", key = "tacplus-manager" } }
+    error_message = "The reserved machines are not tacplus's check (c4a-standard-8 until measured, 100 GB), the org's (t2a-standard-4, 100 GB) and the merger's (t2a-standard-1, 30 GB), on main-c0d53ba's looper image, signing as tacplus-manager."
   }
 }
 
@@ -961,9 +963,11 @@ run "looper_vm_not_c4a_refused" {
 }
 
 # The reserved machines (#111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md, the panel's 4, 5 and 8):
-# the rolling check of tacplus, the org's, and the merger's machine, each a zonal group of one on-demand C4A VM while
-# it has an image (none without), on the looper VMs' OS and cloud-init with its role as metadata, no external address
-# and no SSH; its own account, which writes logs and signs with its role's key alone.
+# the rolling check of tacplus, the org's, and the merger's machine, each a zonal group of one on-demand VM (C4A on
+# Hyperdisk Balanced, T2A on pd-balanced), on the looper VMs' OS and cloud-init with its role, group, app and (the
+# merger's) check machines as metadata, no external address and no SSH; its own account, which writes logs and signs
+# as tacplus-manager beside the managers' jobs and no looper VM. A check machine's group is 0..1, never the plan's: its
+# VM stops itself through it, and the merger's machine starts it; the merger's is at 1 with an image.
 run "reserved_vms" {
   command = plan
   module {
@@ -982,9 +986,9 @@ run "reserved_vms" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
-      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-8", disk_gb = 100, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-manager", app_id = "5632100", installation_id = "179024536" }
+      check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "t2a-standard-4", disk_gb = 100, image = "", key = "tacplus-manager", app_id = "5632100", installation_id = "179024536" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "t2a-standard-1", disk_gb = 30, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-manager", app_id = "5632100", installation_id = "179024536" }
     }
   }
   override_resource {
@@ -1000,36 +1004,49 @@ run "reserved_vms" {
     condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : t.scheduling[0].provisioning_model == "STANDARD" && !t.scheduling[0].preemptible && t.scheduling[0].automatic_restart])
     error_message = "A reserved machine is spot, or is not restarted after a host event."
   }
-  # The looper VMs' OS and disk, no external address, tagged looper-vm (no SSH in any form, ci/policy.sh).
+  # The looper VMs' OS, its family's disk (C4A Hyperdisk Balanced, T2A pd-balanced), no external address, tagged
+  # looper-vm (no SSH in any form, ci/policy.sh).
   assert {
-    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : t.disk[0].source_image == "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12" && t.disk[0].disk_type == "hyperdisk-balanced" && t.disk[0].boot && t.disk[0].auto_delete && length(t.network_interface) == 1 && length(t.network_interface[0].access_config) == 0 && length(t.network_interface[0].ipv6_access_config) == 0 && t.tags == toset(["looper-vm"]) && t.labels == tomap({ managed-by = "tacplus-dev-cloud", reserved-vm = k }) && length(t.service_account) == 1 && endswith(one(one(t.service_account).scopes), "cloud-platform")]) && google_compute_instance_template.reserved_vm["check-tacplus"].machine_type == "c4a-standard-16" && google_compute_instance_template.reserved_vm["merger"].disk[0].disk_size_gb == 10
-    error_message = "A reserved machine is not its C4A machine on the pinned Container-Optimized OS with its Hyperdisk Balanced disk, has an external address, or is not tagged looper-vm."
+    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : t.disk[0].source_image == "projects/cos-cloud/global/images/cos-arm64-121-18867-652-12" && t.disk[0].boot && t.disk[0].auto_delete && length(t.network_interface) == 1 && length(t.network_interface[0].access_config) == 0 && length(t.network_interface[0].ipv6_access_config) == 0 && t.tags == toset(["looper-vm"]) && t.labels == tomap({ managed-by = "tacplus-dev-cloud", reserved-vm = k }) && length(t.service_account) == 1 && endswith(one(one(t.service_account).scopes), "cloud-platform")]) && { for k, t in google_compute_instance_template.reserved_vm : k => [t.machine_type, t.disk[0].disk_type, t.disk[0].disk_size_gb] } == { check-tacplus = ["c4a-standard-8", "hyperdisk-balanced", 100], check-tacplus-dev = ["t2a-standard-4", "pd-balanced", 100], merger = ["t2a-standard-1", "pd-balanced", 30] }
+    error_message = "A reserved machine is not its machine on the pinned Container-Optimized OS with its family's disk (C4A Hyperdisk Balanced, T2A pd-balanced), has an external address, or is not tagged looper-vm."
   }
-  # Its role, repository or org and image as metadata alone, the looper VMs' cloud-init, no SSH key; the org's check
-  # leaves the repositories with a check of their own.
+  # Its role, repository or org, image, group and settings as metadata alone, the looper VMs' cloud-init, no SSH key;
+  # the org's check leaves the repositories with a check of their own; the merger's names the check machines it starts.
   assert {
-    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-except looper-image looper-org looper-repo looper-role user-data" && t.metadata["block-project-ssh-keys"] == "true" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled" && t.metadata["user-data"] == google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"]]) && [for k in ["check-tacplus", "check-tacplus-dev", "merger"] : [for m in ["looper-role", "looper-repo", "looper-org", "looper-except", "looper-image"] : google_compute_instance_template.reserved_vm[k].metadata[m]]] == [["check", "tacplus", "", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222"], ["check", "", "tacplus-dev", "tacplus", ""], ["merger", "", "tacplus-dev", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222"]]
-    error_message = "A reserved machine's metadata is not its role, repository or org, image, the looper VMs' cloud-init and logging, or it has an SSH key."
+    condition     = alltrue([for k, t in google_compute_instance_template.reserved_vm : join(" ", sort(keys(t.metadata))) == "block-project-ssh-keys cos-update-strategy google-logging-enabled looper-checks looper-env looper-except looper-group looper-image looper-org looper-repo looper-role user-data" && t.metadata["block-project-ssh-keys"] == "true" && t.metadata["google-logging-enabled"] == "true" && t.metadata["cos-update-strategy"] == "update_disabled" && t.metadata["user-data"] == google_compute_instance_template.looper_vm["tacplus"].metadata["user-data"] && t.metadata["looper-group"] == "projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/${k}"]) && [for k in ["check-tacplus", "check-tacplus-dev", "merger"] : [for m in ["looper-role", "looper-repo", "looper-org", "looper-except", "looper-image", "looper-checks"] : google_compute_instance_template.reserved_vm[k].metadata[m]]] == [["check", "tacplus", "", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", ""], ["check", "", "tacplus-dev", "tacplus", "", ""], ["merger", "", "tacplus-dev", "", "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", "projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/check-tacplus --repo tacplus\nprojects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/check-tacplus-dev --org tacplus-dev --except tacplus"]]
+    error_message = "A reserved machine's metadata is not its role, repository or org, image, group, the looper VMs' cloud-init and logging, or the merger's check machines, or it has an SSH key."
   }
-  # One VM with an image, none without; the plan alone sizes it.
+  # Its container's settings: the key ring and its app's IDs, as looper-token's role reads them; the merger's gate trusts
+  # the checks' login.
   assert {
-    condition     = { for k, g in google_compute_instance_group_manager.reserved_vm : k => [g.name, g.base_instance_name, g.zone, g.target_size] } == { check-tacplus = ["check-tacplus", "check-tacplus", "us-central1-b", 1], check-tacplus-dev = ["check-tacplus-dev", "check-tacplus-dev", "us-central1-b", 0], merger = ["merger", "merger", "us-central1-b", 1] } && alltrue([for g in google_compute_instance_group_manager.reserved_vm : g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0])
-    error_message = "A reserved machine's group is not <name> in the stack's zone, at 1 with an image and 0 without, replacing its VM with no surge."
+    condition     = { for k, t in google_compute_instance_template.reserved_vm : k => t.metadata["looper-env"] } == { check-tacplus = "LOOPER_KMS_KEYRING=projects/tacplus-ci/locations/us-central1/keyRings/looper\nLOOPER_MANAGER_APP_ID=5632100\nLOOPER_MANAGER_INSTALLATION_ID=179024536", check-tacplus-dev = "LOOPER_KMS_KEYRING=projects/tacplus-ci/locations/us-central1/keyRings/looper\nLOOPER_MANAGER_APP_ID=5632100\nLOOPER_MANAGER_INSTALLATION_ID=179024536", merger = "LOOPER_CHECK_LOGIN=tacplus-manager[bot]\nLOOPER_KMS_KEYRING=projects/tacplus-ci/locations/us-central1/keyRings/looper\nLOOPER_MERGER_APP_ID=5632100\nLOOPER_MERGER_INSTALLATION_ID=179024536\nLOOPER_MERGER_KEY=tacplus-manager\nLOOPER_ORG=tacplus-dev" }
+    error_message = "A reserved machine's looper-env is not the key ring and its app's IDs (the merger's with the checks' login)."
   }
-  # Its key alone (the panel's 5): tacplus-check the checks', tacplus-merger the merger's and nobody else's; neither
-  # signs with the reports' or the managers' key.
+  # The merger's group is at 1 with an image (0 without), the plan's; a check machine's is 0..1, never the plan's, its
+  # stopped VM a manual standby; each replaces its VM with no surge.
   assert {
-    condition     = google_kms_crypto_key_iam_binding.signer["tacplus-check"].members == toset(["serviceAccount:check-tacplus-dev@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:check-tacplus@tacplus-ci.iam.gserviceaccount.com"]) && google_kms_crypto_key_iam_binding.signer["tacplus-merger"].members == toset(["serviceAccount:merger@tacplus-ci.iam.gserviceaccount.com"])
-    error_message = "tacplus-check is signed by more than the rolling check's machines, or tacplus-merger by more than the merger's."
+    condition     = { for k, g in google_compute_instance_group_manager.reserved_vm : k => [g.name, g.base_instance_name, g.zone, g.target_size] } == { merger = ["merger", "merger", "us-central1-b", 1] } && { for k, g in google_compute_instance_group_manager.reserved_vm_check : k => [g.name, g.base_instance_name, g.zone, g.target_size, g.target_stopped_size, g.standby_policy[0].mode] } == { check-tacplus = ["check-tacplus", "check-tacplus", "us-central1-b", 0, 0, "MANUAL"], check-tacplus-dev = ["check-tacplus-dev", "check-tacplus-dev", "us-central1-b", 0, 0, "MANUAL"] } && alltrue([for g in concat(values(google_compute_instance_group_manager.reserved_vm), values(google_compute_instance_group_manager.reserved_vm_check)) : g.update_policy[0].minimal_action == "REPLACE" && g.update_policy[0].max_surge_fixed == 0])
+    error_message = "The merger's group is not at 1 with an image, a check machine's not a manual standby group created at 0, or one does not replace its VM with no surge."
+  }
+  # Until tacplus-check and tacplus-merger exist, all three sign as tacplus-manager beside the managers' jobs, and no
+  # looper VM does (the hub, for Jody, 2026-11-25); the two apps' keys have no signer yet.
+  assert {
+    condition     = google_kms_crypto_key_iam_binding.signer["tacplus-manager"].members == toset(["principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:looper-manager", "principalSet://iam.googleapis.com/projects/333/locations/global/workloadIdentityPools/gitlab-loopers/attribute.role/88136765:main:true:looper-scan", "serviceAccount:check-tacplus-dev@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:check-tacplus@tacplus-ci.iam.gserviceaccount.com", "serviceAccount:merger@tacplus-ci.iam.gserviceaccount.com"]) && !contains(keys(google_kms_crypto_key_iam_binding.signer), "tacplus-check") && !contains(keys(google_kms_crypto_key_iam_binding.signer), "tacplus-merger")
+    error_message = "tacplus-manager is not signed by the managers' jobs and the three reserved machines alone, or tacplus-check or tacplus-merger has a signer."
   }
   assert {
-    condition     = !anytrue([for k in ["tacplus-looper", "tacplus-manager"] : anytrue([for m in google_kms_crypto_key_iam_binding.signer[k].members : contains([for k in ["check-tacplus", "check-tacplus-dev", "merger"] : "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com"], m)])])
-    error_message = "A reserved machine's account signs with the reports' or the managers' key."
+    condition     = !anytrue([for m in google_kms_crypto_key_iam_binding.signer["tacplus-manager"].members : startswith(m, "serviceAccount:looper-vm-")]) && !anytrue([for m in google_kms_crypto_key_iam_binding.signer["tacplus-looper"].members : contains([for k in ["check-tacplus", "check-tacplus-dev", "merger"] : "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com"], m)])
+    error_message = "A looper VM's account signs with the manager's key, or a reserved machine's with the reports'."
   }
-  # It writes logs and nothing else: no model token, no resize.
+  # It writes logs; a check machine stops its own group's VM, the merger's starts the check machines' (the resizer
+  # role, on those groups alone); none reads the model token.
   assert {
     condition     = { for k, m in google_project_iam_member.reserved_vm_log : k => [m.role, m.member] } == { for k in ["check-tacplus", "check-tacplus-dev", "merger"] : k => ["roles/logging.logWriter", "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com"] } && google_secret_manager_secret_iam_binding.looper_model_token[0].members == toset(["serviceAccount:looper-vm-tacplus@tacplus-ci.iam.gserviceaccount.com"])
-    error_message = "A reserved machine's account holds another role than logWriter, or reads looper-model-token."
+    error_message = "A reserved machine's account does not write logs, or reads looper-model-token."
+  }
+  assert {
+    condition     = { for k, m in google_project_iam_member.reserved_vm_self_stop : k => [m.role, m.member, m.condition[0].expression] } == { for k in ["check-tacplus", "check-tacplus-dev"] : k => ["projects/tacplus-ci/roles/looperVmResizer", "serviceAccount:${k}@tacplus-ci.iam.gserviceaccount.com", "resource.name == \"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/${k}\""] } && { for k, m in google_project_iam_member.reserved_vm_kick : k => [m.role, m.member, m.condition[0].expression] } == { merger = ["projects/tacplus-ci/roles/looperVmResizer", "serviceAccount:merger@tacplus-ci.iam.gserviceaccount.com", "resource.name == \"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/check-tacplus\" || resource.name == \"projects/tacplus-ci/zones/us-central1-b/instanceGroupManagers/check-tacplus-dev\""] }
+    error_message = "A check machine's account resizes more than its own group, or the merger's more than the check machines' groups."
   }
   assert {
     condition     = { for k, g in output.reserved_vms : k => [g.group, g.zone] } == { check-tacplus = ["check-tacplus", "us-central1-b"], check-tacplus-dev = ["check-tacplus-dev", "us-central1-b"], merger = ["merger", "us-central1-b"] }
@@ -1056,9 +1073,9 @@ run "reserved_vm_merger_key_shared_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = ["looper-manager"] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]
@@ -1083,16 +1100,16 @@ run "reserved_vm_reports_key_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-looper" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]
 }
 
-# Nor with the managers' key (the bypass of main's ruleset), nor does a check share the merger's.
-run "reserved_vm_manager_key_refused" {
+# The checks share one key, the login the merger's gate trusts; nor does a check share the merger's own key.
+run "reserved_vm_check_keys_differ_refused" {
   command = plan
   module {
     source = "../../modules/projects/ci"
@@ -1110,9 +1127,9 @@ run "reserved_vm_manager_key_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-manager" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]
@@ -1136,9 +1153,9 @@ run "reserved_vm_check_merger_key_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-merger" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]
@@ -1163,9 +1180,9 @@ run "reserved_vm_repo_and_org_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", org = "tacplus-dev", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", org = "tacplus-dev", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
-      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "merger", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]
@@ -1189,9 +1206,9 @@ run "reserved_vm_role_refused" {
     github_apps     = { key_ring = "looper", wif_pool = "gitlab-loopers", namespace = { id = "145863835", wif_provider = "gitlab-com" }, looper = { project_id = "88136765", ref = "main", wif_provider = "gitlab-looper" }, keys = { tacplus-manager = { import = true, namespace = false, environments = ["looper-manager", "looper-scan"] }, tacplus-looper = { import = true, namespace = false, environments = ["kicker", "looper-plan", "looper-report", "looper-scan"] }, tacplus-check = { import = false, namespace = false, environments = [] }, tacplus-merger = { import = false, namespace = false, environments = [] } } }
     looper_vms      = { tacplus = { machine_type = "c4a-standard-8", disk_gb = 200, spot = true, image = "" } }
     reserved_vms = {
-      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check" }
+      check-tacplus     = { role = "check", repo = "tacplus", machine_type = "c4a-standard-16", disk_gb = 200, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-check", app_id = "1", installation_id = "2" }
       check-tacplus-dev = { role = "check", org = "tacplus-dev", machine_type = "c4a-standard-4", disk_gb = 200, image = "", key = "tacplus-check" }
-      merger            = { role = "build", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger" }
+      merger            = { role = "build", org = "tacplus-dev", machine_type = "c4a-standard-1", disk_gb = 10, image = "ghcr.io/tacplus-dev/looper@sha256:2222222222222222222222222222222222222222222222222222222222222222", key = "tacplus-merger", app_id = "1", installation_id = "2" }
     }
   }
   expect_failures = [var.reserved_vms]

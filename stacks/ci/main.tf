@@ -83,8 +83,9 @@ module "ci" {
   # The looper VMs (#108): stock Container-Optimized OS for arm64, pinned by name, and each project's spec.
   looper_vm_os_image = module.settings.cos_arm64_image
   looper_vms         = module.settings.looper_vms
-  # The reserved machines (#111): the rolling check's and the merger's, on the same OS and cloud-init.
-  reserved_vms = module.settings.reserved_vms
+  # The reserved machines (#111): the rolling check's and the merger's, on the same OS and cloud-init, each given its
+  # app's IDs.
+  reserved_vms = { for k, v in module.settings.reserved_vms : k => merge(v, { app_id = module.settings.github_apps.apps[v.key].app_id, installation_id = module.settings.github_apps.apps[v.key].installation_id }) }
   # The release registry (#115): its readers are the deployments' identities, in the dev project, written out.
   releases = {
     repository     = module.settings.releases.repository

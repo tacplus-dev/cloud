@@ -99,8 +99,8 @@ gates_request_memory=$((10 * 1024 * 1024 * 1024))
 # by address, each a zonal group of a global template; a new kind of VM outside GKE is a change to this list.
 vm_types='google_compute_instance|google_compute_instance_from_template|google_compute_instance_from_machine_image|google_compute_(region_)?instance_template|google_compute_(region_)?instance_group_manager'
 vm_admitted_types='google_compute_instance_template|google_compute_instance_group_manager'
-vm_admitted_names='looper_vm|reserved_vm'
-vm_why="no standalone VM in any stack, and no instance template or group but the ci module's looper_vm and reserved_vm (#11): a new kind is a change to ci/policy.sh's admitted list"
+vm_admitted_names='looper_vm|reserved_vm|reserved_vm_check'
+vm_why="no standalone VM in any stack, and no instance template or group but the ci module's looper_vm, reserved_vm and reserved_vm_check (#11): a new kind is a change to ci/policy.sh's admitted list"
 # What an admitted VM boots: Container-Optimized OS, pinned by its image's name (modules/settings, cos_arm64_image).
 vm_image='^(https://www\.googleapis\.com/compute/v1/)?projects/cos-cloud/global/images/cos-[a-z0-9-]+$'
 

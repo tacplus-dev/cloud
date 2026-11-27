@@ -7,7 +7,8 @@
 # action, its status and its last attempt's error: a creation or a recreation stuck on capacity or quota) and each
 # stopped one, then each group's errors of the last 24 hours, counted by error and zone with the last one's time and
 # message, then each quota of the region and of the project that is 80% used or more; nothing for a VM still creating
-# with no error, a running one, an older error, or a quota with room or none at all. It reports a read it cannot make,
+# with no error, a running one, one stopped as its group means (a check machine's between checks, #111), an older
+# error, or a quota with room or none at all. It reports a read it cannot make,
 # exits 0 when it finds something, and only reads. The drift job checks the ci project, in its region. Needs bash and jq.
 #
 #   tests/pools_test.sh
@@ -50,7 +51,7 @@ reports "a quota of the region, and of the project, 80% used or more" \
 grep -vE '^gcloud compute (instance-groups managed (list|list-instances [a-z0-9-]+ --(region|zone)=[a-z0-9-]+|list-errors [a-z0-9-]+ --(region|zone)=[a-z0-9-]+)|regions describe [a-z0-9-]+|project-info describe) --project=[a-z-]+ --format=json$' "$STUB_LOG" &&
   fail "the check runs more than the reads" || ok "the check only reads"
 
-check clean us-central1 && [ ! -s "$work/out" ] && ok "a pool that makes its VMs, with room: nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
+check clean us-central1 && [ ! -s "$work/out" ] && ok "a pool that makes its VMs, with room, and a check machine stopped between checks: nothing reported" || fail "clean: $(cat "$work/out" "$work/err")"
 check missing us-central1 && reports "a read it cannot make is reported" "pools missing: cannot list the groups: ERROR: (gcloud.compute) PERMISSION_DENIED: stub: no groups.json in missing" \
   "pools missing: cannot read the quotas of us-central1: ERROR: (gcloud.compute) PERMISSION_DENIED: stub: no region-us-central1.json in missing" \
   "pools missing: cannot read the project's quotas: ERROR: (gcloud.compute) PERMISSION_DENIED: stub: no project.json in missing"

@@ -3,28 +3,40 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # A stub curl for tests/looper_vm_test.sh: the metadata server (STUB_LOOPER_VM/attributes/<key>, a missing one 404 as
-# curl -f fails, 22; the VM's token vm-token) and Compute Engine's resize, which answers only with the VM's token, a
-# POST, and unless STUB_LOOPER_VM/resize-fails exists. Each call is logged to STUB_LOOPER_VM/calls: its method and URL,
-# and the bearer token it sent.
+# curl -f fails, 22; the VM's name, STUB_LOOPER_VM/name, else check-tacplus-x1y2; its token vm-token) and Compute
+# Engine's instance groups, which answer only the VM's token: a group's GET (STUB_LOOPER_VM/group-<name>, missing 404)
+# and its POSTs, resize, stopInstances, startInstances and listManagedInstances (STUB_LOOPER_VM/managed), unless
+# STUB_LOOPER_VM/resize-fails exists. Each call is logged to STUB_LOOPER_VM/calls: its method and URL, the bearer token
+# it sent and its data.
 set -uo pipefail
-url='' auth='' method=GET
+url='' auth='' method=GET data=''
 while [ $# -gt 0 ]; do
   case $1 in
     -X) method=$2; shift ;;
     -H) [[ $2 == Authorization:* ]] && auth=${2#Authorization: Bearer }; shift ;;
+    -d) data=$2; shift ;;
     --max-time | --retry) shift ;;
     -*) ;;
     *) url=$1 ;;
   esac
   shift
 done
-echo "$method $url${auth:+ Bearer $auth}" >> "$STUB_LOOPER_VM/calls"
+echo "$method $url${auth:+ Bearer $auth}${data:+ $data}" >> "$STUB_LOOPER_VM/calls"
 md=http://metadata.google.internal/computeMetadata/v1
 case $url in
   "$md/instance/service-accounts/default/token") printf '{"access_token":"vm-token","expires_in":3599,"token_type":"Bearer"}' ;;
   "$md/instance/attributes/"*) f=$STUB_LOOPER_VM/attributes/${url#"$md/instance/attributes/"}; [ -f "$f" ] || exit 22; cat "$f" ;;
-  https://compute.googleapis.com/compute/v1/projects/*/resize\?size=0)
+  "$md/instance/name") cat "$STUB_LOOPER_VM/name" 2>/dev/null || printf check-tacplus-x1y2 ;;
+  https://compute.googleapis.com/compute/v1/projects/*/instanceGroupManagers/*/*)
     [ "$auth" = vm-token ] && [ "$method" = POST ] && [ ! -f "$STUB_LOOPER_VM/resize-fails" ] || exit 22
-    printf '{"kind": "compute#operation"}' ;;
+    case $url in
+      */listManagedInstances) cat "$STUB_LOOPER_VM/managed" ;;
+      */resize\?size=[01] | */stopInstances | */startInstances) printf '{"kind": "compute#operation"}' ;;
+      *) exit 22 ;;
+    esac ;;
+  https://compute.googleapis.com/compute/v1/projects/*/instanceGroupManagers/*)
+    f=$STUB_LOOPER_VM/group-${url##*/}
+    [ "$auth" = vm-token ] && [ "$method" = GET ] && [ -f "$f" ] || exit 22
+    cat "$f" ;;
   *) exit 22 ;;
 esac

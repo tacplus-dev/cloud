@@ -202,26 +202,30 @@ variable "looper_vm_app_key" {
 }
 
 variable "reserved_vms" {
-  description = "The reserved machines (reserved-vms.tf, #111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md), by name: each a zonal instance group of one on-demand arm64 VM on looper_vm_os_image (none while image is empty), machine_type (C4A) with a disk_gb Hyperdisk Balanced boot disk (its own cache), running image (the looper image, by digest) in its role, check (the rolling check of main: looper-vm check, its builds through the container socket) or merger (looper-vm merger, no container socket: it runs no project code), for the tacplus-dev repository repo or every repository of the org org (an org's check, every one but those with a check of their own), as an account of its own, <name>, which writes logs and signs with key alone. A merger's key has no other signer."
+  description = "The reserved machines (reserved-vms.tf, #111; tacplus-dev/roadmap decisions/agentic-dev-flow-2026-11-25.md), by name: each a zonal instance group of one on-demand arm64 VM on looper_vm_os_image, machine_type (C4A, its disk_gb boot disk Hyperdisk Balanced, or T2A, pd-balanced: its own cache), running image (the looper image, by digest) in its role, check (the rolling check of main: looper-vm check, its builds through the container socket; its group 0..1, its VM stopped while idle and started by the merger's machine) or merger (looper-vm merger, no container socket: it runs no project code; the one always-on machine, at 1 while it has an image, and the check machines' orchestrator), for the tacplus-dev repository repo or every repository of the org org (an org's check, every one but those with a check of their own), as an account of its own, <name>, which writes logs and signs with key alone: its GitHub App's, app_id and installation_id its IDs. The checks share one key; a merger's key has no other signer but while it is tacplus-manager (the identity that merges today, until tacplus-merger exists)."
   type = map(object({
-    role         = string
-    repo         = optional(string, "")
-    org          = optional(string, "")
-    machine_type = string
-    disk_gb      = number
-    image        = string
-    key          = string
+    role            = string
+    repo            = optional(string, "")
+    org             = optional(string, "")
+    machine_type    = string
+    disk_gb         = number
+    image           = string
+    key             = string
+    app_id          = optional(string, "")
+    installation_id = optional(string, "")
   }))
   default = {}
   validation {
-    condition     = alltrue([for k, v in var.reserved_vms : can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", k)) && contains(["check", "merger"], v.role) && ((v.repo == "") != (v.org == "")) && (v.repo == "" || can(regex("^[a-z0-9][a-z0-9._-]*$", v.repo))) && (v.org == "" || can(regex("^[A-Za-z0-9][A-Za-z0-9._-]*$", v.org))) && can(regex("^c4a-", v.machine_type)) && v.disk_gb >= 10 && floor(v.disk_gb) == v.disk_gb && (v.image == "" || can(regex("^[^[:space:]@]+@sha256:[0-9a-f]{64}$", v.image)))])
-    error_message = "A reserved machine is named as an account (6 to 30 characters: <name> is its account's ID), is a check or a merger, serves a repository or an org (one of them), is a C4A machine (arm64, Hyperdisk Balanced), has a whole disk of 10 GB or more, and runs an image by digest, or none (\"\")."
+    condition     = alltrue([for k, v in var.reserved_vms : can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", k)) && contains(["check", "merger"], v.role) && ((v.repo == "") != (v.org == "")) && (v.repo == "" || can(regex("^[a-z0-9][a-z0-9._-]*$", v.repo))) && (v.org == "" || can(regex("^[A-Za-z0-9][A-Za-z0-9._-]*$", v.org))) && can(regex("^(c4a|t2a)-", v.machine_type)) && v.disk_gb >= 10 && floor(v.disk_gb) == v.disk_gb && (v.image == "" || can(regex("^[^[:space:]@]+@sha256:[0-9a-f]{64}$", v.image))) && (v.image == "" || (can(regex("^[0-9]+$", v.app_id)) && can(regex("^[0-9]+$", v.installation_id))))])
+    error_message = "A reserved machine is named as an account (6 to 30 characters: <name> is its account's ID), is a check or a merger, serves a repository or an org (one of them), is a C4A or T2A machine (arm64), has a whole disk of 10 GB or more, and runs an image by digest, or none (\"\"); with an image, its app's IDs are GitHub's numbers."
   }
-  # Its key is its own (the panel's finding 5): never the reports' (looper_vm_app_key, which model-written code signs
-  # with) nor the managers' (the bypass of main's ruleset); a merger's, the one that accepts and merges, signed by no
-  # job, account or other machine, and a check's never a merger's.
+  # Its key is never the reports' (looper_vm_app_key, which model-written code signs with: the panel's finding 5). The
+  # checks share one, the login the merger's gate trusts. A merger's own key (tacplus-merger), the one that accepts and
+  # merges, is signed by no job, account or other machine, and never a check's; until it exists the merger signs as
+  # tacplus-manager, the identity that merges today, beside the managers' jobs (the hub, for Jody, 2026-11-25: no new
+  # App to go live), and so may the checks, whose builds cannot reach their machine's metadata server.
   validation {
-    condition     = alltrue([for k, v in var.reserved_vms : contains(keys(var.github_apps.keys), v.key) && v.key != var.looper_vm_app_key && v.key != "tacplus-manager" && (v.role != "merger" || (length(var.github_apps.keys[v.key].environments) == 0 && !var.github_apps.keys[v.key].namespace && length(var.github_apps.keys[v.key].accounts) == 0 && length(var.github_apps.keys[v.key].projects) == 0 && length([for o, w in var.reserved_vms : o if w.key == v.key]) == 1)) && (v.role != "check" || !anytrue([for o, w in var.reserved_vms : w.role == "merger" && w.key == v.key]))])
-    error_message = "A reserved machine's key is not one of github_apps' keys, is the reports' (looper_vm_app_key) or tacplus-manager, or is a merger's that something else signs with too (a job, an account, a project, another machine)."
+    condition     = alltrue([for k, v in var.reserved_vms : contains(keys(var.github_apps.keys), v.key) && v.key != var.looper_vm_app_key && (v.role != "merger" || v.key == "tacplus-manager" || (length(var.github_apps.keys[v.key].environments) == 0 && !var.github_apps.keys[v.key].namespace && length(var.github_apps.keys[v.key].accounts) == 0 && length(var.github_apps.keys[v.key].projects) == 0 && length([for o, w in var.reserved_vms : o if w.key == v.key]) == 1))]) && length(distinct([for k, v in var.reserved_vms : v.key if v.role == "check"])) <= 1
+    error_message = "A reserved machine's key is not one of github_apps' keys or is the reports' (looper_vm_app_key); the checks' keys differ; or a merger's key, not tacplus-manager, is signed by something else too (a job, an account, a project, another machine)."
   }
 }
