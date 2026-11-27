@@ -130,7 +130,7 @@ looper post
 world "$image"
 printf %s check > "$stub/attributes/looper-role"; printf %s "$check_group" > "$stub/attributes/looper-group"
 echo 3 > "$stub/exit"
-for n in 1 2 3 4; do looper run; run_rc=$rc; looper post; [ "$run_rc" = 3 ] || break; done
+for _ in 1 2 3 4; do looper run; run_rc=$rc; looper post; [ "$run_rc" = 3 ] || break; done
 [ "$run_rc" = 3 ] && ! grep -q stopInstances "$stub/calls" && ok "a check machine's four failures in a row are systemd's to start again" || fail "four failures: exit $run_rc, $(cat "$stub/calls")"
 looper run
 run_rc=$rc
