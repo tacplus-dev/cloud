@@ -810,3 +810,9 @@ the looper then marks it `promoted` or `declined` here with the date.
   template of the same name (in the plan, or by reference when known only after apply). Why: the policy holds the
   admitted templates to COS, no external address and no SSH, but a group pointed at a template made outside the plan
   would boot that one instead.
+- **tacplus-dev/build's CI copy with the nightly on `build-nightly`** (looper, #121, 2026-11-27). What: `ci/build-ci.sh
+  update` to a tacplus-dev/looper commit with `BUILD_NIGHTLY_TAGS: "arm64, build-nightly"` (looper e381573, #220) and
+  `BUILD_RELEASE_REGISTRY` at `us-central1-docker.pkg.dev/tacplus-ci/releases` (looper main still has `us-docker`,
+  reported on looper#265), once the `nightly` runner (#116; cluster#46) is online, and STATE.md's "Not applied yet"
+  for it updated. Why: the nightly's security jobs queue on `build`'s tags behind the reports, and 10 to 21 of 31
+  repositories' nightlies published nothing (2026-11-21/22, 2026-11-26).
