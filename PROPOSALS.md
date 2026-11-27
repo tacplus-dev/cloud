@@ -534,7 +534,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   `build`'s and `control`'s were typed once, and the adders' role is the one write grant to a person this pipeline makes
   (**The runners' token adders' account**, above). `infra` already shows the pattern.
 - **apply:gitlab after the secrets it writes to** (looper, #81, 2026-11-19). What: `apply:gitlab` writes a version
-  to a secret the dev stack makes (`gitlab-runner-infra`, #64; `gitlab-runner-kick`, #81; `gitlab-runner-build-report`, #93; `gitlab-runner-build-light`, #100), but `plan:gitlab` needs
+  to a secret the dev stack makes (`gitlab-runner-infra`, #64; `gitlab-runner-kick`, #81; `gitlab-runner-build-report`, #93; `gitlab-runner-build-light`, #100; `gitlab-runner-manager`, #106; `gitlab-runner-nightly`, #116), but `plan:gitlab` needs
   `apply:ci` alone, so on the pipeline that adds a runner and its secret together it may reach the version before
   `apply:dev` has made the secret, and fail after registering the runner (a retry writes it). Either the secrets move
   to a stack `apply:gitlab` already follows, or the gitlab stack makes its own runners' secrets (its rights on dev are
@@ -733,7 +733,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   pool, its `cluster.looper` field and `looper_*` outputs, after tacplus-dev/cluster drops `pool.yaml`'s `looper`
   block and control's toleration (else control's `concurrent` overcommits the normal pool); (2) when the merge train
   retires (tacplus-dev/looper#249, #251), drop the `spot` pool, its zone lookup and `spot_*` outputs, and the build,
-  build-light, build-report and manager runners and their token secrets, keeping `google_container_node_pool.pool` a
+  build-light, build-report, manager and nightly (#116) runners and their token secrets, keeping `google_container_node_pool.pool` a
   one-entry `for_each`; (3) move `kick` and `infra` off the cluster to an on-demand runner VM in `tacplus-ci` reaching
   the private control plane by peering and one more authorized network (if peering reaches it), then namespace `ci`
   goes; (4) size the 3 nodes from the deployments' measured peak requests (likely c4a-standard-2 stays), then lower
@@ -755,7 +755,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   `artifactregistry.writer` on `seatrials` for `seatrials-deploy` (`deploy.tf`'s `registry_roles`). Why: the design's
   rest, and the copy's write side, which the issue left to fleet-seatrials.
 - **The in-cluster nightly runner and its token secret** (looper, #116, 2026-11-26; tacplus-dev/cluster#46, option A,
-  hub's decision on Jody's standing authority). What: a dev-stack secret `gitlab-runner-nightly` (`runner_tokens`,
+  hub's decision on Jody's standing authority): `promoted` 2026-11-26 (ROADMAP.md) and built in #116 (README, The `nightly` runner). What: a dev-stack secret `gitlab-runner-nightly` (`runner_tokens`,
   read by `cluster-admin-pipeline` alone, the same bindings as the others) and a gitlab-stack group runner of
   tacplus-dev, `nightly`: tags `arm64, build-nightly` (not `build`: GitLab gives a runner every job whose tags are a
   subset of its own), untagged off, any ref, unpaused, its token written as the secret's version 1 by this pipeline,
@@ -764,7 +764,7 @@ the looper then marks it `promoted` or `declined` here with the date.
   2026-11-21/22 the nightly's CodeQL jobs (3500m / 12Gi, looper#189) for 10 of 31 repositories waited Pending behind
   the report builds on the spot pool and published nothing. Its own entry, at cluster's PriorityClass `build-nightly`
   (0, preempting: above reports, below lands), lets it preempt a report instead. Interim: it goes with the spot pool
-  in #114's step 2. Open (#116's design): the ROADMAP line; adding it to #114's list.
+  in #114's step 2, whose list names it.
 - **fleet-seatrials reads tacplus-dev/build's release records, and build starts its pipeline** (looper, #117,
   2026-11-26; tacplus-dev/looper#262, approved, tacplus-dev/fleet-seatrials#82). What: in `modules/gitlab`'s `build`,
   `job_token_readers` (one `gitlab_project_job_token_scope` per path, not authoritative, today fleet-seatrials) and

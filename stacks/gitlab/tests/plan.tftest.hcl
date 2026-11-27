@@ -4,7 +4,7 @@
 # The gitlab stack's plan against a stub GitLab and stub secrets (mock providers: no token, no cloud): the stack
 # plans, and its module, with the stack's inputs, gives protected settings, variables from Secret Manager by
 # version, runners whose tokens go to Secret Manager only (the pools' to the ci project's, the in-cluster infra
-# runner's to the dev project's gitlab-runner-infra, #64, the kick runner's to gitlab-runner-kick, #81, the build-report runner's to gitlab-runner-build-report, #93, the build-light runner's to gitlab-runner-build-light, #100, and the manager runner's to gitlab-runner-manager, #106), infra taking the jobs the paused cluster and deploy pools took (#66), and memberships of other projects that read only (Reporter,
+# runner's to the dev project's gitlab-runner-infra, #64, the kick runner's to gitlab-runner-kick, #81, the build-report runner's to gitlab-runner-build-report, #93, the build-light runner's to gitlab-runner-build-light, #100, the manager runner's to gitlab-runner-manager, #106, and the nightly runner's to gitlab-runner-nightly, #116), infra taking the jobs the paused cluster and deploy pools took (#66), and memberships of other projects that read only (Reporter,
 # 20, at most) and expire (#12). (A test sees a module's resources only when it runs that module itself.)
 
 mock_provider "google" {
@@ -47,8 +47,8 @@ run "stack" {
     error_message = "tacplus-dev/cloud has not exactly the hourly schedule audit on main."
   }
   assert {
-    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra", "kick", "build-report", "build-light", "manager"])
-    error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra (#64), kick (#81), build-report (#93), build-light (#100) and manager (#106) runners."
+    condition     = toset(keys(output.runner_ids)) == toset(["shared", "build", "deploy", "cluster", "infra", "kick", "build-report", "build-light", "manager", "nightly"])
+    error_message = "The stack does not register one runner per pool, shared, build, deploy and cluster, and the in-cluster infra (#64), kick (#81), build-report (#93), build-light (#100), manager (#106) and nightly (#116) runners."
   }
   # The infra runner (#64; tacplus-dev/cluster#25, its gitlab-runner/runners/infra.yaml): a tacplus-dev group runner for
   # the cloud, cluster and deploy pipelines, those three tags and no other, untagged off, protected refs only, unpaused
@@ -179,6 +179,35 @@ run "stack" {
     condition     = [for k, r in output.runners : k if contains(r.tags, "manager")] == ["manager"] && !contains(output.runners["manager"].tags, "control")
     error_message = "A runner besides manager carries the tag manager, or manager carries control."
   }
+  # The nightly runner (#116; tacplus-dev/cluster#46, its gitlab-runner/runners/nightly.yaml): a tacplus-dev group
+  # runner on the spot pool for the nightly fan-out's jobs alone (tacplus-dev/build's BUILD_NIGHTLY_TAGS), whose pods run
+  # at cluster's PriorityClass build-nightly, above the report builds' and below a land's; tags arm64 and build-nightly
+  # and no other (not build: GitLab gives a runner every job whose tags are a subset of its own, so one holding build
+  # would take a land's jobs too, at the nightly's priority), untagged off, any ref, unpaused (no job carries
+  # build-nightly until tacplus-dev/looper#220 sets BUILD_NIGHTLY_TAGS), its token the dev project's gitlab-runner-nightly
+  # (version 1, the first of an empty secret), which no person types.
+  assert {
+    condition     = output.runners["nightly"].type == "group_type" && output.runners["nightly"].group_id == 88
+    error_message = "The nightly runner is not a group runner of tacplus-dev."
+  }
+  assert {
+    condition     = output.runners["nightly"].tags == toset(["arm64", "build-nightly"]) && !output.runners["nightly"].untagged
+    error_message = "The nightly runner's tags are not arm64 and build-nightly, and no other, or it takes untagged jobs."
+  }
+  assert {
+    condition     = output.runners["nightly"].access_level == "not_protected" && !output.runners["nightly"].paused
+    error_message = "The nightly runner takes protected refs only, or is paused: the nightly's jobs take it once tacplus-dev/looper#220 sets BUILD_NIGHTLY_TAGS."
+  }
+  assert {
+    condition     = output.runners["nightly"].token_secret == "projects/tacplus-dev/secrets/gitlab-runner-nightly"
+    error_message = "The nightly runner's token is not written to the dev project's gitlab-runner-nightly, tacplus-dev/cluster's tacplus.token."
+  }
+  # No other runner carries build-nightly, and nightly carries neither build nor build-report: a land's jobs and the
+  # report builds never go to it.
+  assert {
+    condition     = [for k, r in output.runners : k if contains(r.tags, "build-nightly")] == ["nightly"] && !contains(output.runners["nightly"].tags, "build") && !contains(output.runners["nightly"].tags, "build-report")
+    error_message = "A runner besides nightly carries the tag build-nightly, or nightly carries build or build-report."
+  }
   # The build pool's runner (#70): arm64 and build, which it keeps until #11 removes it, and build-docker, which
   # tacplus-dev/looper#172's BUILD_DOCKER_TAGS asks for, so a job that still needs host Docker never lands on the
   # in-cluster build runner (no socket) once it takes arm64 and build too.
@@ -190,10 +219,10 @@ run "stack" {
   # them; shared and build keep taking jobs. Each pool's token goes to its own secret of the ci project.
   assert {
     condition     = toset([for k, r in output.runners : k if r.paused]) == toset(["cluster", "deploy"])
-    error_message = "The paused runners are not the cluster and deploy pools' (#66): infra, kick, build-report, build-light, manager, shared and build take jobs."
+    error_message = "The paused runners are not the cluster and deploy pools' (#66): infra, kick, build-report, build-light, manager, nightly, shared and build take jobs."
   }
   assert {
-    condition     = alltrue([for k, r in output.runners : r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if !contains(["infra", "kick", "build-report", "build-light", "manager"], k)])
+    condition     = alltrue([for k, r in output.runners : r.token_secret == "projects/tacplus-ci/secrets/runner-token-${k}" if !contains(["infra", "kick", "build-report", "build-light", "manager", "nightly"], k)])
     error_message = "A pool's token does not go to the ci project's runner-token-<pool>."
   }
   # The cluster and deploy pools carry the tags infra takes over, and no other runner does: the switch-over paused them

@@ -12,12 +12,13 @@
 # the runner of the report builds alone, whose pods a land's build preempts; and so is build-light (#100;
 # tacplus-dev/cluster#51), the normal pool's runner of tacplus-dev/build's light jobs (pending, plan, report-pass and
 # report-fail) alone; and so is manager (#106; tacplus-dev/cluster#60), the normal pool's runner of the looper's managers
-# alone.
+# alone; and so is nightly (#116; tacplus-dev/cluster#46), the spot pool's runner of the nightly fan-out's jobs alone,
+# above the report builds and below a land's.
 # cluster-admin-pipeline reads them all. A new token is a new version, and a pull request in tacplus-dev/cluster.
 # Nobody else holds a role on any (authoritative bindings: a grant added by hand is drift).
 
 locals {
-  runner_tokens = { build = "gitlab-runner-build", control = "gitlab-runner-control", infra = "gitlab-runner-infra", kick = "gitlab-runner-kick", build-report = "gitlab-runner-build-report", build-light = "gitlab-runner-build-light", manager = "gitlab-runner-manager" }
+  runner_tokens = { build = "gitlab-runner-build", control = "gitlab-runner-control", infra = "gitlab-runner-infra", kick = "gitlab-runner-kick", build-report = "gitlab-runner-build-report", build-light = "gitlab-runner-build-light", manager = "gitlab-runner-manager", nightly = "gitlab-runner-nightly" }
   # With no adder, no binding of the role: nobody adds versions.
   runner_token_members = merge(
     { "roles/secretmanager.secretAccessor" = [google_service_account.cluster_pipeline.member] },

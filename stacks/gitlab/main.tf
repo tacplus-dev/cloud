@@ -148,7 +148,15 @@ module "gitlab" {
     # as control does; control, lacking manager, never takes a manager. Any ref, unpaused: no job carries manager until
     # tacplus-dev/looper tags its managers so, after cluster's pipeline has applied the runner. Its token, as kick's, the
     # first version of the dev stack's gitlab-runner-manager, written by this pipeline.
-    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner, manager = local.manager_runner },
+    # The in-cluster nightly runner (#116; tacplus-dev/cluster#46, its gitlab-runner/runners/nightly.yaml): on the spot
+    # pool, the nightly fan-out's jobs alone (tacplus-dev/build's BUILD_NIGHTLY_TAGS), whose pods run at cluster's
+    # PriorityClass build-nightly, above the report builds' (on 2026-11-21/22 10 of 31 repositories' security jobs waited
+    # Pending behind them and published nothing) and below a land's build's. Tags arm64 and build-nightly, not build:
+    # GitLab gives a runner every job whose tags are a subset of its own, so one holding build would take a land's jobs
+    # too, at the nightly's priority. Any ref, unpaused: no job carries build-nightly until tacplus-dev/looper#220 sets
+    # BUILD_NIGHTLY_TAGS, after cluster's pipeline has applied the runner. Its token, as kick's, the first version of the
+    # dev stack's gitlab-runner-nightly, written by this pipeline. Interim: it goes with the spot pool (#114).
+    { infra = local.infra_runner, kick = local.kick_runner, build-report = local.build_report_runner, build-light = local.build_light_runner, manager = local.manager_runner, nightly = local.nightly_runner },
   )
 }
 
@@ -202,6 +210,16 @@ locals {
     paused       = false
     token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-manager"
     description  = "tacplus-dev manager (tacplus-dev/cloud: the cluster, normal pool; the looper's managers alone)"
+  }
+  nightly_runner = {
+    type         = "group_type"
+    group        = "tacplus-dev"
+    project      = null
+    tags         = ["arm64", "build-nightly"]
+    protected    = false
+    paused       = false
+    token_secret = "projects/${module.settings.projects.dev.project}/secrets/gitlab-runner-nightly"
+    description  = "tacplus-dev nightly (tacplus-dev/cloud: the cluster, spot pool; the nightly fan-out's jobs alone, above report builds, below a land's)"
   }
 }
 
