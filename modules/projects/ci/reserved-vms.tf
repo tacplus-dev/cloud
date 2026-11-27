@@ -34,7 +34,7 @@ locals {
   # The check machines the merger's machine starts, a line each: its group and its repositories.
   reserved_vm_kicks = join("\n", [for k in sort(keys(local.reserved_vm_checks)) : "${local.reserved_vm_group[k]} ${local.reserved_vm_checks[k].repo != "" ? "--repo ${local.reserved_vm_checks[k].repo}" : "--org ${local.reserved_vm_checks[k].org}${local.reserved_vm_except[k] == "" ? "" : " --except ${local.reserved_vm_except[k]}"}"}"])
   # The checks' login, whose state of the rolling check alone the merger's gate trusts.
-  reserved_vm_check_login = "${try(one(distinct([for k, v in local.reserved_vm_checks : v.key])), "tacplus-check")}[bot]"
+  reserved_vm_check_login = "${coalesce(one(distinct([for k, v in local.reserved_vm_checks : v.key])), "tacplus-check")}[bot]"
   # Each container's settings (looper-env, files/looper-vm.sh): the key ring, and its app (looper-token's role check
   # signs as tacplus-check once LOOPER_CHECK_APP_ID is set, else as tacplus-manager; the merger as LOOPER_MERGER_KEY).
   reserved_vm_env = { for k, v in var.reserved_vms : k => join("\n", [for n, x in merge(

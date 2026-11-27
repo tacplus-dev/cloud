@@ -687,20 +687,27 @@ the looper then marks it `promoted` or `declined` here with the date.
   whether tacplus-dev/cluster's `gitlab-runner/pool.yaml` mirror waits for Google to grant the quotas and not only for
   cloud's apply. Why: on 2026-11-24 at 19:59Z the control runner was at its 17 (cluster#53) with 18 jobs pending, 5 of
   them managers; the pool's maximum of 2 is the bound.
-- **tacplus-ci's quota for the reserved machines** (looper, #111, 2026-11-26). What: before `reserved_vms` pins an
-  image, raise `CPUS_ALL_REGIONS` of `tacplus-ci` from 32 to at least 49. The extra 21 CPUs are check-tacplus 16,
-  check-tacplus-dev 4 and merger 1; ask for 56 so a replacement has room. Also check the region's C4A
-  `CPUS_PER_VM_FAMILY` (the looper VMs already use 12; this adds 21) and `HDB_TOTAL_GB` (the looper VMs use 400 GB;
-  this adds 410) against the audit's Quotas table. Best done as the preferences the entry above proposes, or by hand
-  and then `ci_cpus.quota`. Why: the ci stack's test counts a reserved machine's CPUs once it has an image, so the
-  pin is refused until the quota covers it. A VM over quota sits in `QUOTA_EXCEEDED` and holds CPUs the pools need
-  at their peak (2026-11-13).
-- **The reserved machines' apps and images** (looper, #111, 2026-11-26). What: Jody creates the GitHub Apps
-  `tacplus-check` and `tacplus-merger` (their permissions as tacplus-dev/looper#249 and #251 state them; the merger
-  as the bypass actor of main's ruleset in place of `tacplus-manager` once the managers retire). Their IDs then go
-  into `github_apps`, with `import` true, and their keys are imported as #19's were. Then `reserved_vms` pins the
-  looper image that runs `looper-vm check` and `looper-vm merger`, and its sizes follow the rolling check's measured
-  peaks (looper#249). Why: until then the machines' groups are at 0 (#111), so nothing is spent and nothing runs.
+- **The reserved machines' own apps** (looper, #111, 2026-11-26; 2026-11-27). What: when Jody chooses to, Jody creates
+  the GitHub Apps `tacplus-check` and `tacplus-merger` (their permissions as tacplus-dev/looper#249 and #251 state
+  them; the merger as the bypass actor of main's ruleset in place of `tacplus-manager` once the managers retire).
+  Their IDs go into `github_apps`, with `import` true, their keys are imported as #19's were, and `reserved_vms`'
+  `key` moves to them: the checks' login (`LOOPER_CHECK_LOGIN`, the merger's gate) follows. Why: a tightening, not a
+  blocker (the hub, for Jody, 2026-11-25): until then all three machines sign as `tacplus-manager`, beside the
+  managers' jobs and no looper VM.
+- **Right-size the reserved machines from the measured peaks** (looper, #111, 2026-11-27). What: once the rolling
+  check has run the full gates on `check-tacplus` (8 CPUs, 100 GB) and `check-tacplus-dev`, size them from the peaks
+  tacplus-dev/looper#249 posts: more CPUs for tacplus's only if its gate groups need them (a quota raise or fewer
+  looper VM CPUs then: C4A is at 24 of 24), and the disks from the cache's use. Why: the sizes are what the quotas
+  admit today, not a measurement.
+- **Reports' merge requests on, now the merger and the check are live** (looper, #111, 2026-11-27). What: once the
+  check machines have posted their first `looper/rolling-check` states and the merger's gate has opened on one, drop
+  `-e LOOPER_VM_MR=0` from `files/looper-vm.sh`, so a looper VM's report opens a merge request (looper#250) the merger
+  merges. Why: the decision's migration (steps 3 and 4) brings them up together; this change brings up the machines
+  first and leaves the land path as it is until they are seen working.
+- **The orchestrator's question without a clone per check** (looper, #111, 2026-11-27). What: `looper-check needed`
+  fetches main into the merger's cache (`needed/`) to read its build pin; a forge-only form (main's head and its
+  `build.lock` through the API) would keep the merger's 30 GB disk from holding every repository's clone. Why: the
+  merger's machine runs it every minute for each check machine at rest; tacplus's clone is the large one.
 - **The model's own containers cut off from the metadata server too** (looper, #111, 2026-11-26). What: on a looper
   VM, run the report's model (today in the main container, on the host's network) behind the same refusal as the
   build containers. That means its own network namespace, or a metadata proxy that serves only what the looper's
