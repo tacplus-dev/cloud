@@ -554,9 +554,10 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   `build.lock` that is not the CI file's `default.image`. Builds of main run from the pin and report since
   tacplus-dev/looper#113 (2026-11-15): ca0e523's, pipeline 3070014440, green on the gates full, its security report one
   LOW semgrep finding (`ci/lib.sh:64`, IFS set globally), none failing the policy.
-- **tacplus-dev/build's trigger and nightly schedule (#26, #67; looper#71, #84, #164):** the gitlab stack's `build`
+- **tacplus-dev/build's trigger and schedules (#26, #67, #112; looper#71, #84, #164, #252):** the gitlab stack's `build`
   (`modules/gitlab/build.tf`): tacplus-dev/build's `.gitlab-ci.yml`, tacplus-dev/looper's `ci/build.gitlab-ci.yml` at
-  `build_ci_commit` (3e40ec7 since #109: looper#237's build of 4 jobs, `BUILD_CHILD_VERDICT` "true" on the looper image
+  `build_ci_commit` (b40b42b since #112: looper#252's `release` input and branch releases, on the looper image c3a8b379,
+  main-7c1dc4d, looper#261; before it 3e40ec7, #109: looper#237's build of 4 jobs, `BUILD_CHILD_VERDICT` "true" on the looper image
   d53cb7c1 (main-e0ab92d, whose child's security job sets the verdict, `looper-build scan`), `tests/build_ci_test.sh`
   refusing it on 790b7849; before it 3ed6045, #92: looper#221's image 790b7849, with looper#207's side-by-side scanners
   (`BUILD_SCAN_JOBS`), #209 and #210, the light jobs on `build-light`; before it b1dbfe4, #100: looper#224's light
@@ -583,9 +584,17 @@ Overwritten to stay current (loopers and agents). Last updated: 2026-11-27 by th
   here (`ci/nightly-builds.sh`, `pinned-repositories.yaml` and the drift's `nightly-builds` check are gone). It
   replaces #65's ten per-repository schedules (gitlab.com allows a project 10): a `moved` block makes it looper's
   schedule changed in place and the apply deletes the other nine, never asking for an 11th; the module still refuses
-  more than 10 at plan. Tested with the stack's plan tests (mock providers), the stub-API plan with the real provider
+  more than 10 at plan. **Two release schedules** (#112, README, The build pipeline), on main with no `repo` either, so
+  3 of the 10: `release-main` at 08:00 UTC, the input `release: main` (each pinned repository's main at its
+  `main-green`, skipped when that is its release already or there is none), and `release-branches` every 3 h at :30,
+  `release: branches` (each `release/X.Y` with something new; else one `nothing-new` job), created after the build
+  file (`depends_on`) and an output of their own, `build_schedules` (the file's import reads `build.project`). Their
+  publish needs the hub's step (README, The release's publish identity: `registry` a protected environment of
+  tacplus-dev/build, and jody1-328023's provider admitting its protected `main` in it), by hand, not yet done. Tested
+  with the stack's plan tests (mock providers), the stub-API plan with the real provider
   (`tests/gitlab_plan_test.sh`), `tests/build_ci_test.sh` (stub curl) and `tests/expiry_test.sh`; not seen yet:
-  `apply:gitlab` on main of #67 (its in-place change, and which of the ten exist live), and the first fan-out nightly.
+  `apply:gitlab` on main of #67 (its in-place change, and which of the ten exist live), the first fan-out nightly,
+  and #112's first release pipelines and a `<repo>:main-<commit12>` publish.
 - **tacplus-dev/build's runner settings (#35):** a project whose jobs are tagged `build` (or any tag only tacplus-dev's
   pools serve) needs **group runners on**: the pools are tacplus-dev group runners, and a project with
   `group_runners_enabled=false` never gets one, its jobs failing `stuck_pending_no_matching_runners` after about 1.5 h
