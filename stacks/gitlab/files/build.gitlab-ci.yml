@@ -177,32 +177,36 @@ spec:
       default: ""
       regex: '^(main|release/[0-9]+\.[0-9]+|branches)?$'
 ---
+# Every variable a rule reads is compared, never read bare (looper#279): GitLab
+# evaluates && and || as Ruby does, "" true to them, so `$BUILD_RELEASE && (...)`
+# with release empty is the (...) and refused every manager's build, and
+# `($BUILD_SHA || $BUILD_TAG)` with sha empty is "", never the tag.
 workflow:
   name: $BUILD_PIPELINE_NAME
   rules:
-    - if: $BUILD_SMOKE == "true" && ($BUILD_REPO || $BUILD_SHA || $BUILD_TAG)
+    - if: $BUILD_SMOKE == "true" && ($BUILD_REPO != "" || $BUILD_SHA != "" || $BUILD_TAG != "")
       when: never
-    - if: $BUILD_RUNNER_IMAGE == "true" && ($BUILD_REPO || $BUILD_SHA || $BUILD_TAG || $BUILD_SMOKE == "true")
+    - if: $BUILD_RUNNER_IMAGE == "true" && ($BUILD_REPO != "" || $BUILD_SHA != "" || $BUILD_TAG != "" || $BUILD_SMOKE == "true")
       when: never
-    - if: $BUILD_NIGHTLY == "true" && ($BUILD_TAG || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
+    - if: $BUILD_NIGHTLY == "true" && ($BUILD_TAG != "" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
       when: never
-    - if: $BUILD_VERIFY == "true" && ($BUILD_TAG || $BUILD_NIGHTLY == "true" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
+    - if: $BUILD_VERIFY == "true" && ($BUILD_TAG != "" || $BUILD_NIGHTLY == "true" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true")
       when: never
-    - if: $BUILD_RELEASE && ($BUILD_SHA || $BUILD_TAG || $BUILD_GATES || $BUILD_BASE || $BUILD_WAIT || $BUILD_REPORT == "true" || $BUILD_NIGHTLY == "true" || $BUILD_VERIFY == "true" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true" || $CI_COMMIT_REF_NAME != "main")
+    - if: $BUILD_RELEASE != "" && ($BUILD_SHA != "" || $BUILD_TAG != "" || $BUILD_GATES != "" || $BUILD_BASE != "" || $BUILD_WAIT != "" || $BUILD_REPORT == "true" || $BUILD_NIGHTLY == "true" || $BUILD_VERIFY == "true" || $BUILD_SMOKE == "true" || $BUILD_RUNNER_IMAGE == "true" || $CI_COMMIT_REF_NAME != "main")
       when: never
-    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_RELEASE
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_RELEASE != ""
       variables:
         BUILD_PIPELINE_NAME: "release $[[ inputs.repo ]] $[[ inputs.release ]]"
-    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO && $BUILD_VERIFY == "true"
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO != "" && $BUILD_VERIFY == "true"
       variables:
         BUILD_PIPELINE_NAME: "verify $[[ inputs.repo ]] $[[ inputs.sha ]]"
-    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO && $BUILD_NIGHTLY == "true"
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO != "" && $BUILD_NIGHTLY == "true"
       variables:
         BUILD_PIPELINE_NAME: "nightly $[[ inputs.repo ]] $[[ inputs.sha ]]"
     - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger|schedule)$/ && $BUILD_REPO == "" && $BUILD_SHA == "" && $BUILD_NIGHTLY == "true"
       variables:
         BUILD_PIPELINE_NAME: "nightly"
-    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/ && $BUILD_REPO && $BUILD_SHA
+    - if: $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/ && $BUILD_REPO != "" && $BUILD_SHA != ""
       variables:
         BUILD_PIPELINE_NAME: "build $[[ inputs.repo ]] $[[ inputs.sha ]] $[[ inputs.tag ]] $[[ inputs.gates ]]"
     - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_NAME == "main" && $BUILD_SMOKE == "true"
@@ -237,17 +241,29 @@ variables:
   # lacks.
   BUILD_BUILDER_IMAGE: ""
   BUILD_DOCKER_TAGS: "arm64, build-docker"
+  # A branch release's publish (looper#265): the release registry in
+  # tacplus-ci, written by its one account, which only this project's
+  # protected main, in its environment registry, may become (tacplus-dev/cloud
+  # #115, in us-central1, the region tacplus-ci's policy admits, by #120: the
+  # ci stack's output releases; none is secret). The plan writes them into the
+  # publish job by these names: a project variable would win over a job's
+  # GCP_WIF_PROVIDER. A tag's release publishes to the project's
+  # BUILD_REGISTRY (no default: with none it is refused; tacplus-dev/tacplus
+  # #223's to set) through its GCP_WIF_PROVIDER.
+  BUILD_RELEASE_REGISTRY: "us-central1-docker.pkg.dev/tacplus-ci/releases"
+  GCP_RELEASE_WIF_PROVIDER: "projects/79638967213/locations/global/workloadIdentityPools/gitlab-com/providers/tacplus-dev-build-release"
+  GCP_RELEASE_PUBLISH_SA: "release-publish@tacplus-ci.iam.gserviceaccount.com"
   # The nightly (looper#185): a land's build waits on a run and blocks a
   # queue, a nightly waits on nobody, so the nightly never takes every build
   # slot (2026-11-18 03:00Z its children held all of them, and tacplus#340's
   # land got no runner in 15 min). Its fan-out runs this many repositories at
   # a time (each a resource group, nightly-slot-<n>), its jobs on these tags:
-  # the build runner's until the cluster's nightly entry (arm64,
-  # build-nightly, tacplus-dev/cluster#46: the spot pool at a PriorityClass
-  # between the report builds' and the lands', build's ceilings, 3500m 12Gi,
-  # so every repository's gates and CodeQL fit it) is registered and its token
-  # written (tacplus-dev/cloud#116), never before: no runner would take them
-  # (looper#220).
+  # the cluster's nightly entry (arm64, build-nightly, tacplus-dev/cluster#46:
+  # the spot pool at a PriorityClass between the report builds' and the
+  # lands', build's ceilings, 3500m 12Gi, so every repository's gates and
+  # CodeQL fit it and none keeps the build runner's), registered and its token
+  # written by tacplus-dev/cloud#116 (looper#220). The hub copies this file
+  # once cluster runs that entry, never before: no runner would take them.
   BUILD_NIGHTLY_SLOTS: "1"
   # The report builds' gates at a time (looper#195): each report's holds a
   # resource group report-slot-<n>, so the rest of the build pool (the
@@ -268,7 +284,7 @@ variables:
   # wait.
   BUILD_POOL_NODES: "2"
   BUILD_REPORT_TAGS: "arm64, build"
-  BUILD_NIGHTLY_TAGS: "arm64, build"
+  BUILD_NIGHTLY_TAGS: "arm64, build-nightly"
   # The child pipeline's security job sets the build's verdict (looper#237):
   # "true" drops the pending job and an ordinary build's report-pass and
   # report-fail, plan setting pending and its own failure. It needs
@@ -346,7 +362,7 @@ gates:
 report-pass:
   stage: report
   rules:
-    - if: $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+    - if: $BUILD_TAG != "" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_success
     - if: $BUILD_CHILD_VERDICT != "true" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true" && $BUILD_RELEASE == ""
       when: on_success
@@ -357,7 +373,7 @@ report-pass:
 report-fail:
   stage: report
   rules:
-    - if: $BUILD_TAG && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
+    - if: $BUILD_TAG != "" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true"
       when: on_failure
     - if: $BUILD_CHILD_VERDICT != "true" && $BUILD_SMOKE != "true" && $BUILD_RUNNER_IMAGE != "true" && $BUILD_NIGHTLY != "true" && $BUILD_VERIFY != "true" && $BUILD_RELEASE == ""
       when: on_failure

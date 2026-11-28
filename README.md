@@ -663,7 +663,7 @@ the looper's reports and managers get their gates from build jobs in tacplus-dev
   `release-<repo>/<branch>/record`. **Build main now** is no schedule: the trigger's API run on main with
   `{"repo": "<repo>", "release": "main"}`. GitLab refuses a pipeline whose input the file does not declare, so the
   module creates a schedule after the build file (`depends_on`); `release` is declared from looper's b6f80ed on, and
-  `build_ci_commit` is b40b42b, whose looper image (main-7c1dc4d) carries #252's `looper-build`
+  `build_ci_commit` is fc6e0f1 (b40b42b's copy with tacplus-dev/looper#279's rules fix: its workflow rules refused every build), whose looper image (main-7c1dc4d) carries #252's `looper-build`
   (tacplus-dev/looper#261).
 - **The release's publish identity** (#112, the hub's, by hand: tacplus-dev/tacplus#223's registry
   `us-docker.pkg.dev/jody1-328023/tacplus`, its pool, provider and `artifactregistry.writer` binding are in
